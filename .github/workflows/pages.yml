@@ -80,7 +80,25 @@ jobs:
             [ "$rc" = "200" ] || { echo "::error::Falta ${recurso}"; exit 1; }
           done
 
-          echo "::notice::La aplicación está en marcha en $url"
-          echo "### Aplicación publicada" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "$url" >> "$GITHUB_STEP_SUMMARY"
+          echo "URL=$url" >> "$GITHUB_ENV"
+
+      # Que todo devuelva 200 no prueba que la aplicación arranque: un módulo
+      # con la ruta mal resuelta, un shader que no compila en el navegador real
+      # o un service worker con el ámbito equivocado dan 200 en todo y una
+      # pantalla en negro. Esto la abre con un navegador de verdad.
+      - name: Comprobar que la aplicación arranca
+        run: |
+          npm install --no-save playwright@1.49.1
+          npx playwright install --with-deps chromium
+          node test/smoke-remote.mjs "$URL"
+
+      - name: Resumen
+        if: success()
+        run: |
+          {
+            echo "### Aplicación publicada"
+            echo ""
+            echo "$URL"
+            echo ""
+            echo "Verificado: recursos servidos, motor compilado y render correcto."
+          } >> "$GITHUB_STEP_SUMMARY"
