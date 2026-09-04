@@ -1,0 +1,36 @@
+# Sitio estático puro: `build.mjs` sólo copia, no compila nada.
+[build]
+  command = "node build.mjs"
+  publish = "dist"
+
+# El service worker no debe cachearse, o el navegador seguiría sirviendo una
+# versión vieja de la aplicación indefinidamente.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# Los módulos y estilos sí, pero revalidando: así una recarga trae los cambios.
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/styles/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/icons/*"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+# La cámara y el almacenamiento local necesitan que el navegador sepa que la
+# página puede pedir esos permisos.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Permissions-Policy = "camera=(self), microphone=(self)"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "same-origin"

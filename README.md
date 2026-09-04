@@ -27,6 +27,24 @@ para todas las direcciones de la máquina; la primera vez Safari pedirá
 aceptarlo (Ajustes → General → Información → Ajustes de confianza de
 certificados).
 
+### Publicarla en internet
+
+La aplicación es estática: `node build.mjs` reúne en `dist/` sólo lo que se
+sirve (462 KB) y deja fuera las pruebas y el servidor de desarrollo.
+
+**GitHub Pages** — ya viene el flujo de trabajo listo. En el repositorio:
+Settings → Pages → Source: **GitHub Actions**. A partir de ahí, cada empuje a
+`main` publica en `https://darocfilms.github.io/APP-FILTROS/`. Funciona bajo
+subdirectorio: todas las rutas son relativas y el ámbito del service worker se
+ajusta solo.
+
+**Netlify** — `netlify.toml` ya trae el comando de construcción, el directorio
+publicado y las cabeceras (el service worker sin caché, para que las
+actualizaciones lleguen). Add new site → Import an existing project → GitHub →
+`APP-FILTROS`. No hay que configurar nada más.
+
+Cualquiera de las dos da HTTPS, que es lo que la cámara exige.
+
 ### Instalarla en el iPhone
 
 Safari → Compartir → **Añadir a pantalla de inicio**. Merece la pena hacerlo:
