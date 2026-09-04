@@ -32,10 +32,16 @@ certificados).
 La aplicación es estática: `node build.mjs` reúne en `dist/` sólo lo que se
 sirve (462 KB) y deja fuera las pruebas y el servidor de desarrollo.
 
-**GitHub Pages** — ya está en marcha. Cada empuje a `main` publica en
-`https://darocfilms.github.io/APP-FILTROS/`; el flujo de trabajo activa Pages
-por su cuenta, sin tocar ajustes. Funciona bajo subdirectorio: todas las rutas
-son relativas y el ámbito del service worker se ajusta solo.
+**GitHub Pages** — el flujo de trabajo ya está en el repositorio. Sólo hay que
+activarlo una vez: Settings → Pages → Source: **GitHub Actions**. A partir de
+ahí, cada empuje a `main` publica en `https://darocfilms.github.io/APP-FILTROS/`.
+
+Ese paso no se puede automatizar: dar de alta el sitio de Pages requiere
+permiso de administración del repositorio, que el `GITHUB_TOKEN` de un flujo de
+trabajo no tiene ni puede recibir.
+
+Funciona bajo subdirectorio: todas las rutas son relativas y el ámbito del
+service worker se ajusta solo.
 
 **Netlify** — `netlify.toml` ya trae el comando de construcción, el directorio
 publicado y las cabeceras (el service worker sin caché, para que las

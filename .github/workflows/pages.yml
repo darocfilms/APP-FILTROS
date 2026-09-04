@@ -1,7 +1,11 @@
 # Publica la aplicación en GitHub Pages en cada empuje a main.
 #
-# No hace falta tocar ajustes: `configure-pages` con `enablement: true` activa
-# Pages por su cuenta la primera vez, usando el permiso `pages: write` de abajo.
+# Requiere activar Pages una sola vez: Settings → Pages → Source: "GitHub
+# Actions". No se puede automatizar desde aquí: dar de alta el sitio necesita
+# permiso de administración del repositorio, y el GITHUB_TOKEN del flujo no lo
+# tiene ni se le puede conceder en el bloque `permissions` (`enablement: true`
+# falla con "Resource not accessible by integration"). Una vez activado, cada
+# empuje a main publica solo.
 name: Publicar en GitHub Pages
 
 on:
@@ -29,9 +33,6 @@ jobs:
       - name: Construir dist/
         run: node build.mjs
       - uses: actions/configure-pages@v5
-        with:
-          # Activa Pages en el repositorio si aún no lo estaba.
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
