@@ -1,11 +1,10 @@
-# Publica la aplicación en GitHub Pages en cada empuje a main.
+# Publica la aplicación en GitHub Pages y comprueba que queda servida.
 #
-# Requiere activar Pages una sola vez: Settings → Pages → Source: "GitHub
-# Actions". No se puede automatizar desde aquí: dar de alta el sitio necesita
-# permiso de administración del repositorio, y el GITHUB_TOKEN del flujo no lo
-# tiene ni se le puede conceder en el bloque `permissions` (`enablement: true`
-# falla con "Resource not accessible by integration"). Una vez activado, cada
-# empuje a main publica solo.
+# Publica empujando a la rama `gh-pages` en lugar de usar `deploy-pages`. El
+# motivo es concreto: el modo "GitHub Actions" de Pages hay que darlo de alta
+# con permiso de administración del repositorio, que el GITHUB_TOKEN de un flujo
+# no tiene ni puede recibir. Servir desde una rama, en cambio, sólo necesita
+# `contents: write`, que sí tiene.
 name: Publicar en GitHub Pages
 
 on:
@@ -14,35 +13,74 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  publicar:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Construir dist/
         run: node build.mjs
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Empujar a la rama gh-pages
+        run: |
+          set -e
+          # Jekyll no debe tocar nada: esto ya es el sitio terminado.
+          touch dist/.nojekyll
+          cd dist
+          git init -q
+          git checkout -q -b gh-pages
+          git add -A
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Publicación de ${GITHUB_SHA::7}"
+          git push -f \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" \
+            gh-pages
+          echo "Publicados $(git ls-files | wc -l) archivos."
+
+      - name: Comprobar que la página responde
+        run: |
+          url="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          echo "Comprobando $url"
+          code=000
+          # Pages tarda en propagar la primera publicación; se reintenta un rato.
+          for i in $(seq 1 40); do
+            code=$(curl -sSL -o /tmp/pagina.html -w '%{http_code}' "$url" || echo 000)
+            echo "  intento $i → HTTP $code"
+            [ "$code" = "200" ] && break
+            sleep 15
+          done
+
+          if [ "$code" != "200" ]; then
+            echo "::error::La página no responde (HTTP $code)."
+            echo "::error::Si es 404, falta activar Pages una vez:"
+            echo "::error::Settings → Pages → Source: Deploy from a branch → gh-pages / (root)"
+            exit 1
+          fi
+
+          # Responder 200 no basta: hay que confirmar que sirve ESTA aplicación
+          # y que los módulos cuelgan bien de la subruta del repositorio.
+          grep -q "Laboratorio" /tmp/pagina.html \
+            || { echo "::error::La página responde, pero no es la aplicación."; exit 1; }
+
+          for recurso in js/app.js js/engine/renderer.js styles/app.css manifest.webmanifest sw.js; do
+            rc=$(curl -sS -o /dev/null -w '%{http_code}' "${url}${recurso}" || echo 000)
+            echo "  ${recurso} → HTTP $rc"
+            [ "$rc" = "200" ] || { echo "::error::Falta ${recurso}"; exit 1; }
+          done
+
+          echo "::notice::La aplicación está en marcha en $url"
+          echo "### Aplicación publicada" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"
