@@ -1,11 +1,18 @@
 # Laboratorio
 
+**En marcha: https://darocfilms.github.io/APP-FILTROS/**
+
 Aplicación web de cámara y revelado fotográfico para iPhone. Emulsiones
 reales aplicadas en directo sobre el visor, grabación de vídeo, un laboratorio
 de edición completo y exportación a resolución original.
 
 Todo se ejecuta en el dispositivo. No hay servidor, no hay cuenta, no se sube
 nada a ninguna parte.
+
+Ábrela en Safari desde el iPhone y **Compartir → Añadir a pantalla de inicio**.
+No es cosmético: iOS sólo concede almacenamiento persistente a las webs
+instaladas, así que sin ese paso el sistema puede vaciar la carpeta con tus
+fotos cuando necesite espacio.
 
 ---
 
@@ -29,26 +36,28 @@ certificados).
 
 ### Publicarla en internet
 
+Ya está publicada en GitHub Pages: cada empuje a `main` reconstruye y despliega.
+
 La aplicación es estática: `node build.mjs` reúne en `dist/` sólo lo que se
-sirve (462 KB) y deja fuera las pruebas y el servidor de desarrollo.
+sirve (462 KB) y deja fuera las pruebas y el servidor de desarrollo. El flujo de
+trabajo empuja ese resultado a la rama `gh-pages`, que es lo que Pages sirve.
 
-**GitHub Pages** — el flujo de trabajo ya está en el repositorio. Sólo hay que
-activarlo una vez: Settings → Pages → Source: **GitHub Actions**. A partir de
-ahí, cada empuje a `main` publica en `https://darocfilms.github.io/APP-FILTROS/`.
+Se publica desde una rama y no con `deploy-pages` por un motivo concreto: el
+modo "GitHub Actions" de Pages hay que darlo de alta con permiso de
+administración del repositorio, que el `GITHUB_TOKEN` de un flujo no tiene ni
+puede recibir en el bloque `permissions`. Servir desde una rama sólo necesita
+`contents: write`.
 
-Ese paso no se puede automatizar: dar de alta el sitio de Pages requiere
-permiso de administración del repositorio, que el `GITHUB_TOKEN` de un flujo de
-trabajo no tiene ni puede recibir.
+Después de publicar, el flujo comprueba la página real: que responde, que sirve
+esta aplicación, que los módulos y el service worker resuelven bien bajo la
+subruta del repositorio, y —abriéndola con un navegador de verdad— que el
+armazón monta, los seis programas GLSL compilan y el render da los píxeles
+esperados. Un 200 en todos los archivos no distingue una aplicación que arranca
+de una pantalla en negro.
 
-Funciona bajo subdirectorio: todas las rutas son relativas y el ámbito del
-service worker se ajusta solo.
-
-**Netlify** — `netlify.toml` ya trae el comando de construcción, el directorio
-publicado y las cabeceras (el service worker sin caché, para que las
-actualizaciones lleguen). Add new site → Import an existing project → GitHub →
-`APP-FILTROS`. No hay que configurar nada más.
-
-Cualquiera de las dos da HTTPS, que es lo que la cámara exige.
+**Netlify**, como alternativa: `netlify.toml` ya trae el comando de
+construcción, el directorio publicado y las cabeceras. Add new site → Import an
+existing project → GitHub → `APP-FILTROS`.
 
 ### Instalarla en el iPhone
 
