@@ -30,8 +30,19 @@ const THUMB_DIR = 'thumbs';
 
 /** Tamaño del lado mayor de las miniaturas de la galería. */
 export const THUMB_SIZE = 480;
-/** Tamaño del lado mayor del proxy de edición. */
-export const PROXY_SIZE = 1600;
+/**
+ * Lado mayor del proxy de edición.
+ *
+ * Se ajusta a la pantalla en vez de fijar un número: en un panel de densidad 3×
+ * un proxy de 1600 px se ve blando cuando la imagen ocupa toda la altura, y en
+ * uno pequeño sobra resolución que sólo cuesta memoria. El techo de 2560 acota
+ * el pico de memoria de vídeo, que es lo que tumba a Safari en iPhone.
+ */
+export const PROXY_SIZE = (() => {
+  const dpr = Math.min(globalThis.devicePixelRatio || 1, 3);
+  const side = Math.max(globalThis.screen?.width || 0, globalThis.screen?.height || 0, 800);
+  return Math.round(Math.min(2560, Math.max(1600, side * dpr)));
+})();
 
 function openDB() {
   return new Promise((resolve, reject) => {

@@ -68,8 +68,7 @@ export class FilmPicker {
       onclick: () => { haptic(); this.select(film.id); this.onPick(film.id); },
     },
       el('div', { class: 'filmcard__frame' }, canvas),
-      el('span', { class: 'filmcard__name', text: film.name }),
-      el('span', { class: 'filmcard__meta', text: film.iso ? 'ISO ' + film.iso : film.brand }));
+      el('span', { class: 'filmcard__name', text: film.name }));
 
     this.cards.set(film.id, { node, canvas, film, rendered: false });
     return node;

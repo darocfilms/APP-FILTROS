@@ -74,17 +74,28 @@ Safari → Compartir → **Añadir a pantalla de inicio**. Merece la pena hacerl
 
 ### Cámara
 
-El visor muestra la emulsión ya aplicada: lo que se ve es lo que se guarda.
+El visor ocupa la pantalla y muestra el fotograma **entero**: los mandos flotan
+encima con velos de degradado y el encuadre se coloca en el hueco libre, así que
+nada del sensor se queda fuera. Un toque sobre el visor esconde los mandos y la
+imagen se queda con toda la pantalla.
+
+Se pide 4:3 a la máxima resolución, que es la lectura completa del sensor. Pedir
+16:9 parece "más grande" por el número, pero es un **recorte**: el sistema tira
+las bandas superior e inferior antes de entregar el fotograma, y esa parte de la
+imagen ya no se recupera. El encuadre por defecto, «Máx», no recorta nada;
+4:3, 1:1 y 16:9 son recortes sobre ese mismo fotograma, reversibles en cualquier
+momento.
 
 - Tira de emulsiones bajo el visor, con cambio en directo.
 - Compensación de exposición en diafragmas reales.
 - Foto y vídeo, cuadrícula de tercios y cámara frontal/trasera.
 
-La previsualización se procesa a 1440 px de lado mayor para que vaya fluida,
-pero **la foto no se saca de esa previsualización**: al disparar se captura el
-fotograma a resolución nativa y se revela en un pase aparte a tamaño completo.
-El vídeo sí se graba desde el lienzo, que es la única forma de que el grabador
-reciba los fotogramas ya revelados.
+La previsualización se procesa a la resolución de la pantalla y baja sola si el
+dispositivo no llega: se mide el coste real por fotograma en lugar de elegir un
+número conservador para todos. Pero **la foto no sale de esa previsualización**:
+al disparar se captura el fotograma a resolución nativa y se revela en un pase
+aparte a tamaño completo. El vídeo sí se graba desde el lienzo, que es la única
+forma de que el grabador reciba los fotogramas ya revelados.
 
 Las capturas se guardan **ya reveladas**, igual que un carrete: la emulsión
 queda grabada en los píxeles. Se anota cuál se usó, pero al reabrir la foto en
@@ -106,6 +117,15 @@ Diez paneles de ajustes:
 | **Efectos** | Grano, halación, bloom, difusión, aberración cromática |
 | **Viñeta** | Cantidad, punto medio, suavizado, redondez |
 | **Encuadre** | Recorte con proporciones, giro, enderezado, espejo |
+
+La imagen es el objeto de trabajo y ocupa la pantalla: la barra y los ajustes
+flotan encima, y el lienzo se coloca en el hueco libre para que nunca quede
+tapado. El reparto lo decides tú — arrastra el tirador de los ajustes, o toca la
+pestaña activa para plegarlos y dejar la imagen a pantalla completa. La altura
+que elijas se recuerda.
+
+El proxy de edición se dimensiona según la pantalla: en un panel de densidad 3×
+un proxy fijo de 1600 px se ve blando cuando la imagen ocupa toda la altura.
 
 Además: deshacer y rehacer, comparación antes/después manteniendo pulsada la
 imagen, histograma superpuesto y presets propios.
@@ -189,6 +209,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
+| `layout` | El reparto de pantalla: el visor llena el ancho y no recorta el sensor, ocultar los mandos libera la pantalla, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, y ningún panel desborda |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
 continuidad C¹, monotonía, asíntota del pie) se verifican canal a canal para

@@ -44,6 +44,7 @@ export class LabView {
     this.history = [];
     this.historyAt = -1;
     this.comparing = false;
+    this.collapsed = false;
     this.exportOpts = { size: 'full', format: 'image/jpeg', quality: 0.95 };
 
     this.canvas = el('canvas', { class: 'lab__canvas' });
@@ -83,16 +84,18 @@ export class LabView {
       onPickFilm: (id) => this._pickFilm(id),
       onGeometry: (what, value) => this._geometryChanged(what, value),
       onPanel: (id) => {
-        this.setCropActive(id === 'geometry');
+        this.setCropActive(id === 'geometry' && !this.collapsed);
         // Curvas dibuja el histograma de fondo, así que al abrirlo hay que
         // volver a renderizar para que exista la reducción que lo alimenta.
         if (id === 'curves') { this._render(); this._computeHistogram(); }
       },
+      onToggleCollapse: () => this.toggleCollapsed(),
     });
 
     this._bindCompare();
 
-    return el('section', { class: 'view view--lab', id: 'view-lab' },
+    const root = el('section', { class: 'view view--lab', id: 'view-lab' },
+      this.stage,
       el('header', { class: 'lab__bar' },
         el('div', { class: 'lab__id' }, this.title, this.subtitle),
         el('div', { class: 'lab__actions' },
@@ -102,8 +105,42 @@ export class LabView {
             type: 'button', class: 'btn btn--primary lab__export',
             onclick: () => this._openExport(),
           }, 'Exportar'))),
-      this.stage,
       this.panels.root);
+
+    // El hueco de la imagen se calcula con el alto real de los ajustes: al
+    // cambiar de panel (una rueda de color ocupa más que cuatro deslizadores)
+    // la imagen se reajusta en lugar de quedarse con un margen fijo de más.
+    this._panelsRO = new ResizeObserver(([entry]) => {
+      root.style.setProperty('--lab-panels', Math.round(entry.contentRect.height) + 'px');
+    });
+    this._panelsRO.observe(this.panels.root);
+
+    // Y el lienzo se recoloca observando el HUECO, no los paneles: el hueco
+    // cambia de tamaño con una transición, así que medirlo una sola vez al
+    // soltar el panel daba un tamaño intermedio y la imagen se quedaba
+    // encogida. Observándolo, cada paso de la animación recoloca.
+    this._frameRO = new ResizeObserver(() => this._layout());
+    this._frameRO.observe(this.stage.querySelector('.lab__frame'));
+    return root;
+  }
+
+  /**
+   * Pliega el cuerpo de ajustes dejando sólo la fila de pestañas.
+   *
+   * La imagen es el objeto de trabajo, así que tiene que poder ocupar la
+   * pantalla entera de un toque. Plegado no se pierde el sitio: las pestañas
+   * siguen visibles y tocar cualquiera vuelve a abrir su panel.
+   */
+  toggleCollapsed(force) {
+    const next = force ?? !this.collapsed;
+    if (next === this.collapsed) return;
+    this.collapsed = next;
+    this.root.classList.toggle('is-collapsed', this.collapsed);
+    this.panels.setCollapsed(this.collapsed);
+    if (this.collapsed) this.setCropActive(false);
+    else if (this.panels.active === 'geometry') this.setCropActive(true);
+    // No hace falta recolocar a mano: el observador del hueco lo hace en cada
+    // paso de la transición.
   }
 
   _iconBtn(glyph, label, onClick) {

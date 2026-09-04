@@ -20,6 +20,7 @@ const SUITES = [
   ['picker', 'miniaturas del selector de emulsión'],
   ['wheel', 'ruedas de etalonaje'],
   ['context', 'pérdida y recuperación del contexto WebGL'],
+  ['layout', 'reparto de pantalla: la imagen manda'],
 ];
 
 const only = process.argv[2];

@@ -10,6 +10,9 @@ import {
 } from '../data/params.js';
 import { makeSlider, makeSegmented, makeSwitch } from './controls.js';
 import { CurveEditor } from './curve.js';
+
+/** Dónde se guarda el reparto de pantalla que elige el usuario. */
+const PANEL_HEIGHT_KEY = 'filtros.panelHeight.v1';
 import { ColorWheel } from './wheel.js';
 import { FilmPicker } from './filmpicker.js';
 
@@ -27,11 +30,18 @@ export class PanelStack {
     this.sliders = new Map();
     this.bodies = new Map();
 
+    this.collapsed = false;
     this.tabs = el('div', { class: 'panelbar', role: 'tablist', 'aria-label': 'Ajustes' });
     this.body = el('div', { class: 'panelbody' });
-    this.root = el('div', { class: 'panels' }, this.body, this.tabs);
+    this.grab = el('button', {
+      type: 'button', class: 'panels__grab',
+      'aria-label': 'Plegar los ajustes, o arrastrar para cambiar su altura',
+    }, el('span', { class: 'panels__grabline' }));
+    this.root = el('div', { class: 'panels' }, this.grab, this.body, this.tabs);
 
     this._buildTabs();
+    this._bindGrab();
+    this._restoreHeight();
     this.show('film');
   }
 
@@ -42,13 +52,96 @@ export class PanelStack {
         class: 'panelbar__tab',
         role: 'tab',
         dataset: { panel: panel.id },
-        onclick: () => { haptic(); this.show(panel.id); },
+        // Tocar la pestaña ya activa pliega el panel: así se llega a la imagen
+        // completa sin buscar otro control.
+        onclick: () => {
+          haptic();
+          if (this.collapsed) { this.hooks.onToggleCollapse?.(); this.show(panel.id); }
+          else if (this.active === panel.id) this.hooks.onToggleCollapse?.();
+          else this.show(panel.id);
+        },
       },
         el('span', { class: 'panelbar__icon', dataset: { icon: panel.icon } }),
         el('span', { class: 'panelbar__label', text: panel.label }),
         el('span', { class: 'panelbar__dot' }));
       this.tabs.append(btn);
     }
+  }
+
+  /**
+   * Tirador: toque para plegar, arrastre para repartir la pantalla.
+   *
+   * El reparto entre imagen y ajustes no lo puede acertar un número fijo —
+   * depende de la foto, del panel abierto y de lo que se esté mirando. Se deja
+   * en manos de quien edita, con el gesto que ya espera de una hoja de iOS.
+   */
+  _bindGrab() {
+    const MIN = 96;
+    let startY = 0, startH = 0, dragging = false, moved = false;
+
+    const maxAllowed = () => Math.round(window.innerHeight * 0.62);
+
+    this.grab.addEventListener('pointerdown', (ev) => {
+      dragging = true;
+      moved = false;
+      startY = ev.clientY;
+      startH = this.body.getBoundingClientRect().height;
+      this.grab.setPointerCapture(ev.pointerId);
+      this.root.classList.add('is-dragging');
+    });
+
+    this.grab.addEventListener('pointermove', (ev) => {
+      if (!dragging) return;
+      const dy = startY - ev.clientY;
+      if (Math.abs(dy) > 4) moved = true;
+      if (!moved) return;
+      ev.preventDefault();
+      if (this.collapsed && dy > 0) this.hooks.onToggleCollapse?.();
+      const h = Math.min(maxAllowed(), Math.max(0, startH + dy));
+      if (h < MIN / 2) {
+        if (!this.collapsed) this.hooks.onToggleCollapse?.();
+      } else {
+        if (this.collapsed) this.hooks.onToggleCollapse?.();
+        this.setHeight(Math.max(MIN, h));
+      }
+    });
+
+    const end = () => {
+      if (!dragging) return;
+      dragging = false;
+      this.root.classList.remove('is-dragging');
+      // Sin arrastre, el gesto es un toque: plegar o desplegar.
+      if (!moved) { haptic(); this.hooks.onToggleCollapse?.(); }
+    };
+    this.grab.addEventListener('pointerup', end);
+    this.grab.addEventListener('pointercancel', end);
+  }
+
+  /** Fija la altura máxima del cuerpo; los paneles cortos siguen siendo cortos. */
+  setHeight(px, remember = true) {
+    this.height = px;
+    this.root.style.setProperty('--panel-h', Math.round(px) + 'px');
+    if (remember) {
+      try { localStorage.setItem(PANEL_HEIGHT_KEY, String(Math.round(px))); } catch { /* sin persistencia */ }
+    }
+  }
+
+  /** Recupera el reparto que el usuario dejó la última vez. */
+  _restoreHeight() {
+    try {
+      const saved = parseInt(localStorage.getItem(PANEL_HEIGHT_KEY) || '', 10);
+      if (Number.isFinite(saved) && saved >= 96) {
+        this.setHeight(Math.min(saved, Math.round(window.innerHeight * 0.62)), false);
+      }
+    } catch { /* sin persistencia */ }
+  }
+
+  /** Oculta el cuerpo dejando sólo la fila de pestañas. */
+  setCollapsed(on) {
+    this.collapsed = on;
+    this.root.classList.toggle('is-collapsed', on);
+    this.body.hidden = on;
+    this.grab.setAttribute('aria-expanded', String(!on));
   }
 
   show(id) {
@@ -107,7 +200,9 @@ export class PanelStack {
     this.filmPicker.select(this.params.film.id);
     this.filmNote = el('p', { class: 'filmnote' });
     this._updateFilmNote(this.params.film.id);
-    return el('div', {}, this.filmPicker.root, this.filmNote);
+    // La ficha va arriba: es lo que explica qué estás mirando, y enterrada bajo
+    // seis filas de tarjetas no la lee nadie.
+    return el('div', {}, this.filmNote, this.filmPicker.root);
   }
 
   _updateFilmNote(id) {

@@ -21,6 +21,11 @@
   --ok: #4ade80;
 
   --tab-h: calc(54px + env(safe-area-inset-bottom));
+  /* Alto reservado para los mandos de la cámara. El visor se reencuadra solo
+     cuando cambia (por ejemplo al desplegar la compensación de exposición). */
+  --cam-controls: 168px;
+  /* Alto real del panel de ajustes del laboratorio, medido desde JS. */
+  --lab-panels: 220px;
   --radius: 14px;
   --radius-sm: 10px;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -82,7 +87,10 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 
 .stack {
   position: fixed;
-  inset: 0 0 var(--tab-h) 0;
+  /* Ocupa la pantalla entera, incluido el hueco de la barra de pestañas: cada
+     vista decide si su contenido llega hasta abajo (la cámara y el laboratorio
+     ponen la imagen debajo de sus mandos) o se aparta (la biblioteca). */
+  inset: 0;
 }
 
 .view {
@@ -162,16 +170,35 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 .chip.is-active { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 
-/* ── Cámara ─────────────────────────────────────────────────────────────── */
+/* ── Cámara ─────────────────────────────────────────────────────────────
+   El visor manda. Ocupa toda la vista y los mandos flotan encima con velos
+   de degradado, así la imagen es lo más grande que permite mostrarla entera.
+   Con 4:3 en vertical el ancho es el límite, de modo que el fotograma llega
+   de borde a borde y no queda nada por ganar sin recortar el sensor.        */
 
 .view--camera { background: #000; }
 
 .cam__stage {
-  position: relative; flex: 1; min-height: 0;
-  display: grid; place-items: center;
-  background: #000; overflow: hidden;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  /* Sitio para que los mandos no tapen el encuadre. Al ocultarlos, la imagen
+     se reencuadra sola y ocupa la pantalla entera. */
+  padding: calc(52px + env(safe-area-inset-top)) 0 calc(var(--cam-controls) + var(--tab-h));
+  transition: padding 0.28s var(--ease);
 }
-.cam__canvas { max-width: 100%; max-height: 100%; display: block; }
+.view--camera.is-immersive .cam__stage { padding: 0; }
+
+.cam__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* `contain` garantiza que se ve TODO el fotograma: nada del sensor se
+     queda fuera del visor. */
+  object-fit: contain;
+}
 .cam__video { display: none; }
 
 .cam__stage.is-flashing::after {
@@ -190,17 +217,29 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 
 .cam__badge {
-  position: absolute; top: calc(14px + env(safe-area-inset-top)); left: 50%;
+  position: absolute; top: calc(58px + env(safe-area-inset-top)); left: 50%;
   transform: translateX(-50%);
   padding: 6px 14px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px);
   font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
-  transition: opacity 0.35s;
+  transition: opacity 0.35s; pointer-events: none;
 }
 .cam__badge.is-hidden { opacity: 0; }
 
+.cam__res {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--cam-controls) + var(--tab-h) + 5px);
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 9.5px; letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.62);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  pointer-events: none; transition: opacity 0.28s;
+}
+.view--camera.is-immersive .cam__res { opacity: 0; }
+
 .cam__rec {
-  position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 14px;
+  position: absolute; top: calc(58px + env(safe-area-inset-top)); right: 14px;
   display: flex; align-items: center; gap: 7px;
   padding: 6px 12px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; font-size: 13px;
@@ -213,49 +252,84 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 
 .cam__message {
   position: absolute; inset: 0; display: grid; place-content: center; gap: 16px;
-  padding: 32px; text-align: center; background: rgba(0, 0, 0, 0.85);
+  padding: 32px; text-align: center; background: rgba(0, 0, 0, 0.9); z-index: 6;
 }
 .cam__message p { color: var(--text-dim); max-width: 32ch; }
 
-.cam__controls {
-  flex: 0 0 auto;
-  padding: 10px 14px 12px;
-  background: var(--bg);
-  display: grid; gap: 10px;
+/* ── Mandos superpuestos ────────────────────────────────────────────────── */
+
+.cam__top, .cam__bottom {
+  position: absolute; left: 0; right: 0; z-index: 5;
+  transition: opacity 0.24s var(--ease), transform 0.28s var(--ease);
+}
+.view--camera.is-immersive .cam__top {
+  opacity: 0; transform: translateY(-12px); pointer-events: none;
+}
+.view--camera.is-immersive .cam__bottom {
+  opacity: 0; transform: translateY(16px); pointer-events: none;
 }
 
-.cam__evrow { display: flex; align-items: center; gap: 10px; }
-.cam__evicon { color: var(--text-faint); font-size: 13px; }
+.cam__top {
+  top: 0;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: linear-gradient(rgba(0, 0, 0, 0.62), transparent);
+}
+
+.cam__aspects {
+  display: flex; gap: 2px; padding: 2px;
+  border-radius: 999px; background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(10px);
+}
+.cam__aspect {
+  min-height: 30px; padding: 0 12px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; color: rgba(255, 255, 255, 0.62);
+  font-variant-numeric: tabular-nums;
+}
+.cam__aspect.is-active { background: var(--accent); color: var(--accent-ink); }
+
+.cam__bottom {
+  bottom: var(--tab-h);
+  padding: 10px 14px 12px;
+  display: grid; gap: 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72) 32%, rgba(0, 0, 0, 0.88));
+}
+
+.cam__evrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 2px 4px 4px;
+}
 .cam__ev { flex: 1; }
 .cam__evlabel {
-  font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums;
-  min-width: 62px; text-align: right;
+  font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums;
+  min-width: 46px; text-align: right;
 }
+.cam__evunit { font-size: 10px; color: var(--text-faint); }
 
 .strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .strip::-webkit-scrollbar { display: none; }
 .strip__item {
-  flex: 0 0 auto; display: grid; justify-items: center; gap: 4px;
-  padding: 4px 2px; width: 62px;
+  flex: 0 0 auto; display: grid; justify-items: center; gap: 3px;
+  padding: 2px; width: 56px;
 }
 .strip__swatch {
-  width: 38px; height: 38px; border-radius: 10px;
+  width: 36px; height: 36px; border-radius: 10px;
   background: linear-gradient(135deg, var(--c1), var(--c2));
   border: 2px solid transparent;
   transition: border-color 0.15s, transform 0.12s var(--ease);
 }
 .strip__item.is-active .strip__swatch { border-color: var(--accent); transform: scale(1.08); }
 .strip__name {
-  font-size: 9px; color: var(--text-faint); text-align: center;
-  line-height: 1.15; max-width: 60px;
+  font-size: 8.5px; color: rgba(255, 255, 255, 0.55); text-align: center;
+  line-height: 1.15; max-width: 54px;
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
-.strip__item.is-active .strip__name { color: var(--text); }
+.strip__item.is-active .strip__name { color: var(--text); font-weight: 600; }
 
 .cam__modes { display: flex; justify-content: center; gap: 22px; }
 .cam__mode {
-  font-size: 11px; letter-spacing: 0.14em; color: var(--text-faint);
-  padding: 4px 2px; position: relative;
+  font-size: 11px; letter-spacing: 0.14em; color: rgba(255, 255, 255, 0.5);
+  padding: 2px;
 }
 .cam__mode.is-active { color: var(--accent); }
 .cam__modes.is-locked { opacity: 0.4; pointer-events: none; }
@@ -265,39 +339,53 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .cam__bar .iconbtn:last-child { justify-self: end; }
 
 .shutter {
-  width: 68px; height: 68px; position: relative; display: grid; place-items: center;
+  width: 64px; height: 64px; position: relative; display: grid; place-items: center;
 }
 .shutter__ring {
   position: absolute; inset: 0; border-radius: 50%;
   border: 3px solid rgba(255, 255, 255, 0.9);
 }
 .shutter__core {
-  width: 54px; height: 54px; border-radius: 50%; background: #fff;
+  width: 50px; height: 50px; border-radius: 50%; background: #fff;
   transition: transform 0.12s var(--ease), border-radius 0.2s var(--ease), background 0.2s;
 }
 .shutter:active .shutter__core { transform: scale(0.86); }
 .shutter--video .shutter__core { background: #ff3b30; }
-.shutter.is-recording .shutter__core { width: 26px; height: 26px; border-radius: 6px; }
+.shutter.is-recording .shutter__core { width: 24px; height: 24px; border-radius: 6px; }
 .shutter.is-busy { opacity: 0.5; pointer-events: none; }
 
-/* ── Laboratorio ────────────────────────────────────────────────────────── */
+/* ── Laboratorio ────────────────────────────────────────────────────────
+   Mismo principio que en la cámara: la imagen es el objeto de trabajo y ocupa
+   toda la vista. La barra superior y los ajustes flotan encima con velos, y el
+   lienzo se coloca en el hueco libre para que nunca quede tapado. Plegando los
+   ajustes —un toque en la pestaña activa o en el tirador— la imagen se queda
+   con la pantalla entera.                                                    */
 
-.view--lab { background: var(--bg); }
+.view--lab { background: #0b0c0e; }
 
 .lab__bar {
-  flex: 0 0 auto;
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
   display: flex; align-items: center; gap: 8px;
-  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
-  border-bottom: 1px solid var(--line-soft);
+  padding: calc(7px + env(safe-area-inset-top)) 12px 8px;
+  background: linear-gradient(rgba(11, 12, 14, 0.94) 62%, transparent);
 }
 .lab__id { display: grid; min-width: 0; flex: 1; }
-.lab__title { font-size: 15px; font-weight: 600; }
-.lab__subtitle { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lab__actions { display: flex; align-items: center; gap: 6px; }
-.lab__export { min-height: 38px; padding: 0 14px; font-size: 14px; }
+.lab__title { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.lab__subtitle { font-size: 10.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab__actions { display: flex; align-items: center; gap: 5px; }
+.lab__actions .iconbtn { width: 36px; height: 36px; flex-basis: 36px; font-size: 15px; }
+.lab__export { min-height: 36px; padding: 0 13px; font-size: 13.5px; }
 
-.lab__stage { position: relative; flex: 1 1 auto; min-height: 0; background: #0b0c0e; }
-.lab__frame { position: absolute; inset: 8px; }
+.lab__stage { position: absolute; inset: 0; }
+.lab__frame {
+  position: absolute;
+  /* El hueco libre entre la barra y los ajustes. Al plegarlos crece, y el
+     lienzo se recoloca para llenarlo. */
+  top: calc(48px + env(safe-area-inset-top));
+  left: 4px; right: 4px;
+  bottom: calc(var(--lab-panels) + var(--tab-h) + 4px);
+  transition: bottom 0.28s var(--ease);
+}
 .lab__canvas {
   position: absolute; display: block;
   box-shadow: 0 6px 34px rgba(0, 0, 0, 0.55);
@@ -312,7 +400,7 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .view--lab.has-image .lab__empty { display: none; }
 
 .histogram {
-  position: absolute; right: 10px; top: 10px; width: 148px; height: 56px;
+  position: absolute; right: 8px; top: 8px; width: 132px; height: 50px;
   border-radius: 8px; overflow: hidden;
   background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -374,38 +462,66 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 /* ── Paneles de ajustes ─────────────────────────────────────────────────── */
 
 .panels {
-  flex: 0 0 auto;
+  position: absolute; left: 0; right: 0; bottom: var(--tab-h); z-index: 5;
   display: flex; flex-direction: column;
-  background: var(--bg-panel);
+  background: rgba(22, 24, 29, 0.96);
+  backdrop-filter: saturate(150%) blur(18px);
+  -webkit-backdrop-filter: saturate(150%) blur(18px);
   border-top: 1px solid var(--line);
-  max-height: 52vh;
 }
+
+/* Tirador: la forma directa de dejar la imagen sola. */
+.panels__grab {
+  width: 100%; height: 26px; display: grid; place-items: center; flex: 0 0 auto;
+  touch-action: none;   /* el arrastre es nuestro, no del scroll de la página */
+}
+.panels__grabline {
+  width: 40px; height: 4px; border-radius: 2px; background: var(--line);
+  transition: background 0.15s, width 0.18s var(--ease);
+}
+.panels__grab:active .panels__grabline { background: var(--text-faint); width: 52px; }
+.panels.is-collapsed .panels__grabline { background: var(--accent); opacity: 0.75; }
+
 .panelbody {
   overflow-y: auto; -webkit-overflow-scrolling: touch;
-  padding: 12px 14px 4px;
-  min-height: 148px; max-height: 44vh;
+  padding: 2px 14px 4px;
+  /* Por defecto la imagen se queda con la mayor parte de la pantalla; el
+     tirador cambia el reparto y la elección se recuerda. */
+  max-height: var(--panel-h, min(26vh, 220px));
 }
+/* Mientras se arrastra no hay transiciones: el panel debe seguir al dedo. */
+.panels.is-dragging, .panels.is-dragging * { transition: none !important; }
+.panels.is-dragging ~ .lab__stage .lab__frame,
+.view--lab.is-dragging .lab__frame { transition: none !important; }
 .panel { display: grid; gap: 2px; }
+/* El mínimo automático de Grid es el ancho del contenido, así que una fila con
+   veinte tarjetas ensancha la columna entera y el texto de al lado se sale por
+   la derecha. `min-width: 0` deja que cada hijo se contenga y desplace lo suyo. */
+.panel, .panel > *, .filmpicker, .filmpicker > *, .hsl, .mono, .geo, .curve { min-width: 0; }
+.filmpicker__row, .strip, .seg, .chiprow, .panelbar { min-width: 0; }
 .panel__subtitle {
   font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--text-faint); margin: 10px 0 6px;
 }
-.panel__foot { display: flex; justify-content: center; padding: 4px 0 8px; }
+.panel__foot { display: flex; justify-content: center; padding: 2px 0 6px; }
 
 .panelbar {
   display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
   border-top: 1px solid var(--line-soft);
-  padding: 4px 8px;
+  padding: 3px 8px;
+  flex: 0 0 auto;
 }
+.panels.is-collapsed .panelbar { border-top: 0; }
 .panelbar::-webkit-scrollbar { display: none; }
 .panelbar__tab {
   flex: 0 0 auto; position: relative;
-  min-width: 62px; min-height: 46px; padding: 5px 8px;
-  display: grid; place-items: center; gap: 2px;
+  min-width: 58px; min-height: 44px; padding: 4px 8px;
+  display: grid; place-items: center; gap: 1px;
   color: var(--text-faint); border-radius: 10px;
 }
 .panelbar__tab.is-active { color: var(--accent); background: rgba(232, 179, 74, 0.1); }
-.panelbar__label { font-size: 10.5px; }
+.panels.is-collapsed .panelbar__tab.is-active { background: none; }
+.panelbar__label { font-size: 10px; }
 .panelbar__icon { font-size: 15px; line-height: 1; }
 .panelbar__icon::before { content: '•'; }
 .panelbar__icon[data-icon="film"]::before { content: '▤'; }
@@ -419,7 +535,7 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .panelbar__icon[data-icon="vignette"]::before { content: '◎'; }
 .panelbar__icon[data-icon="crop"]::before { content: '⧉'; }
 .panelbar__dot {
-  position: absolute; top: 5px; right: 9px;
+  position: absolute; top: 4px; right: 8px;
   width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
   opacity: 0; transition: opacity 0.18s;
 }
@@ -469,37 +585,36 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 
 /* ── Selector de emulsión ───────────────────────────────────────────────── */
 
-.filmpicker { display: grid; gap: 12px; margin-bottom: 6px; }
+.filmpicker { display: grid; gap: 8px; margin-bottom: 4px; }
 .filmpicker__kind {
-  font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-faint); margin-bottom: 6px;
+  font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 4px;
 }
-.filmpicker__row { display: flex; gap: 9px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.filmpicker__row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
 .filmpicker__row::-webkit-scrollbar { display: none; }
 
-.filmcard { flex: 0 0 auto; width: 84px; display: grid; justify-items: center; gap: 4px; }
+.filmcard { flex: 0 0 auto; width: 68px; display: grid; justify-items: center; gap: 3px; }
 .filmcard__frame {
-  width: 78px; height: 78px; border-radius: 11px; overflow: hidden;
+  width: 64px; height: 64px; border-radius: 10px; overflow: hidden;
   border: 2px solid transparent; background: var(--bg-input);
   transition: border-color 0.15s, transform 0.12s var(--ease);
 }
 .filmcard__thumb { width: 100%; height: 100%; display: block; object-fit: cover; }
-.filmcard.is-active .filmcard__frame { border-color: var(--accent); transform: scale(1.04); }
+.filmcard.is-active .filmcard__frame { border-color: var(--accent); transform: scale(1.05); }
 .filmcard__name {
-  font-size: 10.5px; text-align: center; line-height: 1.2; color: var(--text-dim);
+  font-size: 9.5px; text-align: center; line-height: 1.18; color: var(--text-dim);
   overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .filmcard.is-active .filmcard__name { color: var(--text); font-weight: 600; }
-.filmcard__meta { font-size: 9px; color: var(--text-faint); }
 
 .filmnote {
-  display: grid; gap: 3px; padding: 10px 12px; margin: 4px 0 2px;
+  display: grid; gap: 2px; padding: 8px 11px; margin: 2px 0 4px;
   background: var(--bg-input); border-radius: var(--radius-sm);
   border: 1px solid var(--line-soft);
 }
-.filmnote strong { font-size: 13px; }
-.filmnote__kind { font-size: 10.5px; color: var(--accent); letter-spacing: 0.04em; }
-.filmnote__text { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.filmnote strong { font-size: 12.5px; }
+.filmnote__kind { font-size: 10px; color: var(--accent); letter-spacing: 0.04em; }
+.filmnote__text { font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
 
 /* ── HSL ────────────────────────────────────────────────────────────────── */
 
@@ -579,7 +694,10 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 
 /* ── Biblioteca ─────────────────────────────────────────────────────────── */
 
-.view--library { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.view--library {
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding-bottom: var(--tab-h);
+}
 .lib__bar {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: calc(10px + env(safe-area-inset-top)) 14px 8px;
@@ -725,8 +843,7 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 /* ── Pantallas grandes ──────────────────────────────────────────────────── */
 
 @media (min-width: 820px) {
-  .panels { max-height: none; }
-  .panelbody { max-height: 40vh; }
+  .panelbody { max-height: min(44vh, 460px); }
   .filmcard { width: 96px; }
   .filmcard__frame { width: 90px; height: 90px; }
   .gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; padding: 6px; }

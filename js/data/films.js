@@ -86,7 +86,7 @@ export const FILMS = [
     id: 'neutral',
     name: 'Neutro digital',
     brand: 'Referencia',
-    kind: 'digital',
+    kind: 'Digital',
     iso: null,
     note: 'Sin emulsión: la imagen tal y como la entrega la cámara. Punto de partida para etalonar desde cero.',
     swatch: ['#8a8a8a', '#c9c9c9'],
