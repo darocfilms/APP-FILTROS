@@ -54,49 +54,83 @@ const painted = (sel) => page.evaluate((s) => {
   return { w: Math.round(w), h: Math.round(h), vw: innerWidth, vh: innerHeight };
 }, sel);
 
-console.log('\n── Cámara: visor a pantalla completa, sensor entero ──');
+console.log('\n── Cámara: la imagen cubre la pantalla ──');
 const camState = await page.evaluate(() => {
   const v = window.__lab.views.camera;
-  return { aspect: v.aspect, crop: v.params.geometry.crop, fit: getComputedStyle(document.querySelector('.cam__canvas')).objectFit };
+  const c = document.querySelector('.cam__canvas');
+  return {
+    aspect: v.aspect,
+    crop: v.params.geometry.crop,
+    fit: getComputedStyle(c).objectFit,
+    lienzo: c.width / c.height,
+    pantalla: innerWidth / innerHeight,
+  };
 });
-check('el encuadre por defecto no recorta nada', camState.aspect === 'full'
-  && camState.crop.w === 1 && camState.crop.h === 1, JSON.stringify(camState.crop));
-check('el visor usa "contain": se ve el fotograma completo',
-  camState.fit === 'contain', camState.fit);
+check('el encuadre por defecto es el de la pantalla', camState.aspect === 'screen');
+check('lo capturado tiene la proporción de la pantalla',
+  Math.abs(camState.lienzo - camState.pantalla) < 0.02,
+  'lienzo ' + camState.lienzo.toFixed(3) + ' vs pantalla ' + camState.pantalla.toFixed(3));
 
 const cam = await painted('.cam__canvas');
-check('el visor ocupa todo el ancho de la pantalla',
-  cam && cam.w >= cam.vw - 1, cam ? cam.w + '/' + cam.vw + ' px' : 'sin lienzo');
+check('la imagen cubre la pantalla entera, sin bandas',
+  cam && cam.w >= cam.vw - 1 && cam.h >= cam.vh - 1,
+  cam ? cam.w + '×' + cam.h + ' sobre ' + cam.vw + '×' + cam.vh : 'sin lienzo');
 
-// El modo inmersivo debe liberar el alto que ocupan los mandos.
-const boxBefore = await page.evaluate(() => document.querySelector('.cam__stage').getBoundingClientRect().height
-  - parseFloat(getComputedStyle(document.querySelector('.cam__stage')).paddingTop)
-  - parseFloat(getComputedStyle(document.querySelector('.cam__stage')).paddingBottom));
+// «Máx» debe seguir existiendo para quien quiera el sensor íntegro.
+await page.locator('.camtool[data-tool="size"]').click();
+await page.waitForTimeout(400);
+await page.locator('.chip[data-aspect="full"]').click();
+await page.waitForTimeout(500);
+const full = await page.evaluate(() => window.__lab.views.camera.params.geometry.crop);
+check('el encuadre «Máx» no recorta nada',
+  full.w === 1 && full.h === 1, JSON.stringify(full));
+await page.locator('.chip[data-aspect="screen"]').click();
+await page.waitForTimeout(400);
+await page.locator('.campanel__close').click();
+await page.waitForTimeout(400);
+
+console.log('\n── Cámara: los ajustes son ventanas flotantes ──');
+const grupos = await page.evaluate(() => [...document.querySelectorAll('.camtool')].map((b) => b.textContent.trim()));
+check('hay un mando por grupo de funciones', grupos.length === 6, grupos.join(' · '));
+
+for (const [tool, titulo] of [['film', 'Filtros'], ['exposure', 'Exposición'], ['size', 'Dimensiones']]) {
+  await page.locator(`.camtool[data-tool="${tool}"]`).click();
+  await page.waitForTimeout(350);
+  const abierto = await page.evaluate(() => {
+    const p = document.querySelector('.campanel');
+    if (!p) return null;
+    const r = p.getBoundingClientRect();
+    const c = document.querySelector('.cam__canvas').getBoundingClientRect();
+    return { titulo: p.querySelector('.campanel__title').textContent, flota: r.top > c.top && r.bottom <= c.bottom + 1 };
+  });
+  check('«' + titulo + '» abre su ventana y flota sobre la imagen',
+    abierto && abierto.titulo === titulo && abierto.flota, JSON.stringify(abierto));
+}
+// Sólo una abierta a la vez.
+check('sólo hay una ventana abierta a la vez',
+  await page.evaluate(() => document.querySelectorAll('.campanel').length) === 1);
+// Y se esconde.
+await page.locator('.campanel__close').click();
+await page.waitForTimeout(350);
+check('la ventana se puede esconder',
+  await page.evaluate(() => document.querySelectorAll('.campanel').length) === 0);
+
+console.log('\n── Cámara: esconder los mandos ──');
 await page.locator('.cam__canvas').click({ position: { x: 195, y: 300 } });
-await page.waitForTimeout(600);
-const boxAfter = await page.evaluate(() => document.querySelector('.cam__stage').getBoundingClientRect().height
-  - parseFloat(getComputedStyle(document.querySelector('.cam__stage')).paddingTop)
-  - parseFloat(getComputedStyle(document.querySelector('.cam__stage')).paddingBottom));
-check('tocar el visor oculta los mandos y libera la pantalla',
-  boxAfter > boxBefore + 100, Math.round(boxBefore) + ' → ' + Math.round(boxAfter) + ' px de alto útil');
-const chromeHidden = await page.evaluate(() =>
-  getComputedStyle(document.querySelector('.cam__bottom')).opacity === '0');
-check('los mandos quedan realmente ocultos', chromeHidden);
-await page.locator('.cam__stage').click({ position: { x: 195, y: 120 } });
 await page.waitForTimeout(500);
-
-// Cambiar de encuadre recorta, nunca vuelve a pedir el flujo.
-await page.locator('.cam__aspect[data-aspect="1:1"]').click();
-await page.waitForTimeout(600);
-const square = await page.evaluate(() => {
-  const v = window.__lab.views.camera;
-  const c = document.querySelector('.cam__canvas');
-  return { crop: v.params.geometry.crop, ratio: +(c.width / c.height).toFixed(3) };
-});
-check('el encuadre 1:1 recorta el fotograma, no pide otro',
-  Math.abs(square.ratio - 1) < 0.02 && square.crop.w < 1, 'proporción ' + square.ratio);
-await page.locator('.cam__aspect[data-aspect="full"]').click();
+const oculto = await page.evaluate(() => ({
+  hud: getComputedStyle(document.querySelector('.cam__hud')).opacity,
+  reveal: getComputedStyle(document.querySelector('.cam__reveal')).opacity,
+}));
+check('tocar la imagen esconde los mandos', oculto.hud === '0', 'opacidad ' + oculto.hud);
+check('queda un asidero para recuperarlos', oculto.reveal === '1');
+const limpio = await painted('.cam__canvas');
+check('la imagen sigue cubriendo la pantalla sin mandos',
+  limpio.w >= limpio.vw - 1 && limpio.h >= limpio.vh - 1, limpio.w + '×' + limpio.h);
+await page.locator('.cam__reveal').click();
 await page.waitForTimeout(500);
+check('el asidero devuelve los mandos',
+  await page.evaluate(() => getComputedStyle(document.querySelector('.cam__hud')).opacity) === '1');
 await page.screenshot({ path: SHOT + '/layout-camara.png' });
 
 console.log('\n── Laboratorio: la imagen es lo más grande ──');

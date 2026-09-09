@@ -4,10 +4,18 @@
  */
 
 import { el, clear, toast, haptic } from './utils/dom.js';
+import { saveFiles, canShareFiles, isIOS } from './utils/share.js';
 import { library, makeThumb, videoPoster, decodeScaled, THUMB_SIZE } from './store/library.js';
 import { CameraView } from './views/camera.js';
 import { LabView } from './views/lab.js';
 import { LibraryView } from './views/library.js';
+
+function formatSize(n) {
+  if (!n) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return (n / 1024 ** i).toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
+}
 
 const TABS = [
   { id: 'camera', label: 'Cámara', icon: '◉' },
@@ -144,6 +152,55 @@ class App {
     document.body.append(backdrop);
     requestAnimationFrame(() => backdrop.classList.add('is-open'));
     return { close, node: panel };
+  }
+
+  /* ─────────────────────────── Guardar fuera ─────────────────────────── */
+
+  /**
+   * Presenta archivos YA preparados para sacarlos del dispositivo.
+   *
+   * Existe como paso aparte por una razón de peso: `navigator.share` exige
+   * activación del usuario y esa activación caduca. Si se revela una foto de
+   * doce megapíxeles entre el toque y la llamada, Safari en iPhone la rechaza
+   * y guardar simplemente no ocurre. Aquí el trabajo pesado ya está hecho, así
+   * que el botón de esta hoja llama a compartir de forma inmediata y la
+   * activación sigue viva.
+   *
+   * @param {Blob[]} blobs
+   * @param {string[]} names
+   * @param {{title?:string, detail?:string}} [meta]
+   */
+  presentSave(blobs, names, meta = {}) {
+    const list = Array.isArray(blobs) ? blobs : [blobs];
+    const labels = Array.isArray(names) ? names : [names];
+    const total = list.reduce((n, b) => n + b.size, 0);
+    const many = list.length > 1;
+    const puedeCompartir = canShareFiles(list.map((b, i) => new File([b], labels[i], { type: b.type })));
+
+    const run = async () => {
+      sheet.close();
+      const result = await saveFiles(list, labels, { title: meta.title });
+      if (result === 'shared') toast(many ? `${list.length} archivos compartidos` : 'Guardado');
+      else if (result === 'downloaded') toast(many ? `${list.length} descargas` : 'Descargado');
+      // 'longpress' abre su propia ventana y 'cancelled' no necesita aviso.
+    };
+
+    const sheet = this.sheet(many ? `${list.length} archivos listos` : 'Listo para guardar', [
+      el('p', { class: 'sheet__hint' },
+        (meta.detail ? meta.detail + ' · ' : '') + formatSize(total)),
+      el('div', { class: 'sheet__actions sheet__actions--stack' },
+        el('button', {
+          type: 'button', class: 'btn btn--primary',
+          text: puedeCompartir
+            ? (isIOS ? 'Guardar en Fotos o Archivos' : 'Compartir')
+            : 'Descargar',
+          onclick: run,
+        }),
+        el('button', { type: 'button', class: 'btn', text: 'Cancelar', onclick: () => sheet.close() })),
+      isIOS && !puedeCompartir
+        ? el('p', { class: 'sheet__hint', text: 'Este navegador no ofrece la hoja del sistema: se mostrará la imagen para guardarla manteniéndola pulsada.' })
+        : null,
+    ]);
   }
 
   /* ──────────────────────── Importación de archivos ──────────────────── */

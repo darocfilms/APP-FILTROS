@@ -31,6 +31,9 @@ await page.goto('http://localhost:8096', { waitUntil: 'networkidle' });
 await page.waitForTimeout(3000);
 
 console.log('\n── Estilos derivados de propiedades personalizadas ──');
+// La tira de emulsiones vive dentro de su ventana flotante: hay que abrirla.
+await page.locator('.camtool[data-tool="film"]').click();
+await page.waitForTimeout(500);
 const styles = await page.evaluate(() => {
   const sw = document.querySelector('.strip__item[data-film="portra400"] .strip__swatch');
   const bg = sw ? getComputedStyle(sw).backgroundImage : '';
@@ -87,6 +90,8 @@ const thumbOk = await page.evaluate(async () => {
 check('genera miniatura', thumbOk);
 
 console.log('\n── Grabar vídeo ──');
+await page.locator('.campanel__close').click();
+await page.waitForTimeout(300);
 await page.locator('.cam__mode[data-mode="video"]').click();
 await page.waitForTimeout(400);
 await page.locator('.shutter').click();

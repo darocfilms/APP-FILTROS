@@ -45,10 +45,11 @@ function previewBudget() {
  * información descartada antes de llegar.
  */
 const ASPECTS = [
-  { key: 'full', label: 'Máx', ratio: null, note: 'Todo lo que entrega la cámara' },
-  { key: '4:3', label: '4:3', ratio: 3 / 4 },
-  { key: '1:1', label: '1:1', ratio: 1 },
-  { key: '16:9', label: '16:9', ratio: 9 / 16 },
+  { key: 'screen', label: 'Pantalla', ratio: 'screen', note: 'Llena la pantalla; se captura justo lo que ves' },
+  { key: 'full', label: 'Máx', ratio: null, note: 'Todo lo que entrega la cámara, sin recortar' },
+  { key: '4:3', label: '4:3', ratio: 3 / 4, note: 'Clásico de fotografía' },
+  { key: '1:1', label: '1:1', ratio: 1, note: 'Cuadrado' },
+  { key: '16:9', label: '16:9', ratio: 9 / 16, note: 'Panorámico' },
 ];
 
 const MIME_CANDIDATES = [
@@ -59,6 +60,28 @@ const MIME_CANDIDATES = [
   'video/webm;codecs=vp8,opus',
   'video/webm',
 ];
+
+/**
+ * Traduce el fallo a algo accionable.
+ *
+ * «No se pudo guardar» no le sirve a nadie: quedarse sin espacio, no tener
+ * permiso de almacenamiento persistente o un lienzo demasiado grande piden
+ * cosas distintas de quien lo sufre.
+ */
+export function describeSaveError(err) {
+  const name = err?.name || '';
+  const msg = String(err?.message || err || '');
+  if (name === 'QuotaExceededError' || /quota|space/i.test(msg)) {
+    return 'No queda espacio en la carpeta local. Libera sitio desde la Biblioteca.';
+  }
+  if (/codificar|encode/i.test(msg)) {
+    return 'La imagen es demasiado grande para este dispositivo. Prueba con un encuadre menor.';
+  }
+  if (name === 'SecurityError' || /secure|permission/i.test(msg)) {
+    return 'El navegador ha bloqueado el almacenamiento. Añade la web a la pantalla de inicio y vuelve a intentarlo.';
+  }
+  return 'No se pudo guardar: ' + msg;
+}
 
 function pickMime() {
   if (typeof MediaRecorder === 'undefined') return null;
@@ -81,7 +104,9 @@ export class CameraView {
     this.recStart = 0;
     this.gridOn = false;
     this.busy = false;
-    this.aspect = 'full';
+    this.aspect = 'screen';
+    this.flipped = false;
+    this.openTool = null;
     this.immersive = false;
     this.previewMax = previewBudget();
     this._frameTimes = [];
@@ -105,63 +130,60 @@ export class CameraView {
 
     this.stage = el('div', {
       class: 'cam__stage',
-      // Tocar el visor esconde los mandos: el encuadre manda, y a veces hace
-      // falta verlo entero sin nada encima.
-      onclick: (e) => { if (e.target === this.stage || e.target === this.canvas) this.toggleImmersive(); },
+      onclick: (e) => {
+        // Tocar la imagen cierra lo que haya abierto; si no hay nada, esconde
+        // los mandos. Un solo gesto para llegar al encuadre limpio.
+        if (e.target !== this.stage && e.target !== this.canvas) return;
+        if (this.openTool) this.openTool(null);
+        else this.toggleImmersive();
+      },
     }, this.canvas, this.grid, this.badge, this.recPill, this.resLabel, this.message);
 
-    /* ── Mandos superiores ─────────────────────────────────────────────── */
-    this.evToggle = el('button', {
-      type: 'button', class: 'iconbtn iconbtn--sm', 'aria-label': 'Compensación de exposición',
-      onclick: (e) => {
-        const on = this.evRow.hidden;
-        this.evRow.hidden = !on;
-        e.currentTarget.classList.toggle('is-active', on);
-        haptic();
+    /* ── Ventanas flotantes de ajustes ─────────────────────────────────── */
+    this.panelHost = el('div', { class: 'cam__panelhost' });
+
+    this.tools = [
+      {
+        key: 'film', icon: '▤', label: 'Filtros',
+        build: () => this._filmPanel(),
       },
-    }, '☀');
+      {
+        key: 'exposure', icon: '☀', label: 'Exposición',
+        build: () => this._exposurePanel(),
+      },
+      {
+        key: 'size', icon: '⛶', label: 'Dimensiones',
+        build: () => this._sizePanel(),
+      },
+    ];
 
-    this.aspectSeg = el('div', { class: 'cam__aspects', role: 'group', 'aria-label': 'Proporción' },
-      ASPECTS.map((a) => el('button', {
-        type: 'button',
-        class: 'cam__aspect' + (a.key === this.aspect ? ' is-active' : ''),
-        dataset: { aspect: a.key },
-        title: a.note || a.label,
-        onclick: () => this.setAspect(a.key),
-      }, a.label)));
-
-    this.topBar = el('div', { class: 'cam__top' },
+    this.toolButtons = new Map();
+    const toolRow = el('div', { class: 'cam__tools', role: 'toolbar', 'aria-label': 'Ajustes de cámara' },
+      this.tools.map((t) => {
+        const btn = el('button', {
+          type: 'button', class: 'camtool', dataset: { tool: t.key },
+          'aria-expanded': 'false',
+          onclick: () => this.openPanel(this.openPanelKey === t.key ? null : t.key),
+        }, el('span', { class: 'camtool__icon', text: t.icon }), el('span', { class: 'camtool__label', text: t.label }));
+        this.toolButtons.set(t.key, btn);
+        return btn;
+      }),
+      el('span', { class: 'cam__toolsep', 'aria-hidden': 'true' }),
+      // Acciones inmediatas: no abren nada, actúan y se ve el efecto al momento.
+      this.gridBtn = el('button', {
+        type: 'button', class: 'camtool', 'aria-pressed': 'false',
+        onclick: () => this.toggleGrid(),
+      }, el('span', { class: 'camtool__icon', text: '⊞' }), el('span', { class: 'camtool__label', text: 'Guías' })),
+      this.flipBtn = el('button', {
+        type: 'button', class: 'camtool', 'aria-pressed': 'false',
+        onclick: () => this.toggleFlip(),
+      }, el('span', { class: 'camtool__icon', text: '⇋' }), el('span', { class: 'camtool__label', text: 'Voltear' })),
       el('button', {
-        type: 'button', class: 'iconbtn iconbtn--sm', 'aria-label': 'Cuadrícula',
-        onclick: (e) => {
-          this.gridOn = !this.gridOn;
-          this.grid.hidden = !this.gridOn;
-          e.currentTarget.classList.toggle('is-active', this.gridOn);
-          haptic();
-        },
-      }, '⊞'),
-      this.aspectSeg,
-      this.evToggle);
+        type: 'button', class: 'camtool',
+        onclick: () => this.flip(),
+      }, el('span', { class: 'camtool__icon', text: '⟳' }), el('span', { class: 'camtool__label', text: 'Cambiar' })));
 
-    /* ── Mandos inferiores ─────────────────────────────────────────────── */
-    this.evSlider = el('input', {
-      type: 'range', class: 'cam__ev', min: -3, max: 3, step: 0.05, value: 0,
-      'aria-label': 'Compensación de exposición',
-    });
-    this.evSlider.addEventListener('input', () => {
-      this.params.light.exposure = parseFloat(this.evSlider.value);
-      this.evLabel.textContent = (this.params.light.exposure >= 0 ? '+' : '') + this.params.light.exposure.toFixed(2);
-    });
-    this.evSlider.addEventListener('dblclick', () => {
-      this.evSlider.value = 0;
-      this.evSlider.dispatchEvent(new Event('input'));
-    });
-    this.evLabel = el('span', { class: 'cam__evlabel', text: '+0.00' });
-    this.evRow = el('div', { class: 'cam__evrow', hidden: true }, this.evSlider, this.evLabel, el('span', { class: 'cam__evunit', text: 'EV' }));
-
-    this.filmStrip = el('div', { class: 'strip' });
-    this._buildStrip();
-
+    /* ── Disparador y modo ─────────────────────────────────────────────── */
     this.shutter = el('button', {
       type: 'button', class: 'shutter', 'aria-label': 'Disparar',
       onclick: () => this._trigger(),
@@ -174,37 +196,175 @@ export class CameraView {
           dataset: { mode: k }, onclick: () => this.setMode(k),
         }, label)));
 
-    this.bottomBar = el('div', { class: 'cam__bottom' },
-      this.evRow,
-      this.filmStrip,
+    this.hud = el('div', { class: 'cam__hud' },
+      this.panelHost,
+      toolRow,
       this.modeSwitch,
       el('div', { class: 'cam__bar' },
         el('button', {
-          type: 'button', class: 'iconbtn', 'aria-label': 'Mostrar u ocultar los mandos',
+          type: 'button', class: 'iconbtn', 'aria-label': 'Ocultar los mandos',
           onclick: () => this.toggleImmersive(),
         }, '⤢'),
         this.shutter,
         el('button', {
-          type: 'button', class: 'iconbtn', 'aria-label': 'Cambiar de cámara',
-          onclick: () => this.flip(),
-        }, '⟳')));
+          type: 'button', class: 'iconbtn', 'aria-label': 'Ir a la biblioteca',
+          onclick: () => this.app.go('library'),
+        }, '▦')));
+
+    this.showChrome = el('button', {
+      type: 'button', class: 'cam__reveal', 'aria-label': 'Mostrar los mandos',
+      onclick: () => this.toggleImmersive(),
+    }, '⤡');
 
     const root = el('section', { class: 'view view--camera', id: 'view-camera' },
-      this.stage, this.topBar, this.bottomBar);
+      this.stage, this.hud, this.showChrome);
 
-    // El visor se reencuadra según lo que ocupen los mandos de verdad, no según
-    // un número escrito a mano: al desplegar la exposición o cambiar el alto de
-    // la tira de películas, la imagen recupera o cede el espacio justo.
-    this._ro = new ResizeObserver(([entry]) => {
-      root.style.setProperty('--cam-controls', Math.round(entry.contentRect.height) + 'px');
-    });
-    this._ro.observe(this.bottomBar);
+    // El encuadre "Pantalla" depende del tamaño de la ventana: al girar el
+    // teléfono hay que recalcular el recorte o dejaría de llenarla.
+    this._onResize = () => { if (this.aspect === 'screen') this._applyAspect(); };
+    window.addEventListener('resize', this._onResize);
+    window.addEventListener('orientationchange', this._onResize);
     return root;
+  }
+
+  /* ─────────────────── Ventanas flotantes por grupo ──────────────────── */
+
+  /**
+   * Abre una ventana de ajustes, o la cierra si ya lo estaba.
+   *
+   * Sólo una a la vez: dos ventanas abiertas sobre el visor dejarían de ser
+   * ventanas y volverían a ser el panel fijo que estorbaba la imagen.
+   */
+  openPanel(key) {
+    this.openPanelKey = key;
+    clear(this.panelHost);
+    for (const [k, btn] of this.toolButtons) {
+      const on = k === key;
+      btn.classList.toggle('is-open', on);
+      btn.setAttribute('aria-expanded', String(on));
+    }
+    if (!key) {
+      this.panelHost.classList.remove('is-open');
+      this.openTool = null;
+      return;
+    }
+    const tool = this.tools.find((t) => t.key === key);
+    this.panelHost.append(el('div', { class: 'campanel' },
+      el('div', { class: 'campanel__head' },
+        el('span', { class: 'campanel__title', text: tool.label }),
+        el('button', {
+          type: 'button', class: 'campanel__close', 'aria-label': 'Cerrar',
+          onclick: () => this.openPanel(null),
+        }, '✕')),
+      tool.build()));
+    this.panelHost.classList.add('is-open');
+    this.openTool = (k) => this.openPanel(k);
+    if (this.immersive) this.toggleImmersive();
+    haptic();
+  }
+
+  _filmPanel() {
+    this.filmStrip = el('div', { class: 'strip' });
+    this._buildStrip();
+    const strength = el('input', {
+      type: 'range', class: 'slider__input', min: 0, max: 1, step: 0.01,
+      value: this.params.film.strength, 'aria-label': 'Intensidad de la emulsión',
+    });
+    const readout = el('span', { class: 'campanel__value', text: Math.round(this.params.film.strength * 100) + '%' });
+    strength.addEventListener('input', () => {
+      this.params.film.strength = parseFloat(strength.value);
+      readout.textContent = Math.round(this.params.film.strength * 100) + '%';
+    });
+    return el('div', { class: 'campanel__body' },
+      this.filmStrip,
+      el('div', { class: 'campanel__row' },
+        el('span', { class: 'campanel__label', text: 'Intensidad' }), strength, readout));
+  }
+
+  _exposurePanel() {
+    this.evSlider = el('input', {
+      type: 'range', class: 'slider__input', min: -3, max: 3, step: 0.05,
+      value: this.params.light.exposure, 'aria-label': 'Compensación de exposición',
+    });
+    const readout = el('span', { class: 'campanel__value' });
+    const paint = () => {
+      const v = this.params.light.exposure;
+      readout.textContent = (v >= 0 ? '+' : '') + v.toFixed(2) + ' EV';
+    };
+    paint();
+    this.evSlider.addEventListener('input', () => {
+      this.params.light.exposure = parseFloat(this.evSlider.value);
+      paint();
+    });
+    return el('div', { class: 'campanel__body' },
+      el('div', { class: 'campanel__row' },
+        el('span', { class: 'campanel__label', text: 'Exposición' }), this.evSlider, readout),
+      el('button', {
+        type: 'button', class: 'linkbtn', text: 'Volver a 0 EV',
+        onclick: () => { this.params.light.exposure = 0; this.evSlider.value = 0; paint(); haptic(); },
+      }));
+  }
+
+  _sizePanel() {
+    const note = el('p', { class: 'campanel__note' });
+    const paint = () => {
+      const def = ASPECTS.find((a) => a.key === this.aspect);
+      // Cada encuadre recorta el sensor, y conviene ver cuánto ANTES de elegir:
+      // llenar la pantalla es cómodo, pero cuesta megapíxeles reales.
+      const mp = this._megapixelsFor(this.aspect);
+      note.textContent = (def?.note || '') + (mp ? ` · ${mp.toFixed(1)} Mpx` : '');
+      for (const b of row.children) b.classList.toggle('is-active', b.dataset.aspect === this.aspect);
+    };
+    const row = el('div', { class: 'campanel__chips' },
+      ASPECTS.map((a) => {
+        const mp = this._megapixelsFor(a.key);
+        return el('button', {
+          type: 'button', class: 'chip chip--stacked', dataset: { aspect: a.key },
+          onclick: () => { this.setAspect(a.key); paint(); },
+        },
+          el('span', { class: 'chip__label', text: a.label }),
+          mp ? el('span', { class: 'chip__sub', text: mp.toFixed(1) + ' Mpx' }) : null);
+      }));
+    paint();
+    return el('div', { class: 'campanel__body' }, row, note);
+  }
+
+  /** Megapíxeles que quedan tras aplicar un encuadre al fotograma actual. */
+  _megapixelsFor(key) {
+    const vw = this.video.videoWidth, vh = this.video.videoHeight;
+    const nw = this.nativeWidth || vw, nh = this.nativeHeight || vh;
+    if (!vw || !vh || !nw || !nh) return 0;
+    const def = ASPECTS.find((a) => a.key === key);
+    if (!def || def.ratio === null) return (nw * nh) / 1e6;
+    const target = def.ratio === 'screen'
+      ? window.innerWidth / window.innerHeight
+      : (vw >= vh ? 1 / def.ratio : def.ratio);
+    const source = vw / vh;
+    let w = 1, h = 1;
+    if (target > source) h = source / target; else w = target / source;
+    return (nw * w * nh * h) / 1e6;
+  }
+
+  toggleGrid() {
+    this.gridOn = !this.gridOn;
+    this.grid.hidden = !this.gridOn;
+    this.gridBtn.classList.toggle('is-on', this.gridOn);
+    this.gridBtn.setAttribute('aria-pressed', String(this.gridOn));
+    haptic();
+  }
+
+  /** Espejo de la imagen, independiente de qué cámara esté activa. */
+  toggleFlip() {
+    this.flipped = !this.flipped;
+    this.flipBtn.classList.toggle('is-on', this.flipped);
+    this.flipBtn.setAttribute('aria-pressed', String(this.flipped));
+    haptic();
   }
 
   /** Oculta los mandos para ver el encuadre limpio. */
   toggleImmersive() {
     this.immersive = !this.immersive;
+    if (this.immersive && this.openPanelKey) this.openPanel(null);
     this.root.classList.toggle('is-immersive', this.immersive);
     haptic();
   }
@@ -215,7 +375,6 @@ export class CameraView {
    */
   setAspect(key) {
     this.aspect = key;
-    for (const b of this.aspectSeg.children) b.classList.toggle('is-active', b.dataset.aspect === key);
     this._applyAspect();
     haptic();
   }
@@ -228,6 +387,14 @@ export class CameraView {
     if (def.ratio === null) {
       // Sin recorte: el fotograma íntegro tal y como llega.
       this.params.geometry.crop = { x: 0, y: 0, w: 1, h: 1 };
+    } else if (def.ratio === 'screen') {
+      // Se recorta a la proporción de la pantalla, de modo que el visor la
+      // llena por completo y lo capturado es exactamente lo que se ve.
+      const target = window.innerWidth / window.innerHeight;
+      const source = vw / vh;
+      let w = 1, h = 1;
+      if (target > source) h = source / target; else w = target / source;
+      this.params.geometry.crop = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
     } else {
       // `ratio` es ancho/alto en vertical; si la cámara entrega el fotograma
       // apaisado se invierte, para que el encuadre signifique lo mismo.
@@ -251,6 +418,7 @@ export class CameraView {
   }
 
   _buildStrip() {
+    if (!this.filmStrip) return;
     clear(this.filmStrip);
     for (const f of FILMS) {
       const btn = el('button', {
@@ -268,7 +436,8 @@ export class CameraView {
     const keepExposure = this.params.light.exposure;
     applyFilmLook(this.params, getFilm(id));
     this.params.light.exposure = keepExposure;
-    for (const b of this.filmStrip.children) {
+    // La tira sólo existe mientras su ventana está abierta.
+    for (const b of this.filmStrip?.children || []) {
       b.classList.toggle('is-active', b.dataset.film === id);
       if (b.dataset.film === id) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
     }
@@ -313,6 +482,7 @@ export class CameraView {
 
   deactivate() {
     this.running = false;
+    this.openPanel?.(null);
     if (this.recorder) this._stopRecording(true);
     this._closeStream();
     this.renderer?.dispose();
@@ -381,7 +551,9 @@ export class CameraView {
     }
   }
 
-  get mirrored() { return this.facing === 'user'; }
+  /** La frontal se espeja para que encuadrar sea natural; el volteo manual se
+   *  suma a eso, así que el resultado es la combinación de ambos. */
+  get mirrored() { return (this.facing === 'user') !== this.flipped; }
 
   /* ─────────────────────────── Bucle de dibujo ───────────────────────── */
 
@@ -464,10 +636,14 @@ export class CameraView {
     setTimeout(() => this.stage.classList.remove('is-flashing'), 180);
 
     let bitmap = null;
+    let scratch = null;
     try {
       // Fotograma actual a resolución nativa, no la previsualización reducida.
-      bitmap = await createImageBitmap(this.video);
+      const grabbed = await this._grabFrame();
+      bitmap = grabbed.bitmap;
+      scratch = grabbed.canvas;
       const params = cloneParams(this.params);
+      // Lo guardado coincide con lo que se veía en el visor, espejo incluido.
       if (this.mirrored) params.geometry.flipH = !params.geometry.flipH;
 
       const { blob, width, height } = await renderToBlob(bitmap, params, {
@@ -492,12 +668,38 @@ export class CameraView {
       this.app.notifyCapture(item);
     } catch (err) {
       console.error(err);
-      toast('No se pudo guardar la foto: ' + (err?.message || err), { error: true });
+      toast(describeSaveError(err), { error: true, ms: 5200 });
     } finally {
       bitmap?.close?.();
+      if (scratch) scratch.width = scratch.height = 0;
       this.busy = false;
       this.shutter.classList.remove('is-busy');
     }
+  }
+
+  /**
+   * Captura el fotograma actual a resolución nativa.
+   *
+   * `createImageBitmap` sobre un elemento de vídeo es lo más directo, pero en
+   * varias versiones de Safari en iOS lanza o devuelve un mapa vacío. Cuando
+   * eso pasa, la foto se perdía sin más. La reserva —dibujar el fotograma en un
+   * lienzo 2D— funciona en todas partes y da exactamente los mismos píxeles.
+   */
+  async _grabFrame() {
+    const v = this.video;
+    try {
+      const bitmap = await createImageBitmap(v);
+      if (bitmap && bitmap.width > 0) return { bitmap, canvas: null };
+      bitmap?.close?.();
+    } catch { /* se prueba con el lienzo */ }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth;
+    canvas.height = v.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('El navegador no permite leer el fotograma de la cámara');
+    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    return { bitmap: canvas, canvas };
   }
 
   /* ──────────────────────────── Grabación ────────────────────────────── */
@@ -576,7 +778,7 @@ export class CameraView {
       this.app.notifyCapture(item);
     } catch (err) {
       console.error(err);
-      toast('No se pudo guardar el vídeo: ' + (err?.message || err), { error: true });
+      toast(describeSaveError(err), { error: true, ms: 5200 });
     }
   }
 

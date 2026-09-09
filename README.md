@@ -74,32 +74,40 @@ Safari → Compartir → **Añadir a pantalla de inicio**. Merece la pena hacerl
 
 ### Cámara
 
-El visor ocupa la pantalla y muestra el fotograma **entero**: los mandos flotan
-encima con velos de degradado y el encuadre se coloca en el hueco libre, así que
-nada del sensor se queda fuera. Un toque sobre el visor esconde los mandos y la
-imagen se queda con toda la pantalla.
+La imagen ocupa la pantalla entera. Nada de la interfaz la recorta: los ajustes
+no viven en un panel fijo, emergen como **ventanas flotantes**, una a la vez,
+agrupadas por función, y se esconden con el mismo gesto que las abre.
 
-Se pide 4:3 a la máxima resolución, que es la lectura completa del sensor. Pedir
-16:9 parece "más grande" por el número, pero es un **recorte**: el sistema tira
-las bandas superior e inferior antes de entregar el fotograma, y esa parte de la
-imagen ya no se recupera. El encuadre por defecto, «Máx», no recorta nada;
-4:3, 1:1 y 16:9 son recortes sobre ese mismo fotograma, reversibles en cualquier
-momento.
+| Grupo | Qué hace |
+|---|---|
+| **Filtros** | Las 19 emulsiones e intensidad, en directo sobre el visor |
+| **Exposición** | Compensación en diafragmas reales |
+| **Dimensiones** | Encuadre, con los megapíxeles que cuesta cada uno |
+| **Guías** | Cuadrícula de tercios |
+| **Voltear** | Espejo de la imagen |
+| **Cambiar** | Frontal o trasera |
 
-- Tira de emulsiones bajo el visor, con cambio en directo.
-- Compensación de exposición en diafragmas reales.
-- Foto y vídeo, cuadrícula de tercios y cámara frontal/trasera.
+Tocar la imagen esconde los mandos y deja el encuadre limpio; un asidero en la
+esquina los devuelve.
+
+**Sobre el encuadre.** Se pide 4:3 a la máxima resolución, que es la lectura
+completa del sensor — pedir 16:9 parece "más grande" por el número, pero es un
+recorte que el sistema aplica antes de entregarte el fotograma, y esa parte no
+se recupera. A partir de ahí, cada encuadre recorta ese mismo fotograma:
+
+- **Pantalla** (por defecto) llena la pantalla y captura exactamente lo que ves.
+- **Máx** no recorta nada.
+- 4:3, 1:1 y 16:9, los clásicos.
+
+Llenar la pantalla cuesta megapíxeles, así que el panel los muestra **antes** de
+elegir y el visor los recuerda arriba. Es una decisión informada, no un ajuste
+escondido.
 
 La previsualización se procesa a la resolución de la pantalla y baja sola si el
 dispositivo no llega: se mide el coste real por fotograma en lugar de elegir un
 número conservador para todos. Pero **la foto no sale de esa previsualización**:
 al disparar se captura el fotograma a resolución nativa y se revela en un pase
-aparte a tamaño completo. El vídeo sí se graba desde el lienzo, que es la única
-forma de que el grabador reciba los fotogramas ya revelados.
-
-Las capturas se guardan **ya reveladas**, igual que un carrete: la emulsión
-queda grabada en los píxeles. Se anota cuál se usó, pero al reabrir la foto en
-el laboratorio se parte de ajustes limpios para no aplicarla dos veces.
+aparte a tamaño completo.
 
 ### Laboratorio
 
@@ -137,6 +145,10 @@ Los ajustes se guardan junto al archivo: al reabrirlo sigue donde lo dejaste.
 La carpeta local por dentro. Miniaturas, espacio ocupado, y para cada archivo:
 abrir en el laboratorio, guardar en el dispositivo o eliminar.
 
+**Selección múltiple** con el botón *Seleccionar*, o manteniendo pulsada una
+miniatura. Desde ahí se comparten o eliminan varios de una vez; compartir usa la
+hoja del sistema, que en iPhone admite lotes.
+
 ---
 
 ## Exportación
@@ -145,10 +157,21 @@ Botón **Exportar** del laboratorio: tamaño (original, 4K, 2K, 1080, web),
 formato (JPEG, PNG, WebP) y calidad. Dos destinos:
 
 - **Guardar en el dispositivo** — abre la hoja de compartir de iOS, con
-  "Guardar imagen" y "Guardar en Archivos". Es la vía que funciona en iPhone:
-  Safari ignora el atributo `download` de los enlaces cuando apuntan a un blob.
-  En escritorio cae a la descarga clásica.
+  "Guardar imagen" y "Guardar en Archivos".
 - **Guardar en la biblioteca** — deja el resultado en la carpeta local.
+
+Guardar en iPhone tiene tres trampas, y las tres hacían que fallara en silencio:
+
+1. `navigator.share` exige **activación del usuario**, y esa activación caduca.
+   Si entre el toque y la llamada se revela una foto de doce megapíxeles, para
+   cuando se llama ya no vale y Safari responde `NotAllowedError`. Por eso el
+   revelado termina en una hoja que pide un toque nuevo: desde ahí la hoja del
+   sistema se abre con la activación viva.
+2. El atributo `download` de un enlace existe en Safari pero **se ignora** con
+   destinos blob. No es una reserva válida en iPhone, así que cuando no hay hoja
+   del sistema se muestra la imagen para guardarla manteniéndola pulsada.
+3. La marca de tiempo llega al segundo, así que preparar varios archivos de
+   golpe los bautizaba a todos igual. Ahora se numeran.
 
 El revelado de exportación es un pase nuevo a resolución completa con los
 mismos shaders que la previsualización, no un reescalado de lo que había en
@@ -209,7 +232,8 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
-| `layout` | El reparto de pantalla: el visor llena el ancho y no recorta el sensor, ocultar los mandos libera la pantalla, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, y ningún panel desborda |
+| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, y ningún panel desborda |
+| `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote y la reserva de mantener pulsado |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
 continuidad C¹, monotonía, asíntota del pie) se verifican canal a canal para

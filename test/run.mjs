@@ -21,6 +21,7 @@ const SUITES = [
   ['wheel', 'ruedas de etalonaje'],
   ['context', 'pérdida y recuperación del contexto WebGL'],
   ['layout', 'reparto de pantalla: la imagen manda'],
+  ['save', 'guardar fuera de la app y selección múltiple'],
 ];
 
 const only = process.argv[2];

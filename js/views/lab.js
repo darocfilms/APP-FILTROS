@@ -15,7 +15,7 @@ import { library, decodeScaled, makeThumb, PROXY_SIZE, formatBytes } from '../st
 import { PanelStack } from '../ui/panels.js';
 import { CropOverlay } from '../ui/crop.js';
 import { Histogram } from '../ui/histogram.js';
-import { saveFile, timestampName } from '../utils/share.js';
+import { timestampName } from '../utils/share.js';
 
 const PRESET_KEY = 'filtros.presets.v1';
 const HISTORY_MAX = 60;
@@ -588,11 +588,14 @@ export class LabView {
         toast(`Guardado en la biblioteca · ${width}×${height} · ${formatBytes(blob.size)}`);
         this.app.notifyCapture(item);
       } else {
-        const result = await saveFile(blob, filename, { title: 'Exportar de Laboratorio' });
-        if (result !== 'cancelled') {
-          toast(`${width}×${height} · ${formatBytes(blob.size)}`
-            + (scaled ? ' · reducido al máximo que admite el dispositivo' : ''));
-        }
+        // No se comparte aquí: el revelado que acaba de terminar ha consumido
+        // el tiempo de activación del toque. La hoja siguiente vuelve a pedir
+        // un toque, y desde ahí sí se puede abrir la del sistema.
+        this.app.presentSave([blob], [filename], {
+          title: 'Exportar de Laboratorio',
+          detail: `${width}×${height}`
+            + (scaled ? ' · reducido al máximo que admite el dispositivo' : ''),
+        });
       }
     } catch (err) {
       console.error(err);

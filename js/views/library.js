@@ -8,7 +8,7 @@
 
 import { el, clear, toast, haptic, confirmDialog } from '../utils/dom.js';
 import { library, formatBytes } from '../store/library.js';
-import { saveFile, timestampName } from '../utils/share.js';
+import { timestampName } from '../utils/share.js';
 import { getFilm } from '../data/films.js';
 
 export class LibraryView {
@@ -17,6 +17,9 @@ export class LibraryView {
     this.items = [];
     this.urls = new Map();
     this.filter = 'all';
+    /** Selección múltiple: vacía significa modo normal. */
+    this.selection = new Set();
+    this.selecting = false;
 
     this.grid = el('div', { class: 'gallery' });
     this.empty = el('div', { class: 'gallery__empty' },
@@ -41,13 +44,19 @@ export class LibraryView {
     this.root = el('section', { class: 'view view--library', id: 'view-library' },
       el('header', { class: 'lib__bar' },
         el('h2', { class: 'lib__title', text: 'Biblioteca' }),
-        el('button', { type: 'button', class: 'btn btn--ghost', text: 'Importar', onclick: () => this.app.pickFile() })),
+        el('div', { class: 'lib__baractions' },
+          this.selectBtn = el('button', {
+            type: 'button', class: 'btn btn--ghost', text: 'Seleccionar',
+            onclick: () => this.setSelecting(!this.selecting),
+          }),
+          el('button', { type: 'button', class: 'btn btn--ghost', text: 'Importar', onclick: () => this.app.pickFile() }))),
       el('div', { class: 'usage' },
         el('div', { class: 'usage__track' }, this.usageBar),
         el('div', { class: 'usage__row' }, this.usageText, this.storageNote)),
       this.filterRow,
       this.grid,
       this.empty,
+      this.selectionBar = this._buildSelectionBar(),
       el('div', { class: 'lib__foot' },
         el('button', {
           type: 'button', class: 'linkbtn linkbtn--danger', text: 'Vaciar la carpeta local',
@@ -55,6 +64,127 @@ export class LibraryView {
         })));
 
     library.addEventListener('change', () => { if (this.app.current === 'library') this.render(); });
+  }
+
+  /* ───────────────────────── Selección múltiple ─────────────────────── */
+
+  _buildSelectionBar() {
+    this.selCount = el('span', { class: 'selbar__count' });
+    return el('div', { class: 'selbar', hidden: true, role: 'toolbar', 'aria-label': 'Acciones sobre la selección' },
+      el('div', { class: 'selbar__info' },
+        this.selCount,
+        el('button', {
+          type: 'button', class: 'linkbtn', text: 'Todo',
+          onclick: () => this.selectAllShown(),
+        }),
+        el('button', {
+          type: 'button', class: 'linkbtn', text: 'Ninguno',
+          onclick: () => { this.selection.clear(); this._paintSelection(); },
+        })),
+      el('div', { class: 'selbar__actions' },
+        el('button', {
+          type: 'button', class: 'btn btn--primary', text: 'Guardar',
+          onclick: () => this._saveSelection(),
+        }),
+        el('button', {
+          type: 'button', class: 'btn btn--danger', text: 'Eliminar',
+          onclick: () => this._deleteSelection(),
+        })));
+  }
+
+  setSelecting(on) {
+    this.selecting = on;
+    if (!on) this.selection.clear();
+    this.selectBtn.textContent = on ? 'Hecho' : 'Seleccionar';
+    this.selectBtn.classList.toggle('is-active', on);
+    this.root.classList.toggle('is-selecting', on);
+    haptic();
+    this._paintSelection();
+  }
+
+  toggleSelected(id) {
+    if (this.selection.has(id)) this.selection.delete(id);
+    else this.selection.add(id);
+    haptic();
+    this._paintSelection();
+  }
+
+  selectAllShown() {
+    for (const it of this._shown()) this.selection.add(it.id);
+    haptic();
+    this._paintSelection();
+  }
+
+  _shown() {
+    return this.items.filter((i) => this.filter === 'all' || i.kind === this.filter);
+  }
+
+  _paintSelection() {
+    const n = this.selection.size;
+    this.selectionBar.hidden = !this.selecting;
+    this.selCount.textContent = n === 0 ? 'Nada seleccionado'
+      : n === 1 ? '1 seleccionado' : `${n} seleccionados`;
+    for (const btn of this.selectionBar.querySelectorAll('.btn')) btn.disabled = n === 0;
+    for (const tile of this.grid.children) {
+      const on = this.selection.has(tile.dataset.id);
+      tile.classList.toggle('is-selected', on);
+      tile.setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  /**
+   * Prepara los archivos elegidos y los ofrece al sistema.
+   *
+   * Leer del disco va antes del toque que abre la hoja de compartir, así que se
+   * hace aquí y la hoja siguiente pide un toque nuevo: si se encadenaran, la
+   * activación habría caducado y en iPhone no se guardaría nada.
+   */
+  async _saveSelection() {
+    const ids = [...this.selection];
+    if (!ids.length) return;
+    this.app.setBusy(true, ids.length > 1 ? `Preparando ${ids.length} archivos…` : 'Preparando…');
+    const blobs = [];
+    const names = [];
+    let missing = 0;
+    try {
+      for (const id of ids) {
+        const item = this.items.find((i) => i.id === id);
+        const file = await library.getFile(id);
+        if (!file) { missing++; continue; }
+        blobs.push(file);
+        names.push(timestampName(item.kind === 'video' ? 'video' : 'foto',
+          item.name.split('.').pop() || 'jpg', item.filmName,
+          ids.length > 1 ? blobs.length - 1 : null));
+      }
+    } finally {
+      this.app.setBusy(false);
+    }
+    if (missing) toast(`${missing} archivo(s) ya no están en la carpeta local`, { error: true });
+    if (!blobs.length) return;
+    this.app.presentSave(blobs, names, {
+      title: blobs.length > 1 ? `${blobs.length} archivos` : names[0],
+      detail: blobs.length > 1 ? `${blobs.length} archivos` : null,
+    });
+  }
+
+  async _deleteSelection() {
+    const ids = [...this.selection];
+    if (!ids.length) return;
+    const ok = await confirmDialog(
+      ids.length === 1
+        ? '¿Eliminar este archivo de la carpeta local? No se puede deshacer.'
+        : `¿Eliminar ${ids.length} archivos de la carpeta local? No se puede deshacer.`,
+      { confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    this.app.setBusy(true, 'Eliminando…');
+    try {
+      for (const id of ids) await library.remove(id);
+      this.selection.clear();
+      toast(ids.length === 1 ? 'Eliminado' : `${ids.length} eliminados`);
+      await this.render();
+    } finally {
+      this.app.setBusy(false);
+    }
   }
 
   _paintFilters() {
@@ -96,6 +226,12 @@ export class LibraryView {
     this.storageNote.textContent = u.mode === 'opfs'
       ? 'Carpeta local del dispositivo'
       : 'Almacenamiento del navegador';
+
+    // La selección puede haber quedado con elementos ya borrados.
+    for (const id of [...this.selection]) {
+      if (!this.items.some((i) => i.id === id)) this.selection.delete(id);
+    }
+    this._paintSelection();
   }
 
   async _tile(item) {
@@ -114,9 +250,19 @@ export class LibraryView {
 
     return el('button', {
       type: 'button', class: 'tile', dataset: { id: item.id },
-      onclick: () => this._openItem(item),
-      oncontextmenu: (e) => { e.preventDefault(); this._actions(item); },
+      onclick: () => {
+        if (this.selecting) this.toggleSelected(item.id);
+        else this._openItem(item);
+      },
+      // Mantener pulsado entra en selección múltiple con ese elemento ya
+      // marcado, que es como se espera en cualquier galería.
+      oncontextmenu: (e) => {
+        e.preventDefault();
+        if (!this.selecting) { this.setSelecting(true); this.toggleSelected(item.id); }
+        else this._actions(item);
+      },
     }, img, badges,
+      el('span', { class: 'tile__check', 'aria-hidden': 'true' }),
       el('span', { class: 'tile__info' }, `${item.width}×${item.height}`),
       el('span', {
         class: 'tile__more', 'aria-label': 'Opciones',
@@ -188,8 +334,7 @@ export class LibraryView {
       if (!file) throw new Error('El archivo ya no está en la carpeta local');
       const ext = (item.name.split('.').pop() || 'jpg');
       const name = timestampName(item.kind === 'video' ? 'video' : 'foto', ext, item.filmName);
-      const result = await saveFile(file, name);
-      if (result === 'downloaded') toast('Descargado');
+      this.app.presentSave([file], [name], { detail: `${item.width}×${item.height}` });
     } catch (err) {
       toast('No se pudo guardar: ' + (err?.message || err), { error: true });
     } finally {
