@@ -106,7 +106,8 @@ export class CameraView {
     this.busy = false;
     this.aspect = 'screen';
     this.flipped = false;
-    this.openTool = null;
+    this.openPanelKey = null;
+    this.paused = false;
     this.immersive = false;
     this.previewMax = previewBudget();
     this._frameTimes = [];
@@ -134,7 +135,7 @@ export class CameraView {
         // Tocar la imagen cierra lo que haya abierto; si no hay nada, esconde
         // los mandos. Un solo gesto para llegar al encuadre limpio.
         if (e.target !== this.stage && e.target !== this.canvas) return;
-        if (this.openTool) this.openTool(null);
+        if (this.openPanelKey) this.openPanel(null);
         else this.toggleImmersive();
       },
     }, this.canvas, this.grid, this.badge, this.recPill, this.resLabel, this.message);
@@ -245,7 +246,6 @@ export class CameraView {
     }
     if (!key) {
       this.panelHost.classList.remove('is-open');
-      this.openTool = null;
       return;
     }
     const tool = this.tools.find((t) => t.key === key);
@@ -258,7 +258,6 @@ export class CameraView {
         }, '✕')),
       tool.build()));
     this.panelHost.classList.add('is-open');
-    this.openTool = (k) => this.openPanel(k);
     if (this.immersive) this.toggleImmersive();
     haptic();
   }
@@ -573,7 +572,11 @@ export class CameraView {
     const draw = () => {
       if (!this.running) return;
       const v = this.video;
-      if (v.readyState >= 2 && v.videoWidth) {
+      // Durante la captura el visor se detiene: en iPhone el lienzo de
+      // exportación y el del visor compiten por el mismo presupuesto de memoria
+      // de vídeo, y esa competencia hace que `toBlob` devuelva nada y la foto
+      // se pierda. Además, el revelado termina antes.
+      if (!this.paused && v.readyState >= 2 && v.videoWidth) {
         const t0 = performance.now();
         const k = Math.min(1, this.previewMax / Math.max(v.videoWidth, v.videoHeight));
         const w = Math.round(v.videoWidth * k);
@@ -637,6 +640,7 @@ export class CameraView {
 
     let bitmap = null;
     let scratch = null;
+    this.paused = true;
     try {
       // Fotograma actual a resolución nativa, no la previsualización reducida.
       const grabbed = await this._grabFrame();
@@ -672,6 +676,7 @@ export class CameraView {
     } finally {
       bitmap?.close?.();
       if (scratch) scratch.width = scratch.height = 0;
+      this.paused = false;
       this.busy = false;
       this.shutter.classList.remove('is-busy');
     }
