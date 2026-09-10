@@ -250,12 +250,11 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 |---|---|
 | `engine` | Los seis programas GLSL compilan · las 19 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
 | `flow` | Importar → carpeta local → laboratorio → los diez paneles → aplicar emulsión → deslizadores → deshacer/rehacer → exportar a resolución original y reabrir el JPEG → guardar en biblioteca → recorte 1:1 → persistencia tras recargar |
-| `camera` | Flujo de cámara a 4K, previsualización reducida, foto a resolución nativa, miniatura, grabación de vídeo en MP4, y que reabrir una captura no vuelva a aplicar la emulsión |
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
 | `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, y ningún panel desborda |
-| `camera` | Captura, grabación, y que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano — leyendo píxeles reales del framebuffer, no suponiendo. Zoom, destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
+| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4, y que reabrir una captura no vuelva a aplicar la emulsión. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, el destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote y la reserva de mantener pulsado |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
