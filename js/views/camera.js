@@ -68,6 +68,26 @@ const MIME_CANDIDATES = [
  * permiso de almacenamiento persistente o un lienzo demasiado grande piden
  * cosas distintas de quien lo sufre.
  */
+/**
+ * ¿Estamos dentro del navegador incrustado de otra aplicación?
+ *
+ * Importa porque es la causa más común de que la cámara no arranque en un
+ * dispositivo donde debería: al abrir un enlace desde WhatsApp, Instagram o
+ * Mensajes, iOS lo muestra en una vista web dentro de esa aplicación, y ahí no
+ * concede acceso a la cámara por mucho que el sitio sea HTTPS. Sin decirlo, el
+ * fallo parece del sitio.
+ */
+export function inAppBrowser() {
+  const ua = navigator.userAgent || '';
+  if (/FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|Snapchat|LinkedInApp|Pinterest/i.test(ua)) {
+    return true;
+  }
+  // Las vistas web incrustadas en iOS no se anuncian como Safari; el Safari de
+  // verdad y los navegadores con su propia marca (CriOS, FxiOS…) sí.
+  const esIOS = /iP(hone|ad|od)/.test(ua);
+  return esIOS && /AppleWebKit/.test(ua) && !/Safari|CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+}
+
 export function describeSaveError(err) {
   const name = err?.name || '';
   const msg = String(err?.message || err || '');
@@ -108,6 +128,12 @@ export class CameraView {
     this.flipped = false;
     this.openPanelKey = null;
     this.paused = false;
+    /** Factor de zoom pedido por el usuario, 1 = sin acercar. */
+    this.zoom = 1;
+    /** Hasta dónde llega el zoom del propio sensor; el resto es recorte. */
+    this.nativeZoomMax = 1;
+    this.flash = 'off';
+    this.caps = {};
     this.immersive = false;
     this.previewMax = previewBudget();
     this._frameTimes = [];
@@ -135,10 +161,14 @@ export class CameraView {
         // Tocar la imagen cierra lo que haya abierto; si no hay nada, esconde
         // los mandos. Un solo gesto para llegar al encuadre limpio.
         if (e.target !== this.stage && e.target !== this.canvas) return;
+        if (this.pinching) return;
         if (this.openPanelKey) this.openPanel(null);
         else this.toggleImmersive();
       },
-    }, this.canvas, this.grid, this.badge, this.recPill, this.resLabel, this.message);
+    }, this.canvas, this.grid, this.badge, this.recPill, this.resLabel,
+       this.screenFlash = el('div', { class: 'cam__screenflash', hidden: true }),
+       this.message);
+    this._bindPinch();
 
     /* ── Ventanas flotantes de ajustes ─────────────────────────────────── */
     this.panelHost = el('div', { class: 'cam__panelhost' });
@@ -151,6 +181,14 @@ export class CameraView {
       {
         key: 'exposure', icon: '☀', label: 'Exposición',
         build: () => this._exposurePanel(),
+      },
+      {
+        key: 'zoom', icon: '⌕', label: 'Zoom',
+        build: () => this._zoomPanel(),
+      },
+      {
+        key: 'flash', icon: '⚡', label: 'Flash',
+        build: () => this._flashPanel(),
       },
       {
         key: 'size', icon: '⛶', label: 'Dimensiones',
@@ -304,6 +342,102 @@ export class CameraView {
       }));
   }
 
+  _zoomPanel() {
+    this.zoomSlider = el('input', {
+      type: 'range', class: 'slider__input', min: 1, max: this.zoomMax, step: 0.05,
+      value: this.zoom, 'aria-label': 'Zoom',
+    });
+    this.zoomReadout = el('span', { class: 'campanel__value', text: this.zoom.toFixed(1) + '×' });
+    this.zoomSlider.addEventListener('input', () => this.setZoom(parseFloat(this.zoomSlider.value)));
+
+    const pasos = [1, 2, 3, 5].filter((v) => v <= this.zoomMax);
+    const nativo = this.nativeZoomMax > 1
+      ? `El sensor acerca hasta ${this.nativeZoomMax.toFixed(1)}×; más allá se recorta y se pierde detalle.`
+      : 'Este navegador no expone el zoom del sensor, así que se acerca recortando: se pierde detalle. Se captura del fotograma completo, no de la previsualización.';
+
+    return el('div', { class: 'campanel__body' },
+      el('div', { class: 'campanel__row' },
+        el('span', { class: 'campanel__label', text: 'Zoom' }), this.zoomSlider, this.zoomReadout),
+      el('div', { class: 'campanel__chips' },
+        pasos.map((v) => el('button', {
+          type: 'button', class: 'chip', text: v + '×',
+          onclick: () => { this.setZoom(v); this.zoomSlider.value = v; },
+        }))),
+      el('p', { class: 'campanel__note', text: nativo + ' También puedes pellizcar sobre la imagen.' }));
+  }
+
+  _flashPanel() {
+    const opciones = [
+      { key: 'off', label: 'Apagado', note: 'Sin luz añadida.' },
+      {
+        key: 'torch', label: 'Linterna',
+        note: this.canTorch
+          ? 'Enciende el LED al disparar, y lo mantiene encendido mientras grabas.'
+          : 'Este navegador no da acceso al LED. Al disparar se usará el destello de pantalla.',
+        disabled: !this.canTorch,
+      },
+      {
+        key: 'screen', label: 'Pantalla',
+        note: 'La pantalla destella en blanco. No alumbra como un LED, pero con la cámara frontal y de cerca sirve.',
+      },
+    ];
+    const note = el('p', { class: 'campanel__note' });
+    const paint = () => {
+      note.textContent = opciones.find((o) => o.key === this.flash)?.note || '';
+      for (const b of row.children) b.classList.toggle('is-active', b.dataset.flash === this.flash);
+    };
+    const row = el('div', { class: 'campanel__chips' },
+      opciones.map((o) => el('button', {
+        type: 'button', class: 'chip' + (o.disabled ? ' is-warn' : ''),
+        dataset: { flash: o.key }, text: o.label,
+        onclick: () => { this.setFlash(o.key); paint(); },
+      })));
+    paint();
+    return el('div', { class: 'campanel__body' }, row, note);
+  }
+
+  /**
+   * Pellizco para acercar.
+   *
+   * Es el gesto que cualquiera prueba primero en un visor, así que va sobre la
+   * imagen y no sólo en el panel. Se sigue la distancia entre dos dedos y se
+   * multiplica el zoom de partida por su variación.
+   */
+  _bindPinch() {
+    const points = new Map();
+    let startDist = 0;
+    let startZoom = 1;
+
+    const dist = () => {
+      const [a, b] = [...points.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+
+    this.stage.addEventListener('pointerdown', (ev) => {
+      points.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (points.size === 2) { startDist = dist(); startZoom = this.zoom; }
+    });
+    this.stage.addEventListener('pointermove', (ev) => {
+      if (!points.has(ev.pointerId)) return;
+      points.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (points.size !== 2 || startDist <= 0) return;
+      ev.preventDefault();
+      this.pinching = true;
+      this.setZoom(startZoom * (dist() / startDist));
+    });
+    const drop = (ev) => {
+      points.delete(ev.pointerId);
+      if (points.size < 2) startDist = 0;
+      // Se marca para que el toque que cierra el pellizco no se interprete
+      // como el toque que esconde los mandos.
+      if (points.size === 0 && this.pinching) {
+        setTimeout(() => { this.pinching = false; }, 60);
+      }
+    };
+    this.stage.addEventListener('pointerup', drop);
+    this.stage.addEventListener('pointercancel', drop);
+  }
+
   _sizePanel() {
     const note = el('p', { class: 'campanel__note' });
     const paint = () => {
@@ -328,6 +462,113 @@ export class CameraView {
     return el('div', { class: 'campanel__body' }, row, note);
   }
 
+  /* ─────────────────────────────── Zoom ──────────────────────────────── */
+
+  /**
+   * Lee hasta dónde puede acercar el propio sensor.
+   *
+   * Cuando el dispositivo lo expone —Android lo hace; Safari en iOS, hasta
+   * donde alcanza esta versión, no— se usa primero, porque es zoom real y no
+   * pierde detalle. A partir de ahí se sigue con recorte, que sí lo pierde y
+   * por eso se avisa.
+   */
+  _applyZoomCapabilities() {
+    const z = this.caps?.zoom;
+    this.nativeZoomMax = (z && typeof z.max === 'number' && z.max > 1) ? z.max : 1;
+    this.zoomMin = (z && typeof z.min === 'number') ? Math.max(1, z.min) : 1;
+    if (this.zoom !== 1) this._applyZoom();
+  }
+
+  /** Techo total: lo que dé el sensor, y hasta 4× de recorte por encima. */
+  get zoomMax() { return Math.min(10, this.nativeZoomMax * 4); }
+
+  /** ¿A partir de qué factor el acercamiento empieza a costar detalle? */
+  get zoomNativeLimit() { return this.nativeZoomMax; }
+
+  setZoom(value) {
+    const next = Math.min(this.zoomMax, Math.max(1, value));
+    if (Math.abs(next - this.zoom) < 1e-4) return;
+    this.zoom = next;
+    this._applyZoom();
+    this._showZoomBadge();
+  }
+
+  _applyZoom() {
+    // Primero el sensor, hasta donde llegue.
+    const nativePart = Math.min(this.zoom, this.nativeZoomMax);
+    if (this.track && this.nativeZoomMax > 1) {
+      this.track.applyConstraints({ advanced: [{ zoom: nativePart }] })
+        .catch(() => { /* el dispositivo lo ha rechazado; queda el recorte */ });
+    }
+    // Y lo que falte, recortando: se resuelve dentro de `_applyAspect`.
+    this.digitalZoom = this.zoom / Math.max(nativePart, 1);
+    this._applyAspect();
+  }
+
+  _showZoomBadge() {
+    this.badge.textContent = this.zoom.toFixed(1).replace(/\.0$/, '') + '×'
+      + (this.zoom > this.zoomNativeLimit + 1e-3 ? ' · recorte' : '');
+    this.badge.classList.remove('is-hidden');
+    clearTimeout(this._badgeTimer);
+    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1400);
+    if (this.zoomSlider) this.zoomSlider.value = this.zoom;
+    if (this.zoomReadout) this.zoomReadout.textContent = this.zoom.toFixed(1) + '×';
+  }
+
+  /* ─────────────────────────────── Flash ─────────────────────────────── */
+
+  /** ¿Puede este dispositivo encender la linterna desde la web? */
+  get canTorch() { return !!(this.caps && 'torch' in this.caps && this.caps.torch); }
+
+  setFlash(mode) {
+    this.flash = mode;
+    this._applyFlashToTrack();
+    this.toolButtons.get('flash')?.classList.toggle('is-on', mode !== 'off');
+    haptic();
+  }
+
+  /** La linterna permanece encendida mientras se graba; en foto sólo dispara. */
+  _applyFlashToTrack() {
+    const on = this.flash === 'torch' && !!this.recorder;
+    this._setTorch(on);
+  }
+
+  async _setTorch(on) {
+    if (!this.track || !this.canTorch) return false;
+    try {
+      await this.track.applyConstraints({ advanced: [{ torch: !!on }] });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ilumina la escena durante la captura.
+   *
+   * Con linterna se enciende y se espera un momento a que la exposición se
+   * asiente, o la foto sale con la luz a medio subir. Con «Pantalla» se pone el
+   * lienzo en blanco al máximo: no alumbra como un LED, pero con la cámara
+   * frontal y a poca distancia sirve, y es lo único disponible cuando el
+   * navegador no da acceso a la linterna.
+   *
+   * @returns {Promise<() => void>} función para apagar lo que se haya encendido
+   */
+  async _flashOn() {
+    if (this.flash === 'torch' && await this._setTorch(true)) {
+      await new Promise((r) => setTimeout(r, 320));
+      return () => this._setTorch(false);
+    }
+    if (this.flash === 'screen' || this.flash === 'torch') {
+      this.screenFlash.hidden = false;
+      // Dos fotogramas para que el blanco esté pintado antes de capturar.
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise((r) => setTimeout(r, 220));
+      return () => { this.screenFlash.hidden = true; };
+    }
+    return () => {};
+  }
+
   /** Megapíxeles que quedan tras aplicar un encuadre al fotograma actual. */
   _megapixelsFor(key) {
     const vw = this.video.videoWidth, vh = this.video.videoHeight;
@@ -341,7 +582,10 @@ export class CameraView {
     const source = vw / vh;
     let w = 1, h = 1;
     if (target > source) h = source / target; else w = target / source;
-    return (nw * w * nh * h) / 1e6;
+    // Acercar recortando también resta píxeles: el número anunciado tiene que
+    // reflejarlo, o prometería un detalle que la foto no va a tener.
+    const k = this.digitalZoom || 1;
+    return (nw * w * nh * h) / (k * k) / 1e6;
   }
 
   toggleGrid() {
@@ -403,7 +647,19 @@ export class CameraView {
       if (target > source) h = source / target; else w = target / source;
       this.params.geometry.crop = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
     }
+    // El zoom que no da el sensor se consigue estrechando este mismo recorte.
+    this._applyDigitalZoomToCrop();
     this._updateResLabel();
+  }
+
+  /** Encoge el recorte alrededor del centro para el zoom que no da el sensor. */
+  _applyDigitalZoomToCrop() {
+    const k = this.digitalZoom || 1;
+    if (k <= 1.0001) return;
+    const c = this.params.geometry.crop;
+    const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    const w = c.w / k, h = c.h / k;
+    this.params.geometry.crop = { x: cx - w / 2, y: cy - h / 2, w, h };
   }
 
   _updateResLabel() {
@@ -459,6 +715,13 @@ export class CameraView {
 
   async activate() {
     this._showMessage(null);
+    if (inAppBrowser()) {
+      return this._showMessage(
+        'Has abierto el enlace dentro de otra aplicación (WhatsApp, Instagram, Mensajes…), '
+        + 'y esos navegadores incrustados no dan acceso a la cámara en iPhone. '
+        + 'Ábrelo en Safari: toca el botón «···» o «Abrir en Safari».',
+        { copiarEnlace: true });
+    }
     if (!navigator.mediaDevices?.getUserMedia) {
       return this._showMessage('Este navegador no da acceso a la cámara. En iPhone hace falta Safari sobre HTTPS.');
     }
@@ -466,13 +729,18 @@ export class CameraView {
       return this._showMessage('La cámara sólo funciona sobre HTTPS (o en localhost). Abre la aplicación con una dirección segura.');
     }
     try {
-      await this._openStream();
+      // Si la cámara sigue viva no se renegocia: volver a pedirla es lento y en
+      // iOS falla a veces al hacerlo dos veces seguidas.
+      if (!this.streamAlive) await this._openStream();
+      else await this.video.play().catch(() => {});
+      this._ensureRenderer();
       this._startLoop();
     } catch (err) {
       const map = {
-        NotAllowedError: 'Permiso denegado. Actívalo en Ajustes → Safari → Cámara y recarga.',
+        NotAllowedError: 'Permiso denegado. Actívalo en Ajustes → Safari → Cámara y recarga. '
+          + 'Si abriste el enlace desde otra aplicación, ábrelo en Safari.',
         NotFoundError: 'No se ha encontrado ninguna cámara en este dispositivo.',
-        NotReadableError: 'La cámara está ocupada por otra aplicación.',
+        NotReadableError: 'La cámara está ocupada por otra aplicación. Ciérrala y toca «Reintentar».',
         OverconstrainedError: 'La cámara no admite la configuración solicitada.',
       };
       this._showMessage(map[err?.name] || ('No se pudo abrir la cámara: ' + (err?.message || err)));
@@ -481,11 +749,15 @@ export class CameraView {
 
   deactivate() {
     this.running = false;
-    this.openPanel?.(null);
+    this.openPanel(null);
     if (this.recorder) this._stopRecording(true);
     this._closeStream();
-    this.renderer?.dispose();
-    this.renderer = null;
+    // El renderer SOBREVIVE. Sólo se sueltan las texturas, que es lo que ocupa
+    // memoria; el contexto y los programas ya compilados se conservan para
+    // volver a dibujar de inmediato. Destruirlo aquí era lo que dejaba la
+    // cámara en negro al regresar: `dispose` devolvía el contexto al navegador
+    // y ese mismo lienzo ya no podía dar uno nuevo.
+    this.renderer?.release();
   }
 
   async _openStream() {
@@ -525,17 +797,63 @@ export class CameraView {
     });
 
     const track = stream.getVideoTracks()[0];
+    this.track = track || null;
     const settings = track?.getSettings?.() || {};
     this.nativeWidth = settings.width || this.video.videoWidth;
     this.nativeHeight = settings.height || this.video.videoHeight;
+    this.caps = track?.getCapabilities?.() || {};
+
+    // Otra aplicación —o el propio sistema al compartir un enlace— puede
+    // quedarse con la cámara y terminar la pista. Sin esto el visor se queda
+    // congelado sin explicación; así se reintenta al volver a la vista.
+    if (track) {
+      track.addEventListener('ended', () => {
+        this.streamDead = true;
+        if (this.running) this._recoverStream();
+      });
+    }
+    this.streamDead = false;
+    this._applyZoomCapabilities();
     this._applyAspect();
+    this._applyFlashToTrack();
     this._showMessage(null);
   }
 
   _closeStream() {
     if (this.stream) for (const t of this.stream.getTracks()) t.stop();
     this.stream = null;
+    this.track = null;
     this.video.srcObject = null;
+  }
+
+  /** ¿Sigue entregando fotogramas la cámara? */
+  get streamAlive() {
+    return !!(this.track && this.track.readyState === 'live' && !this.streamDead);
+  }
+
+  /**
+   * Recupera la cámara cuando otra aplicación se la ha llevado.
+   *
+   * Ocurre al compartir un enlace, atender una llamada o abrir la cámara del
+   * sistema: iOS termina la pista y no avisa de que ha vuelto a estar libre, de
+   * modo que hay que reintentar. Se hace con unos pocos intentos espaciados en
+   * lugar de insistir sin fin, y si no se consigue se dice por qué.
+   */
+  async _recoverStream(attempt = 0) {
+    if (this._recovering && attempt === 0) return;
+    this._recovering = true;
+    try {
+      await this._openStream();
+      this._recovering = false;
+      this._showMessage(null);
+    } catch (err) {
+      if (attempt < 3) {
+        setTimeout(() => this._recoverStream(attempt + 1), 600 * (attempt + 1));
+        return;
+      }
+      this._recovering = false;
+      this._showMessage('Otra aplicación se ha quedado con la cámara. Ciérrala y toca «Reintentar».');
+    }
   }
 
   async flip() {
@@ -556,18 +874,39 @@ export class CameraView {
 
   /* ─────────────────────────── Bucle de dibujo ───────────────────────── */
 
+  /**
+   * Garantiza un renderer con contexto vivo.
+   *
+   * Si el contexto se ha perdido —el sistema lo reclama al pasar la aplicación
+   * a segundo plano, y un lienzo con el contexto perdido no puede dar otro— se
+   * sustituye el lienzo entero. Es la única salida fiable, y es lo que separa
+   * volver a la cámara y verla funcionar de volver y ver negro.
+   */
+  _ensureRenderer() {
+    if (this.renderer && !this.renderer.lost) return true;
+
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer = null;
+      const fresh = el('canvas', { class: 'cam__canvas' });
+      this.canvas.replaceWith(fresh);
+      this.canvas = fresh;
+    }
+    try {
+      // El bucle vuelve a subir el fotograma en cada pasada, así que
+      // recuperarse del contexto no exige nada más que no dejar de dibujar.
+      this.renderer = new Renderer(this.canvas);
+      return true;
+    } catch {
+      this._showMessage('Este navegador no admite WebGL2, necesario para el procesado en directo.');
+      return false;
+    }
+  }
+
   _startLoop() {
     if (this.running) return;
+    if (!this._ensureRenderer()) return;
     this.running = true;
-    if (!this.renderer) {
-      try {
-        // El bucle vuelve a subir el fotograma en cada pasada, así que
-        // recuperarse del contexto no exige nada más que no dejar de dibujar.
-        this.renderer = new Renderer(this.canvas);
-      } catch (err) {
-        return this._showMessage('Este navegador no admite WebGL2, necesario para el procesado en directo.');
-      }
-    }
 
     const draw = () => {
       if (!this.running) return;
@@ -640,8 +979,10 @@ export class CameraView {
 
     let bitmap = null;
     let scratch = null;
+    let flashOff = () => {};
     this.paused = true;
     try {
+      flashOff = await this._flashOn();
       // Fotograma actual a resolución nativa, no la previsualización reducida.
       const grabbed = await this._grabFrame();
       bitmap = grabbed.bitmap;
@@ -674,6 +1015,7 @@ export class CameraView {
       console.error(err);
       toast(describeSaveError(err), { error: true, ms: 5200 });
     } finally {
+      flashOff();
       bitmap?.close?.();
       if (scratch) scratch.width = scratch.height = 0;
       this.paused = false;
@@ -735,6 +1077,8 @@ export class CameraView {
       this.recorder.start(1000);
 
       this.recStart = performance.now();
+      // La linterna se queda encendida mientras dura la toma.
+      this._applyFlashToTrack();
       this.recPill.hidden = false;
       this.shutter.classList.add('is-recording');
       this.modeSwitch.classList.add('is-locked');
@@ -756,6 +1100,7 @@ export class CameraView {
     if (!this.recorder) return;
     this._silentStop = silent;
     try { this.recorder.stop(); } catch { /* ya estaba parada */ }
+    this._setTorch(false);
     this.recPill.hidden = true;
     this.shutter.classList.remove('is-recording');
     this.modeSwitch.classList.remove('is-locked');
@@ -789,12 +1134,24 @@ export class CameraView {
 
   /* ──────────────────────────────── Varios ───────────────────────────── */
 
-  _showMessage(text) {
+  _showMessage(text, { copiarEnlace = false } = {}) {
     this.message.hidden = !text;
-    if (text) {
-      clear(this.message).append(
-        el('p', { text }),
-        el('button', { type: 'button', class: 'btn btn--primary', text: 'Reintentar', onclick: () => this.activate() }));
-    }
+    if (!text) return;
+    clear(this.message).append(
+      el('p', { text }),
+      copiarEnlace
+        ? el('button', {
+          type: 'button', class: 'btn', text: 'Copiar el enlace',
+          onclick: async (e) => {
+            try {
+              await navigator.clipboard.writeText(location.href);
+              e.currentTarget.textContent = 'Enlace copiado';
+            } catch {
+              toast(location.href);
+            }
+          },
+        })
+        : null,
+      el('button', { type: 'button', class: 'btn btn--primary', text: 'Reintentar', onclick: () => this.activate() }));
   }
 }

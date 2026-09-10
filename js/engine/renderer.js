@@ -492,13 +492,32 @@ export class Renderer {
     return { r, g, b, l, bins };
   }
 
-  dispose() {
+  /**
+   * Suelta la memoria de vídeo sin destruir el contexto.
+   *
+   * Es lo que se quiere al salir de una vista a la que se va a volver: libera
+   * las texturas, que es lo que ocupa, pero conserva el contexto y los
+   * programas ya compilados, de modo que al regresar se dibuja de inmediato.
+   */
+  release() {
+    const gl = this.ctx.gl;
+    if (this.srcTex) gl.deleteTexture(this.srcTex.tex);
+    if (this._histTex) gl.deleteTexture(this._histTex.tex);
+    this.srcTex = this._histTex = null;
+    this.ctx.purge();
+  }
+
+  /**
+   * @param {{release?:boolean}} [opts] release: devuelve el contexto al
+   *   navegador. Sólo para lienzos que se descartan (ver GLContext.dispose).
+   */
+  dispose(opts) {
     const gl = this.ctx.gl;
     if (this.srcTex) gl.deleteTexture(this.srcTex.tex);
     if (this.lutTex) gl.deleteTexture(this.lutTex.tex);
     if (this._histTex) gl.deleteTexture(this._histTex.tex);
     this.srcTex = this.lutTex = this._histTex = null;
-    this.ctx.dispose();
+    this.ctx.dispose(opts);
   }
 }
 
@@ -557,7 +576,9 @@ export async function renderToBlob(source, params, opts = {}) {
     if (temp) { temp.width = temp.height = 0; }
     return { blob, width: size.width, height: size.height, scaled };
   } finally {
-    renderer.dispose();
+    // Este lienzo se descarta aquí mismo, así que conviene devolver el
+    // contexto: el navegador sólo admite unos pocos vivos a la vez.
+    renderer.dispose({ release: true });
     canvas.width = canvas.height = 0;
   }
 }

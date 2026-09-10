@@ -294,7 +294,20 @@ export class GLContext {
     return out;
   }
 
-  dispose() {
+  /**
+   * Libera el contexto.
+   *
+   * @param {{release?:boolean}} [opts]
+   *   release: además de borrar los recursos, devuelve el contexto al
+   *   navegador con `loseContext`. SÓLO para contextos de usar y tirar, como
+   *   el de una exportación, cuyo lienzo se descarta a continuación.
+   *
+   *   Es importante no hacerlo con un lienzo que se vaya a reutilizar: una vez
+   *   perdido, `getContext` sobre ESE MISMO lienzo devuelve el contexto muerto
+   *   en lugar de uno nuevo, y todo lo que se dibuje después no aparece. Fue
+   *   exactamente lo que dejaba la cámara en negro al volver a ella.
+   */
+  dispose({ release = false } = {}) {
     const gl = this.gl;
     this.canvas.removeEventListener('webglcontextlost', this._onLost);
     this.canvas.removeEventListener('webglcontextrestored', this._onRestored);
@@ -303,9 +316,8 @@ export class GLContext {
     this.programs.clear();
     gl.deleteFramebuffer(this.fbo);
     gl.deleteVertexArray(this.vao);
-    // Borrar los recursos no basta: el contexto en sí sigue vivo hasta que lo
-    // recoja el recolector, y el navegador sólo admite unos pocos a la vez.
-    // Cada exportación crea uno, así que hay que devolverlo explícitamente.
-    try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* opcional */ }
+    if (release) {
+      try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* opcional */ }
+    }
   }
 }

@@ -143,13 +143,15 @@ await page.waitForTimeout(800);
 await page.locator('.lab__export').click();
 await page.waitForTimeout(600);
 await page.locator('.sheet .btn--primary', { hasText: 'Guardar en el dispositivo' }).click();
-// El revelado a resolución completa ocurre ahora; la hoja llega después.
-await page.waitForSelector('.sheet__title', { timeout: 60_000 });
-await page.waitForTimeout(600);
+// El revelado a resolución completa tarda lo suyo bajo SwiftShader, así que se
+// espera a que aparezca ESA hoja y no a que haya una cualquiera.
+await page.waitForFunction(
+  () => document.querySelector('.sheet__title')?.textContent?.includes('Listo para guardar'),
+  null, { timeout: 90_000 });
 const listo = await page.locator('.sheet__title').textContent();
 check('tras revelar se ofrece una hoja nueva, no se comparte a ciegas',
   /Listo para guardar/.test(listo) && (await page.evaluate(() => window.__shareLog.length)) === 0,
-  listo);
+  listo + ' · llamadas a compartir antes del toque: ' + (await page.evaluate(() => window.__shareLog.length)));
 await page.locator('.sheet .btn--primary').click();
 await page.waitForTimeout(900);
 const log2 = await page.evaluate(() => window.__shareLog);

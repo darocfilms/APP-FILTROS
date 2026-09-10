@@ -166,6 +166,10 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   border: 1px solid var(--line); color: var(--text-dim); font-size: 13px;
 }
 .chip.is-active { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+/* Opción disponible pero limitada por el dispositivo: se puede elegir, y la
+   nota de debajo explica qué hará en su lugar. */
+.chip.is-warn { border-style: dashed; color: var(--text-faint); }
+.chip.is-warn.is-active { background: var(--accent); color: var(--accent-ink); border-style: solid; }
 
 /* ── Cámara ─────────────────────────────────────────────────────────────
    La imagen ocupa la pantalla entera y nada la recorta desde la interfaz. Los
@@ -271,16 +275,23 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   background: rgba(0, 0, 0, 0.42);
   backdrop-filter: saturate(140%) blur(16px);
   -webkit-backdrop-filter: saturate(140%) blur(16px);
+  /* Ocho grupos no caben de una vez en 390 px con las etiquetas legibles, así
+     que la fila se desplaza. El desvanecido de los bordes lo anuncia: sin él
+     el último grupo parece cortado por un fallo. */
+  overflow-x: auto; scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
 }
+.cam__tools::-webkit-scrollbar { display: none; }
 .cam__toolsep {
   flex: 0 0 auto; width: 1px; height: 26px; margin: 0 2px;
   background: rgba(255, 255, 255, 0.16);
 }
 
 .camtool {
-  /* Los seis grupos tienen que caber de una vez en 390 px: si el último se
-     corta, deja de leerse como una fila de iguales y parece un fallo. */
-  flex: 1 1 0; min-width: 0; min-height: 46px;
+  flex: 0 0 auto; min-width: 58px; min-height: 46px;
+  scroll-snap-align: center;
   display: grid; place-items: center; gap: 1px;
   padding: 4px 2px; border-radius: 12px;
   color: rgba(255, 255, 255, 0.72);
@@ -288,12 +299,19 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 .camtool__icon { font-size: 16px; line-height: 1; }
 .camtool__label {
-  font-size: 9px; letter-spacing: -0.01em;
-  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 9px; letter-spacing: -0.01em; white-space: nowrap;
 }
 .camtool.is-open { background: var(--accent); color: var(--accent-ink); }
 .camtool.is-on { background: rgba(232, 179, 74, 0.22); color: var(--accent); }
 .camtool:active { background: rgba(255, 255, 255, 0.14); }
+
+/* Destello de pantalla: la única luz que un navegador puede dar cuando no
+   expone el LED. Va sobre el visor, no sobre toda la vista, para que los
+   mandos no parpadeen con él. */
+.cam__screenflash {
+  position: absolute; inset: 0; z-index: 4;
+  background: #fff; pointer-events: none;
+}
 
 /* ── Ventana de ajustes ─────────────────────────────────────────────────── */
 

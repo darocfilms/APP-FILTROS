@@ -91,9 +91,10 @@ await page.waitForTimeout(400);
 
 console.log('\n── Cámara: los ajustes son ventanas flotantes ──');
 const grupos = await page.evaluate(() => [...document.querySelectorAll('.camtool')].map((b) => b.textContent.trim()));
-check('hay un mando por grupo de funciones', grupos.length === 6, grupos.join(' · '));
+check('hay un mando por grupo de funciones', grupos.length === 8, grupos.join(' · '));
 
-for (const [tool, titulo] of [['film', 'Filtros'], ['exposure', 'Exposición'], ['size', 'Dimensiones']]) {
+for (const [tool, titulo] of [['film', 'Filtros'], ['exposure', 'Exposición'],
+                              ['zoom', 'Zoom'], ['flash', 'Flash'], ['size', 'Dimensiones']]) {
   await page.locator(`.camtool[data-tool="${tool}"]`).click();
   await page.waitForTimeout(350);
   const abierto = await page.evaluate(() => {
