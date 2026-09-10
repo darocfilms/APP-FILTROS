@@ -82,13 +82,35 @@ agrupadas por función, y se esconden con el mismo gesto que las abre.
 |---|---|
 | **Filtros** | Las 19 emulsiones e intensidad, en directo sobre el visor |
 | **Exposición** | Compensación en diafragmas reales |
+| **Zoom** | Deslizador y pasos rápidos; también pellizcando sobre la imagen |
+| **Flash** | Apagado, linterna o destello de pantalla |
 | **Dimensiones** | Encuadre, con los megapíxeles que cuesta cada uno |
 | **Guías** | Cuadrícula de tercios |
 | **Voltear** | Espejo de la imagen |
 | **Cambiar** | Frontal o trasera |
 
+**Zoom.** Cuando el dispositivo expone el zoom del sensor se usa primero, porque
+es zoom real y no pierde detalle; a partir de ahí se sigue recortando, y entonces
+sí se pierde. El panel dice cuál de las dos cosas está pasando, y los
+megapíxeles anunciados descuentan el recorte en lugar de prometer un detalle que
+la foto no va a tener.
+
+**Flash.** La linterna se enciende al disparar y permanece encendida mientras
+grabas — cuando el navegador da acceso al LED. Safari en iPhone no lo hace,
+hasta donde alcanza esta versión, así que la aplicación lo comprueba en marcha:
+si no puede, la opción aparece marcada y se usa el destello de pantalla, que no
+alumbra como un LED pero sirve con la cámara frontal y de cerca.
+
 Tocar la imagen esconde los mandos y deja el encuadre limpio; un asidero en la
 esquina los devuelve.
+
+**Al volver a la cámara sigue funcionando.** Salir a otra pestaña, o que el
+sistema mande la aplicación al fondo al compartir un enlace, no la deja en
+negro: el contexto de dibujo sobrevive, y si otra aplicación se queda con la
+cámara se reintenta sola. Si el enlace se abre **dentro** de otra aplicación
+(WhatsApp, Instagram, Mensajes), la web lo detecta y lo dice: esos navegadores
+incrustados no dan acceso a la cámara en iPhone por mucho que el sitio sea
+HTTPS, y hay que abrirlo en Safari.
 
 **Sobre el encuadre.** Se pide 4:3 a la máxima resolución, que es la lectura
 completa del sensor — pedir 16:9 parece "más grande" por el número, pero es un
@@ -233,6 +255,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
 | `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, y ningún panel desborda |
+| `camera` | Captura, grabación, y que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano — leyendo píxeles reales del framebuffer, no suponiendo. Zoom, destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote y la reserva de mantener pulsado |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
