@@ -70,6 +70,9 @@ const diag = await page.evaluate(() => ({
 }));
 console.log('    diagnóstico: ' + JSON.stringify(diag));
 
+const FILM_COUNT = await page.evaluate(async () =>
+  (await import('./js/data/films.js')).FILMS.length);
+
 check('la vista de laboratorio se activa', await page.locator('#view-lab.is-active').count() === 1);
 check('el laboratorio tiene imagen', await page.locator('.view--lab.has-image').count() === 1);
 const subtitle = await page.locator('.lab__subtitle').textContent();
@@ -99,7 +102,7 @@ console.log('\n── Aplicar una emulsión desde el selector ──');
 await page.locator('.panelbar__tab[data-panel="film"]').click();
 await page.waitForTimeout(700);
 const cards = await page.locator('.filmcard').count();
-check('el selector muestra las 19 emulsiones', cards === 19, cards + '');
+check('el selector muestra todas las emulsiones del catálogo', cards === FILM_COUNT, cards + ' de ' + FILM_COUNT);
 await page.locator('.filmcard[data-film="cinestill800t"]').click();
 await page.waitForTimeout(900);
 const noteText = await page.locator('.filmnote').textContent();

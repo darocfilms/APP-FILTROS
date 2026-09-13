@@ -45,6 +45,12 @@ console.log('\n── Arranque ──');
 await page.goto(BASE, { waitUntil: 'networkidle' });
 await page.waitForTimeout(2500);
 
+// El número de emulsiones se lee del catálogo: añadir una no debería obligar a
+// tocar los tests.
+const FILM_COUNT = await page.evaluate(async () =>
+  (await import('./js/data/films.js')).FILMS.length);
+console.log('  catálogo: ' + FILM_COUNT + ' emulsiones');
+
 check('la app monta la barra de pestañas', await page.locator('.tabbar__tab').count() === 3);
 check('sin errores fatales', !(await page.locator('.fatal').count()), errors.slice(0, 2).join(' | '));
 
@@ -121,9 +127,9 @@ console.log('    emulsión         media RGB            recorte ▼ / ▲');
 for (const f of filmResults) {
   console.log('    ' + f.id.padEnd(16) + JSON.stringify(f.mean).padEnd(22) + f.clipBlack + '% / ' + f.clipWhite + '%');
 }
-check('todas las emulsiones renderizan', filmResults.length === 19);
+check('todas las emulsiones renderizan', filmResults.length === FILM_COUNT, filmResults.length + '');
 const distinct = new Set(filmResults.map((f) => f.mean.join(','))).size;
-check('cada emulsión da un resultado distinto', distinct >= 17, distinct + '/19 firmas únicas');
+check('cada emulsión da un resultado distinto', distinct >= FILM_COUNT - 2, distinct + '/' + FILM_COUNT + ' firmas únicas');
 const overClipped = filmResults.filter((f) => f.clipBlack > 12 || f.clipWhite > 12);
 check('ninguna emulsión recorta en exceso', overClipped.length === 0,
   overClipped.map((f) => f.id + ' ' + f.clipBlack + '/' + f.clipWhite).join(', '));

@@ -183,10 +183,13 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   position: absolute; inset: 0;
   width: 100%; height: 100%; display: block;
   /* El lienzo ya viene recortado a la proporción elegida, así que "contain"
-     llena la pantalla exactamente cuando el encuadre es «Pantalla», y muestra
-     el fotograma íntegro cuando es cualquier otro. */
+     muestra el fotograma íntegro: es lo que se quiere en 4:3, 1:1, 16:9 y Máx. */
   object-fit: contain;
 }
+/* Con «Pantalla» el recorte YA es el de la ventana; `cover` sólo absorbe la
+   milésima que deja el redondeo a píxeles enteros, que si no se ve como una
+   banda negra de un par de píxeles. */
+.view--camera.is-screenfit .cam__canvas { object-fit: cover; }
 .cam__video { display: none; }
 
 .cam__stage.is-flashing::after {
@@ -320,7 +323,7 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 
 .campanel {
   border-radius: 16px; overflow: hidden;
-  background: rgba(18, 19, 23, 0.9);
+  background: rgba(18, 19, 23, 0.78);
   backdrop-filter: saturate(150%) blur(20px);
   -webkit-backdrop-filter: saturate(150%) blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -346,6 +349,7 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .campanel__row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .campanel__label { font-size: 12px; color: var(--text-dim); flex: 0 0 auto; }
 .campanel__row .slider__input { flex: 1; min-width: 0; }
+.campanel__row .slider__track { height: 34px; }
 .campanel__value {
   font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums;
   min-width: 58px; text-align: right; flex: 0 0 auto;
@@ -447,7 +451,9 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   position: absolute; top: 0; left: 0; right: 0; z-index: 6;
   display: flex; align-items: center; gap: 8px;
   padding: calc(7px + env(safe-area-inset-top)) 12px 8px;
-  background: linear-gradient(rgba(11, 12, 14, 0.94) 62%, transparent);
+  background: linear-gradient(rgba(11, 12, 14, 0.82), rgba(11, 12, 14, 0.55) 62%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 .lab__id { display: grid; min-width: 0; flex: 1; }
 .lab__title { font-size: 14px; font-weight: 600; line-height: 1.2; }
@@ -459,17 +465,26 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .lab__stage { position: absolute; inset: 0; }
 .lab__frame {
   position: absolute;
-  /* El hueco libre entre la barra y los ajustes. Al plegarlos crece, y el
-     lienzo se recoloca para llenarlo. */
+  /* La imagen ocupa TODO el hueco y no se mueve. Antes su altura dependía del
+     panel abierto, así que la foto saltaba de tamaño al cambiar de pestaña —
+     justo cuando se está mirando un color. Ahora los ajustes flotan encima con
+     transparencia y la imagen se queda quieta debajo. */
   top: calc(48px + env(safe-area-inset-top));
   left: 4px; right: 4px;
-  bottom: calc(var(--lab-panels) + var(--tab-h) + 4px);
-  transition: bottom 0.28s var(--ease);
+  bottom: calc(var(--tab-h) + 4px);
 }
 .lab__canvas {
   position: absolute; display: block;
   box-shadow: 0 6px 34px rgba(0, 0, 0, 0.55);
   touch-action: none;
+}
+/* Sin esto no se sabe cuál de las dos versiones se está mirando. */
+.lab__comparetag {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+  z-index: 3; padding: 4px 12px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(8px);
+  font-size: 10px; letter-spacing: 0.14em; color: var(--accent);
+  pointer-events: none;
 }
 .lab__empty {
   position: absolute; inset: 0; display: grid; place-content: center;
@@ -544,10 +559,13 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .panels {
   position: absolute; left: 0; right: 0; bottom: var(--tab-h); z-index: 5;
   display: flex; flex-direction: column;
-  background: rgba(22, 24, 29, 0.96);
-  backdrop-filter: saturate(150%) blur(18px);
-  -webkit-backdrop-filter: saturate(150%) blur(18px);
-  border-top: 1px solid var(--line);
+  /* Translúcido a propósito: la foto sigue viéndose debajo mientras se ajusta,
+     que es de lo que va editar. El desenfoque mantiene el texto legible sobre
+     cualquier imagen. */
+  background: rgba(16, 18, 22, 0.72);
+  backdrop-filter: saturate(160%) blur(26px);
+  -webkit-backdrop-filter: saturate(160%) blur(26px);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 /* Tirador: la forma directa de dejar la imagen sola. */
@@ -633,7 +651,18 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .slider.is-modified .slider__label { color: var(--text); }
 .slider.is-modified .slider__value { color: var(--accent); }
 
-.slider__track { position: relative; height: 30px; display: flex; align-items: center; }
+.slider__track {
+  position: relative; height: 30px; display: flex; align-items: center;
+  flex: 1; min-width: 0;
+  --pos: 0.5; --origin: 0.5;
+}
+/* Marca del valor neutro: dice a dónde volver sin tener que recordarlo. */
+.slider__tick {
+  position: absolute; top: 50%; margin-top: -5px;
+  left: calc(var(--origin) * 100%);
+  width: 2px; height: 10px; margin-left: -1px; border-radius: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
 .slider__track::before {
   content: ''; position: absolute; left: 0; right: 0; height: 3px;
   border-radius: 2px; background: var(--line);
@@ -847,6 +876,77 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .gallery__empty p { max-width: 34ch; }
 .gallery__emptyactions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .chiprow--filters { padding: 0 14px 8px; }
+
+/* ── Visor a pantalla completa ──────────────────────────────────────────
+   Arranca limpio, con la foto sobre negro y nada más. Un toque saca los tres
+   botones que hacen falta y otro los quita.                                 */
+
+.viewer {
+  /* Por encima de la barra de pestañas (40) y de las hojas (100 las cubre a su
+     vez), porque mientras se mira una foto no hay nada más que hacer. */
+  position: fixed; inset: 0; z-index: 90;
+  background: #000;
+  display: grid;
+}
+body.is-viewing { overflow: hidden; }
+
+.viewer__stage {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  touch-action: pan-y;
+}
+.viewer__media {
+  max-width: 100%; max-height: 100%;
+  display: block; object-fit: contain;
+  -webkit-touch-callout: default;
+}
+.viewer__loading { display: grid; place-items: center; }
+.viewer__missing { color: var(--text-dim); padding: 24px; text-align: center; }
+
+.viewer__top, .viewer__bottom {
+  position: absolute; left: 0; right: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  transition: opacity 0.22s var(--ease), transform 0.24s var(--ease);
+}
+.viewer__top {
+  top: 0; justify-content: space-between;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 16px;
+  background: linear-gradient(rgba(0, 0, 0, 0.6), transparent);
+}
+.viewer__bottom {
+  bottom: 0; justify-content: space-between;
+  padding: 16px 12px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+}
+.viewer.is-clean .viewer__top { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+.viewer.is-clean .viewer__bottom { opacity: 0; transform: translateY(10px); pointer-events: none; }
+
+.viewer__btn {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 16px; color: #fff;
+  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(10px);
+}
+.viewer__counter {
+  font-size: 12px; color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+  padding: 4px 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.4);
+}
+.viewer__action {
+  display: grid; justify-items: center; gap: 2px;
+  min-width: 74px; min-height: 48px; padding: 4px 8px; border-radius: 12px;
+  color: #fff; font-size: 10.5px;
+  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(10px);
+}
+.viewer__icon { font-size: 16px; line-height: 1; }
+.viewer__caption {
+  display: grid; justify-items: center; gap: 1px; text-align: center;
+  min-width: 0; flex: 1;
+}
+.viewer__dims { font-size: 12px; color: rgba(255, 255, 255, 0.9); font-variant-numeric: tabular-nums; }
+.viewer__meta {
+  font-size: 10px; color: rgba(255, 255, 255, 0.55);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
 
 /* ── Barra de selección ─────────────────────────────────────────────────── */
 

@@ -33,7 +33,7 @@ await page.waitForTimeout(3000);
 console.log('\n── Estilos derivados de propiedades personalizadas ──');
 // La tira de emulsiones vive dentro de su ventana flotante: hay que abrirla.
 await page.locator('.camtool[data-tool="film"]').click();
-await page.waitForTimeout(500);
+await page.waitForTimeout(700);
 const styles = await page.evaluate(() => {
   const sw = document.querySelector('.strip__item[data-film="portra400"] .strip__swatch');
   const bg = sw ? getComputedStyle(sw).backgroundImage : '';
@@ -55,7 +55,67 @@ check('el flujo de la cámara está activo', cam.running && cam.video !== '0x0',
 check('el lienzo renderiza fotogramas', cam.canvas !== '0x0', 'lienzo ' + cam.canvas);
 check('no hay mensaje de error de cámara', cam.message);
 
+console.log('\n── Emulsión de arranque ──');
+const arranque = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  return { id: v.params.film.id, fuerza: v.params.film.strength, mate: v.params.light.matteLow };
+});
+check('la cámara arranca con Vision3 250D puesta',
+  arranque.id === 'vision3_250d', JSON.stringify(arranque));
+const enLab = await page.evaluate(() => window.__lab.views.lab.params.film.id);
+check('el laboratorio NO la impone a las fotos importadas', enLab === 'neutral', enLab);
+
+console.log('\n── Las barras muestran por dónde se desliza ──');
+for (const [tool, etiqueta] of [['exposure', 'Exposición'], ['zoom', 'Zoom']]) {
+  await page.locator(`.camtool[data-tool="${tool}"]`).click();
+  await page.waitForTimeout(400);
+  const via = await page.evaluate(() => {
+    const t = document.querySelector('.campanel .slider__track');
+    if (!t) return null;
+    const cs = getComputedStyle(t, '::before');
+    const relleno = getComputedStyle(t, '::after');
+    return {
+      linea: cs.height,
+      lineaVisible: cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && parseFloat(cs.height) > 0,
+      relleno: relleno.backgroundColor,
+      marca: !!t.querySelector('.slider__tick:not([hidden])'),
+    };
+  });
+  check(`«${etiqueta}» tiene la vía dibujada`, via && via.lineaVisible, JSON.stringify(via));
+  // La marca del neutro sólo aparece cuando el neutro está DENTRO del recorrido:
+  // en el zoom, 1× es el mínimo, y marcarlo ahí sería repetir el extremo.
+  const debeMarcar = tool === 'exposure';
+  check(`«${etiqueta}» ${debeMarcar ? 'marca el valor neutro' : 'no marca un extremo como si fuera neutro'}`,
+    !!via.marca === debeMarcar);
+}
+
+console.log('\n── Gran angular ──');
+const objetivos = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  return { lens: v.lens, tieneUltra: v.hasUltraWide, efectivo: v.effectiveZoom, lenses: v.lenses };
+});
+check('arranca con el objetivo principal', objetivos.lens === 'wide' && objetivos.efectivo === 1);
+// La cámara falsa de Chromium no tiene gran angular, así que se comprueba la
+// lógica: con uno declarado, 0,5× debe aparecer y el factor mostrarse a la mitad.
+const simulado = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  v.lenses = { ultra: 'ultra-fake', wide: 'wide-fake' };
+  const disponible = v.hasUltraWide;
+  v.lens = 'ultra';
+  const factor = v.effectiveZoom;
+  v.zoom = 2;
+  const conZoom = v.effectiveZoom;
+  v.lens = 'wide'; v.zoom = 1; v.lenses = {};
+  return { disponible, factor, conZoom };
+});
+check('con gran angular presente se ofrece 0,5×', simulado.disponible === true);
+check('el 0,5× se muestra como medio aumento', simulado.factor === 0.5, simulado.factor + '×');
+check('y el zoom se compone sobre él', simulado.conZoom === 1, simulado.conZoom + '×');
+
 console.log('\n── Elegir emulsión desde la cámara ──');
+// La tira vive dentro de la ventana de Filtros, y ahora mismo está abierta otra.
+await page.locator('.camtool[data-tool="film"]').click();
+await page.waitForTimeout(600);
 await page.locator('.strip__item[data-film="velvia50"]').click();
 await page.waitForTimeout(500);
 const camFilm = await page.evaluate(() => ({

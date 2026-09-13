@@ -16,8 +16,19 @@
 import { el, clear, toast, haptic } from '../utils/dom.js';
 import { Renderer, renderToBlob } from '../engine/renderer.js';
 import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
+import { rangeTrack } from '../ui/controls.js';
 import { getFilm, FILMS } from '../data/films.js';
 import { library, makeThumb } from '../store/library.js';
+
+/**
+ * Emulsión con la que arranca la cámara.
+ *
+ * Vision3 250D: el negativo de cine equilibrado a luz día. Es deliberadamente
+ * plano, así que da un punto de partida sin imponer un look del que luego haya
+ * que salir. (La línea Vision3 son 50D, 200T, 250D y 500T; no hay una 300D, y
+ * la 250D es la de luz día que le corresponde.)
+ */
+const DEFAULT_FILM = 'vision3_250d';
 
 /**
  * Lado mayor de la previsualización en directo.
@@ -62,13 +73,6 @@ const MIME_CANDIDATES = [
 ];
 
 /**
- * Traduce el fallo a algo accionable.
- *
- * «No se pudo guardar» no le sirve a nadie: quedarse sin espacio, no tener
- * permiso de almacenamiento persistente o un lienzo demasiado grande piden
- * cosas distintas de quien lo sufre.
- */
-/**
  * ¿Estamos dentro del navegador incrustado de otra aplicación?
  *
  * Importa porque es la causa más común de que la cámara no arranque en un
@@ -88,6 +92,13 @@ export function inAppBrowser() {
   return esIOS && /AppleWebKit/.test(ua) && !/Safari|CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
 }
 
+/**
+ * Traduce el fallo a algo accionable.
+ *
+ * «No se pudo guardar» no le sirve a nadie: quedarse sin espacio, no tener
+ * permiso de almacenamiento persistente o un lienzo demasiado grande piden
+ * cosas distintas de quien lo sufre.
+ */
 export function describeSaveError(err) {
   const name = err?.name || '';
   const msg = String(err?.message || err || '');
@@ -113,7 +124,10 @@ function pickMime() {
 export class CameraView {
   constructor(app) {
     this.app = app;
-    this.params = defaultParams();
+    // La cámara arranca con una emulsión puesta, no en neutro: es una cámara de
+    // película, y el visor debe enseñar desde el primer momento a qué se parece
+    // lo que se va a capturar.
+    this.params = applyFilmLook(defaultParams(), getFilm(DEFAULT_FILM));
     this.mode = 'photo';
     this.facing = 'environment';
     this.stream = null;
@@ -134,6 +148,10 @@ export class CameraView {
     this.nativeZoomMax = 1;
     this.flash = 'off';
     this.caps = {};
+    /** Objetivo en uso: 'wide' (principal) o 'ultra' (gran angular). */
+    this.lens = 'wide';
+    /** Objetivos encontrados en el dispositivo, por clave. */
+    this.lenses = {};
     this.immersive = false;
     this.previewMax = previewBudget();
     this._frameTimes = [];
@@ -315,7 +333,8 @@ export class CameraView {
     return el('div', { class: 'campanel__body' },
       this.filmStrip,
       el('div', { class: 'campanel__row' },
-        el('span', { class: 'campanel__label', text: 'Intensidad' }), strength, readout));
+        el('span', { class: 'campanel__label', text: 'Intensidad' }),
+        rangeTrack(strength), readout));
   }
 
   _exposurePanel() {
@@ -333,12 +352,19 @@ export class CameraView {
       this.params.light.exposure = parseFloat(this.evSlider.value);
       paint();
     });
+    const track = rangeTrack(this.evSlider, { center: 0 });
     return el('div', { class: 'campanel__body' },
       el('div', { class: 'campanel__row' },
-        el('span', { class: 'campanel__label', text: 'Exposición' }), this.evSlider, readout),
+        el('span', { class: 'campanel__label', text: 'Exposición' }), track, readout),
       el('button', {
         type: 'button', class: 'linkbtn', text: 'Volver a 0 EV',
-        onclick: () => { this.params.light.exposure = 0; this.evSlider.value = 0; paint(); haptic(); },
+        onclick: () => {
+          this.params.light.exposure = 0;
+          this.evSlider.value = 0;
+          track.refresh();
+          paint();
+          haptic();
+        },
       }));
   }
 
@@ -347,23 +373,42 @@ export class CameraView {
       type: 'range', class: 'slider__input', min: 1, max: this.zoomMax, step: 0.05,
       value: this.zoom, 'aria-label': 'Zoom',
     });
-    this.zoomReadout = el('span', { class: 'campanel__value', text: this.zoom.toFixed(1) + '×' });
     this.zoomSlider.addEventListener('input', () => this.setZoom(parseFloat(this.zoomSlider.value)));
+    this.zoomTrack = rangeTrack(this.zoomSlider, { center: 1 });
+    this.zoomReadout = el('span', { class: 'campanel__value', text: this.effectiveZoom.toFixed(1) + '×' });
 
-    const pasos = [1, 2, 3, 5].filter((v) => v <= this.zoomMax);
+    // Los objetivos van primero: el 0,5× no es un valor del deslizador, es otra
+    // cámara, y mezclarlos en la misma escala mentiría sobre lo que ocurre.
+    const objetivos = [
+      this.hasUltraWide ? { key: 'ultra', label: '0,5×', sub: 'Gran angular' } : null,
+      { key: 'wide', label: '1×', sub: 'Principal' },
+    ].filter(Boolean);
+
+    this.lensRow = el('div', { class: 'campanel__chips' },
+      objetivos.map((o) => el('button', {
+        type: 'button', class: 'chip chip--stacked' + (o.key === this.lens && this.zoom === 1 ? ' is-active' : ''),
+        dataset: { lens: o.key },
+        onclick: () => { this.setLens(o.key); this.setZoom(1); },
+      }, el('span', { class: 'chip__label', text: o.label }), el('span', { class: 'chip__sub', text: o.sub }))));
+
+    const pasos = [2, 3, 5].filter((v) => v <= this.zoomMax);
     const nativo = this.nativeZoomMax > 1
       ? `El sensor acerca hasta ${this.nativeZoomMax.toFixed(1)}×; más allá se recorta y se pierde detalle.`
-      : 'Este navegador no expone el zoom del sensor, así que se acerca recortando: se pierde detalle. Se captura del fotograma completo, no de la previsualización.';
+      : 'Este navegador no expone el zoom del sensor, así que se acerca recortando y se pierde detalle. Se recorta del fotograma completo, no de la previsualización.';
+    const sinUltra = !this.hasUltraWide && this.facing === 'environment'
+      ? ' No se ha encontrado gran angular en este dispositivo.'
+      : '';
 
     return el('div', { class: 'campanel__body' },
+      this.lensRow,
       el('div', { class: 'campanel__row' },
-        el('span', { class: 'campanel__label', text: 'Zoom' }), this.zoomSlider, this.zoomReadout),
+        el('span', { class: 'campanel__label', text: 'Zoom' }), this.zoomTrack, this.zoomReadout),
       el('div', { class: 'campanel__chips' },
         pasos.map((v) => el('button', {
           type: 'button', class: 'chip', text: v + '×',
-          onclick: () => { this.setZoom(v); this.zoomSlider.value = v; },
+          onclick: () => { this.setLens('wide'); this.setZoom(v); },
         }))),
-      el('p', { class: 'campanel__note', text: nativo + ' También puedes pellizcar sobre la imagen.' }));
+      el('p', { class: 'campanel__note', text: nativo + sinUltra + ' También puedes pellizcar sobre la imagen.' }));
   }
 
   _flashPanel() {
@@ -462,6 +507,53 @@ export class CameraView {
     return el('div', { class: 'campanel__body' }, row, note);
   }
 
+  /* ────────────────────────────── Objetivos ──────────────────────────── */
+
+  /**
+   * Busca el gran angular entre las cámaras del dispositivo.
+   *
+   * El 0,5× de un iPhone no es zoom: es OTRA cámara, con su propio objetivo. No
+   * hay restricción de zoom que lleve hasta ella — hay que pedirla por su
+   * identificador. Las etiquetas sólo aparecen después de conceder el permiso,
+   * así que esto se hace con el flujo ya abierto.
+   */
+  async _discoverLenses() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const camaras = devices.filter((d) => d.kind === 'videoinput');
+      const traseras = camaras.filter((d) => !/front|frontal|facetime/i.test(d.label));
+      const ultra = traseras.find((d) => /ultra|gran ?angular|0[.,]5/i.test(d.label));
+      const principal = traseras.find((d) => d !== ultra);
+      this.lenses = { ultra: ultra?.deviceId || null, wide: principal?.deviceId || null };
+      if (this.openPanelKey === 'zoom') this.openPanel('zoom');
+    } catch {
+      this.lenses = {};
+    }
+  }
+
+  get hasUltraWide() { return !!this.lenses.ultra && this.facing === 'environment'; }
+
+  /** Factor tal y como lo entiende quien mira: el gran angular es 0,5×. */
+  get effectiveZoom() { return (this.lens === 'ultra' ? 0.5 : 1) * this.zoom; }
+
+  async setLens(key) {
+    if (this.lens === key) return;
+    if (key === 'ultra' && !this.hasUltraWide) return;
+    const anterior = this.lens;
+    this.lens = key;
+    this.zoom = 1;
+    this.digitalZoom = 1;
+    haptic();
+    try {
+      await this._openStream();
+      this._showZoomBadge();
+    } catch {
+      this.lens = anterior;
+      toast('No se pudo cambiar de objetivo', { error: true });
+    }
+    if (this.openPanelKey === 'zoom') this.openPanel('zoom');
+  }
+
   /* ─────────────────────────────── Zoom ──────────────────────────────── */
 
   /**
@@ -506,13 +598,18 @@ export class CameraView {
   }
 
   _showZoomBadge() {
-    this.badge.textContent = this.zoom.toFixed(1).replace(/\.0$/, '') + '×'
+    this.badge.textContent = this.effectiveZoom.toFixed(1).replace(/\.0$/, '') + '×'
+      + (this.lens === 'ultra' ? ' · gran angular' : '')
       + (this.zoom > this.zoomNativeLimit + 1e-3 ? ' · recorte' : '');
     this.badge.classList.remove('is-hidden');
     clearTimeout(this._badgeTimer);
     this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1400);
     if (this.zoomSlider) this.zoomSlider.value = this.zoom;
-    if (this.zoomReadout) this.zoomReadout.textContent = this.zoom.toFixed(1) + '×';
+    this.zoomTrack?.refresh?.();
+    if (this.zoomReadout) this.zoomReadout.textContent = this.effectiveZoom.toFixed(1) + '×';
+    for (const b of this.lensRow?.children || []) {
+      b.classList.toggle('is-active', b.dataset.lens === this.lens && this.zoom === 1);
+    }
   }
 
   /* ─────────────────────────────── Flash ─────────────────────────────── */
@@ -622,6 +719,18 @@ export class CameraView {
     haptic();
   }
 
+  /**
+   * Con el encuadre «Pantalla», el lienzo se recorta a la proporción de la
+   * ventana, pero al redondear a píxeles enteros queda una diferencia de
+   * milésimas — suficiente para dejar una banda negra de un par de píxeles
+   * arriba y abajo. `cover` se come esa milésima y la imagen llena de verdad.
+   * En los demás encuadres se mantiene `contain`, porque ahí las bandas son
+   * intencionadas: enseñan el fotograma entero.
+   */
+  _applyFitMode() {
+    this.root?.classList.toggle('is-screenfit', this.aspect === 'screen');
+  }
+
   _applyAspect() {
     const def = ASPECTS.find((a) => a.key === this.aspect) || ASPECTS[0];
     const vw = this.video.videoWidth, vh = this.video.videoHeight;
@@ -649,6 +758,7 @@ export class CameraView {
     }
     // El zoom que no da el sensor se consigue estrechando este mismo recorte.
     this._applyDigitalZoomToCrop();
+    this._applyFitMode();
     this._updateResLabel();
   }
 
@@ -777,6 +887,13 @@ export class CameraView {
         frameRate: { ideal: 30 },
       },
     };
+    // El gran angular es otra cámara física: se pide por identificador, porque
+    // ninguna restricción de zoom lleva hasta ella.
+    const elegido = this.lenses?.[this.lens];
+    if (elegido && this.facing === 'environment') {
+      constraints.video.deviceId = { exact: elegido };
+      delete constraints.video.facingMode;
+    }
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -813,6 +930,7 @@ export class CameraView {
       });
     }
     this.streamDead = false;
+    this._discoverLenses();
     this._applyZoomCapabilities();
     this._applyAspect();
     this._applyFlashToTrack();

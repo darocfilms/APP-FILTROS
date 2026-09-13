@@ -82,16 +82,22 @@ agrupadas por función, y se esconden con el mismo gesto que las abre.
 |---|---|
 | **Filtros** | Las 19 emulsiones e intensidad, en directo sobre el visor |
 | **Exposición** | Compensación en diafragmas reales |
-| **Zoom** | Deslizador y pasos rápidos; también pellizcando sobre la imagen |
+| **Zoom** | Objetivos, deslizador y pasos rápidos; también pellizcando sobre la imagen |
 | **Flash** | Apagado, linterna o destello de pantalla |
 | **Dimensiones** | Encuadre, con los megapíxeles que cuesta cada uno |
 | **Guías** | Cuadrícula de tercios |
 | **Voltear** | Espejo de la imagen |
 | **Cambiar** | Frontal o trasera |
 
-**Zoom.** Cuando el dispositivo expone el zoom del sensor se usa primero, porque
-es zoom real y no pierde detalle; a partir de ahí se sigue recortando, y entonces
-sí se pierde. El panel dice cuál de las dos cosas está pasando, y los
+**Zoom.** El 0,5× no es zoom: es **otra cámara**, con su propio objetivo, y no
+hay restricción que lleve hasta ella — hay que pedirla por su identificador. La
+aplicación busca el gran angular entre las cámaras del dispositivo y lo ofrece
+como objetivo aparte, no como un valor del deslizador, porque mezclarlos en la
+misma escala mentiría sobre lo que ocurre.
+
+A partir de 1×, cuando el dispositivo expone el zoom del sensor se usa primero,
+porque es zoom real y no pierde detalle; más allá se recorta, y entonces sí se
+pierde. El panel dice cuál de las dos cosas está pasando, y los
 megapíxeles anunciados descuentan el recorte en lugar de prometer un detalle que
 la foto no va a tener.
 
@@ -148,11 +154,15 @@ Diez paneles de ajustes:
 | **Viñeta** | Cantidad, punto medio, suavizado, redondez |
 | **Encuadre** | Recorte con proporciones, giro, enderezado, espejo |
 
-La imagen es el objeto de trabajo y ocupa la pantalla: la barra y los ajustes
-flotan encima, y el lienzo se coloca en el hueco libre para que nunca quede
-tapado. El reparto lo decides tú — arrastra el tirador de los ajustes, o toca la
-pestaña activa para plegarlos y dejar la imagen a pantalla completa. La altura
-que elijas se recuerda.
+La imagen se queda **quieta** al fondo y los ajustes flotan encima con
+transparencia. Antes su tamaño dependía del panel abierto, así que la foto
+saltaba al cambiar de pestaña — justo cuando estás mirando un color. Ahora no se
+mueve ni un píxel: plegar los ajustes revela lo que tapaban, sin recolocar nada.
+
+Para comparar hay dos gestos, porque sirven para cosas distintas: **mantener
+pulsada** la imagen da un vistazo al original mientras mueves un deslizador, y
+el botón **◐** lo deja fijo para mirarlo con calma. Una etiqueta dice cuál de las
+dos versiones estás viendo.
 
 El proxy de edición se dimensiona según la pantalla: en un panel de densidad 3×
 un proxy fijo de 1600 px se ve blando cuando la imagen ocupa toda la altura.
@@ -163,6 +173,13 @@ imagen, histograma superpuesto y presets propios.
 Los ajustes se guardan junto al archivo: al reabrirlo sigue donde lo dejaste.
 
 ### Biblioteca
+
+Tocar una miniatura abre un **visor a pantalla completa**: la foto sobre negro y
+nada más. Un toque saca los tres botones que hacen falta —cerrar, abrir en el
+laboratorio, guardar en el dispositivo— y otro los quita. Se desliza en
+horizontal para pasar de una a otra, y se carga un archivo cada vez: con doce
+megapíxeles por imagen, mantener varias abiertas es la forma más rápida de que
+Safari cierre la pestaña.
 
 La carpeta local por dentro. Miniaturas, espacio ocupado, y para cada archivo:
 abrir en el laboratorio, guardar en el dispositivo o eliminar.
@@ -333,13 +350,29 @@ escala sin amputarla, así que nunca recorta.
 ### Emulsiones
 
 **Negativo color** — Portra 400, Portra 800, Gold 200, Ektar 100,
-Superia X-TRA 400, Pro 400H, Vista Plus 200
-**Diapositiva** — Velvia 50, Provia 100F, Kodachrome 64
-**Cine** — Vision3 250D, Vision3 500T, CineStill 800T
+Superia X-TRA 400, Pro 400H, Vista Plus 200, Reala 100, Pro 160NS,
+Fujicolor C200, Natura 1600
+**Diapositiva** — Velvia 50, Provia 100F, Astia 100F, Kodachrome 64
+**Cine** — Vision3 250D, Vision3 500T, CineStill 800T, Eterna 250D
+**Copia de cine** — Vision Premier 2383, Vision Premier 2393
 **Blanco y negro** — Tri-X 400, HP5 Plus 400, Delta 3200
 **Instantánea** — Polaroid 600
 **Creativa** — LomoChrome Purple
 **Referencia** — Neutro digital (identidad exacta, verificada al bit)
+
+Dos añadidos merecen una nota, porque son casos límite del modelo:
+
+**Vision Premier 2383** es película de *copia*, no de cámara: lo que se proyecta
+en una sala. Su firma es el cruce que da nombre al «teal and orange», y aquí
+sale de la propia curva, no de un tinte pegado encima — el pie del rojo es el
+más duro, así que las sombras pierden rojo antes y viran a cian, y es el primero
+en llegar al blanco, de ahí las luces cálidas. Medido: R−B vale −0,019 en
+sombras y +0,028 en altas luces.
+
+**Reala 100** es la contraria: la emulsión de la cuarta capa sensible al cian,
+hecha para acertar el color bajo luz mezclada. Fidelidad significa aquí que los
+tres canales van casi juntos, y se ve en el número — su crossover es de 0,003 a
+0,005 en toda la escala, veinte veces menor que el de la 2383.
 
 ---
 

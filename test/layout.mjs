@@ -71,10 +71,17 @@ check('lo capturado tiene la proporción de la pantalla',
   Math.abs(camState.lienzo - camState.pantalla) < 0.02,
   'lienzo ' + camState.lienzo.toFixed(3) + ' vs pantalla ' + camState.pantalla.toFixed(3));
 
-const cam = await painted('.cam__canvas');
+const cubre = await page.evaluate(() => {
+  const c = document.querySelector('.cam__canvas');
+  const r = c.getBoundingClientRect();
+  return {
+    w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight,
+    fit: getComputedStyle(c).objectFit,
+  };
+});
 check('la imagen cubre la pantalla entera, sin bandas',
-  cam && cam.w >= cam.vw - 1 && cam.h >= cam.vh - 1,
-  cam ? cam.w + '×' + cam.h + ' sobre ' + cam.vw + '×' + cam.vh : 'sin lienzo');
+  cubre.w >= cubre.vw - 1 && cubre.h >= cubre.vh - 1 && cubre.fit === 'cover',
+  `${cubre.w}×${cubre.h} sobre ${cubre.vw}×${cubre.vh}, object-fit: ${cubre.fit}`);
 
 // «Máx» debe seguir existiendo para quien quiera el sensor íntegro.
 await page.locator('.camtool[data-tool="size"]').click();
@@ -125,7 +132,10 @@ const oculto = await page.evaluate(() => ({
 }));
 check('tocar la imagen esconde los mandos', oculto.hud === '0', 'opacidad ' + oculto.hud);
 check('queda un asidero para recuperarlos', oculto.reveal === '1');
-const limpio = await painted('.cam__canvas');
+const limpio = await page.evaluate(() => {
+  const r = document.querySelector('.cam__canvas').getBoundingClientRect();
+  return { w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight };
+});
 check('la imagen sigue cubriendo la pantalla sin mandos',
   limpio.w >= limpio.vw - 1 && limpio.h >= limpio.vh - 1, limpio.w + '×' + limpio.h);
 await page.locator('.cam__reveal').click();
@@ -161,29 +171,44 @@ check('el proxy se adapta a la densidad de pantalla',
   proxy.w + '×' + proxy.h + ' con dpr ' + proxy.dpr);
 
 const abierto = await painted('.lab__canvas');
-check('con los ajustes abiertos la imagen ya ocupa la mayor parte del ancho',
-  abierto.w >= abierto.vw * 0.8, abierto.w + '×' + abierto.h + ' (' + Math.round(abierto.w / abierto.vw * 100) + '% del ancho)');
+check('la imagen ocupa casi todo el ancho de la pantalla',
+  abierto.w >= abierto.vw * 0.92, abierto.w + '×' + abierto.h + ' (' + Math.round(abierto.w / abierto.vw * 100) + '% del ancho)');
 check('la imagen es más alta que el panel de ajustes',
   abierto.h > await page.evaluate(() => document.querySelector('.panels').getBoundingClientRect().height),
   'imagen ' + abierto.h + ' px');
 
-// Plegar debe AGRANDAR la imagen. Es la comprobación que atrapó el fallo de
-// medir el hueco a mitad de la transición: entonces encogía.
+/* La imagen tiene que quedarse QUIETA: los ajustes flotan encima con
+   transparencia, y plegarlos revela lo que tapaban sin mover ni un píxel de la
+   foto. Antes cambiaba de tamaño al cambiar de pestaña, justo cuando se está
+   mirando un color. */
+const caja = () => page.evaluate(() => {
+  const r = document.querySelector('.lab__canvas').getBoundingClientRect();
+  return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+});
+const antesDePlegar = await caja();
 await page.locator('.panels__grab').click();
 await page.waitForTimeout(900);
-const plegado = await painted('.lab__canvas');
-check('plegar los ajustes agranda la imagen',
-  plegado.w > abierto.w && plegado.h > abierto.h,
-  abierto.w + '×' + abierto.h + ' → ' + plegado.w + '×' + plegado.h);
-check('plegado, la imagen llena el ancho',
-  plegado.w >= plegado.vw * 0.95, Math.round(plegado.w / plegado.vw * 100) + '%');
+const plegado = await caja();
+check('plegar los ajustes NO mueve ni redimensiona la imagen',
+  JSON.stringify(plegado) === JSON.stringify(antesDePlegar),
+  JSON.stringify(antesDePlegar) + ' → ' + JSON.stringify(plegado));
 await page.screenshot({ path: SHOT + '/layout-lab-plegado.png' });
 
 await page.locator('.panels__grab').click();
 await page.waitForTimeout(900);
-const vuelto = await painted('.lab__canvas');
-check('desplegar devuelve el reparto anterior',
-  Math.abs(vuelto.w - abierto.w) <= 2, vuelto.w + ' vs ' + abierto.w);
+check('desplegar tampoco la mueve',
+  JSON.stringify(await caja()) === JSON.stringify(antesDePlegar));
+
+// Y los ajustes dejan ver la foto a través.
+const transparencia = await page.evaluate(() => {
+  const cs = getComputedStyle(document.querySelector('.panels'));
+  const m = cs.backgroundColor.match(/[\d.]+/g) || [];
+  return { alfa: parseFloat(m[3] ?? '1'), blur: cs.backdropFilter || cs.webkitBackdropFilter };
+});
+check('los ajustes son translúcidos sobre la foto',
+  transparencia.alfa < 0.85, 'alfa ' + transparencia.alfa);
+check('y desenfocan lo que hay detrás para seguir siendo legibles',
+  /blur/.test(transparencia.blur), transparencia.blur);
 
 // Ningún panel puede desbordar horizontalmente.
 console.log('\n── Ningún panel desborda su caja ──');

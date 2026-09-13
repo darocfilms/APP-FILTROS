@@ -10,6 +10,7 @@ import { el, clear, toast, haptic, confirmDialog } from '../utils/dom.js';
 import { library, formatBytes } from '../store/library.js';
 import { timestampName } from '../utils/share.js';
 import { getFilm } from '../data/films.js';
+import { Viewer } from '../ui/viewer.js';
 
 export class LibraryView {
   constructor(app) {
@@ -62,6 +63,15 @@ export class LibraryView {
           type: 'button', class: 'linkbtn linkbtn--danger', text: 'Vaciar la carpeta local',
           onclick: () => this._clearAll(),
         })));
+
+    this.viewer = new Viewer({
+      onEdit: (item) => { this.viewer.close(); this.app.openInLab(item); },
+      onSave: (item) => { this.viewer.close(); this._download(item); },
+    });
+    // Va al body, no dentro de la vista: es una capa modal a pantalla completa,
+    // y colgando de una vista con scroll acababa por debajo de la barra de
+    // pestañas, que le comía los botones de abajo.
+    document.body.append(this.viewer.root);
 
     library.addEventListener('change', () => { if (this.app.current === 'library') this.render(); });
   }
@@ -275,9 +285,18 @@ export class LibraryView {
     return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
   }
 
+  /**
+   * Tocar una miniatura abre el visor, no el laboratorio.
+   *
+   * Casi siempre lo que se quiere es MIRAR la foto; editarla es una decisión
+   * posterior, y desde el visor está a un botón. Mandar directo al laboratorio
+   * obligaba a cargar el proxy y montar los paneles para algo que a menudo era
+   * sólo un vistazo.
+   */
   _openItem(item) {
     haptic();
-    this.app.openInLab(item);
+    const visibles = this._shown();
+    this.viewer.open(visibles, visibles.findIndex((i) => i.id === item.id));
   }
 
   _actions(item) {

@@ -44,6 +44,8 @@ export class LabView {
     this.history = [];
     this.historyAt = -1;
     this.comparing = false;
+    /** Antes/después fijado con el botón, frente al de mantener pulsado. */
+    this.compareLocked = false;
     this.collapsed = false;
     this.exportOpts = { size: 'full', format: 'image/jpeg', quality: 0.95 };
 
@@ -65,6 +67,7 @@ export class LabView {
 
     this.undoBtn = this._iconBtn('↺', 'Deshacer', () => this.undo());
     this.redoBtn = this._iconBtn('↻', 'Rehacer', () => this.redo());
+    this.compareBtn = this._iconBtn('◐', 'Ver el antes', () => this.toggleCompare());
     this.histBtn = this._iconBtn('▟', 'Histograma', (e) => {
       const on = this.histogram.root.classList.toggle('is-visible');
       e.currentTarget.classList.toggle('is-active', on);
@@ -73,7 +76,10 @@ export class LabView {
     });
 
     this.stage = el('div', { class: 'lab__stage' },
-      el('div', { class: 'lab__frame' }, this.canvas, this.crop.root, this.histogram.root),
+      el('div', { class: 'lab__frame' },
+        this.canvas,
+        this.compareTag = el('span', { class: 'lab__comparetag', text: 'ANTES', hidden: true }),
+        this.crop.root, this.histogram.root),
       el('div', { class: 'lab__empty' },
         el('p', { text: 'Abre una foto de la biblioteca o importa una del dispositivo.' }),
         el('div', { class: 'lab__emptyactions' },
@@ -99,7 +105,7 @@ export class LabView {
       el('header', { class: 'lab__bar' },
         el('div', { class: 'lab__id' }, this.title, this.subtitle),
         el('div', { class: 'lab__actions' },
-          this.undoBtn, this.redoBtn, this.histBtn,
+          this.undoBtn, this.redoBtn, this.compareBtn, this.histBtn,
           this._iconBtn('⤓', 'Presets', () => this._openPresets()),
           el('button', {
             type: 'button', class: 'btn btn--primary lab__export',
@@ -115,10 +121,9 @@ export class LabView {
     });
     this._panelsRO.observe(this.panels.root);
 
-    // Y el lienzo se recoloca observando el HUECO, no los paneles: el hueco
-    // cambia de tamaño con una transición, así que medirlo una sola vez al
-    // soltar el panel daba un tamaño intermedio y la imagen se quedaba
-    // encogida. Observándolo, cada paso de la animación recoloca.
+    // El hueco de la imagen ya no depende del alto de los paneles —la imagen se
+    // queda quieta y ellos flotan encima—, pero sigue cambiando al girar el
+    // teléfono o al abrir el recorte, así que se observa igual.
     this._frameRO = new ResizeObserver(() => this._layout());
     this._frameRO.observe(this.stage.querySelector('.lab__frame'));
     return root;
@@ -150,12 +155,35 @@ export class LabView {
     }, glyph);
   }
 
-  /** Mantener pulsada la imagen muestra el original sin revelar. */
+  /**
+   * Antes/después.
+   *
+   * Dos gestos para lo mismo, porque sirven para cosas distintas: mantener
+   * pulsada la imagen da un vistazo rápido mientras se mueve un deslizador, y
+   * el botón lo deja fijo para compararlo con calma. La etiqueta evita la duda
+   * de cuál de las dos se está mirando.
+   */
   _bindCompare() {
-    const on = () => { if (this.proxy && !this.crop.active) { this.comparing = true; this._render(); } };
-    const off = () => { if (this.comparing) { this.comparing = false; this._render(); } };
+    const on = () => { if (this.proxy && !this.crop.active) this._setComparing(true); };
+    const off = () => { if (!this.compareLocked) this._setComparing(false); };
     this.canvas.addEventListener('pointerdown', on);
     for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) this.canvas.addEventListener(ev, off);
+  }
+
+  toggleCompare() {
+    if (!this.proxy) return;
+    this.compareLocked = !this.compareLocked;
+    this.compareBtn.classList.toggle('is-active', this.compareLocked);
+    this.compareBtn.setAttribute('aria-pressed', String(this.compareLocked));
+    this._setComparing(this.compareLocked);
+    haptic();
+  }
+
+  _setComparing(on) {
+    if (this.comparing === on) return;
+    this.comparing = on;
+    this.compareTag.hidden = !on;
+    this._render();
   }
 
   /* ──────────────────────────── Carga de imagen ──────────────────────── */

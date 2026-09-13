@@ -82,6 +82,74 @@ await page.waitForTimeout(1500);
 check('los tres archivos están en la biblioteca',
   await page.locator('.tile').count() === 3, (await page.locator('.tile').count()) + ' miniaturas');
 
+console.log('\n── Visor a pantalla completa ──');
+await page.locator('.tile').first().click();
+await page.waitForFunction(() => !!document.querySelector('.viewer__media'), null, { timeout: 20_000 });
+await page.waitForTimeout(500);
+const visor = await page.evaluate(() => {
+  const v = document.querySelector('.viewer');
+  const m = document.querySelector('.viewer__media');
+  const r = m.getBoundingClientRect();
+  return {
+    abierto: !v.hidden,
+    fondo: getComputedStyle(v).backgroundColor,
+    ocupaAncho: Math.round(r.width) >= innerWidth - 2 || Math.round(r.height) >= innerHeight - 2,
+    editar: !!document.querySelector('.viewer__action'),
+    acciones: [...document.querySelectorAll('.viewer__action')].map((b) => b.textContent.replace(/[^\wÁÉÍÓÚáéíóúñ]/g, '')),
+    contador: document.querySelector('.viewer__counter').textContent,
+  };
+});
+check('el visor se abre a pantalla completa', visor.abierto && visor.ocupaAncho);
+check('sobre negro, sin nada más', visor.fondo === 'rgb(0, 0, 0)', visor.fondo);
+check('con los dos botones justos', visor.acciones.length === 2, visor.acciones.join(' · '));
+check('y dice por cuál vas', /1 \/ 3/.test(visor.contador), visor.contador);
+await page.screenshot({ path: SHOT + '/visor.png' });
+
+// Un toque limpia la pantalla; otro devuelve los mandos.
+await page.locator('.viewer__stage').click({ position: { x: 195, y: 400 } });
+await page.waitForTimeout(400);
+check('tocar deja la foto sin nada encima',
+  await page.evaluate(() => getComputedStyle(document.querySelector('.viewer__bottom')).opacity) === '0');
+await page.locator('.viewer__stage').click({ position: { x: 195, y: 400 } });
+await page.waitForTimeout(400);
+check('y otro toque los devuelve',
+  await page.evaluate(() => getComputedStyle(document.querySelector('.viewer__bottom')).opacity) === '1');
+
+// Pasar de una foto a otra deslizando.
+const antes = await page.evaluate(() => document.querySelector('.viewer__counter').textContent);
+await page.evaluate(() => window.__lab.views.library.viewer.go(1));
+await page.waitForTimeout(900);
+const despues = await page.evaluate(() => document.querySelector('.viewer__counter').textContent);
+check('se pasa de una foto a otra', antes !== despues, antes + ' → ' + despues);
+
+// El botón de laboratorio lleva allí con la foto abierta.
+await page.locator('.viewer__action').first().click();
+await page.waitForFunction(() => !!window.__lab?.views?.lab?.proxy, null, { timeout: 60_000 });
+await page.waitForTimeout(600);
+check('el botón de laboratorio abre esa misma foto',
+  await page.evaluate(() => window.__lab.current === 'lab' && !!window.__lab.views.lab.item));
+check('y el visor se cierra al salir',
+  await page.evaluate(() => document.querySelector('.viewer').hidden === true));
+
+console.log('\n── Antes / después en el laboratorio ──');
+const compara = async () => page.evaluate(() => ({
+  activo: window.__lab.views.lab.comparing,
+  fijado: window.__lab.views.lab.compareLocked,
+  etiqueta: !document.querySelector('.lab__comparetag').hidden,
+}));
+await page.locator('.iconbtn[aria-label="Ver el antes"]').click();
+await page.waitForTimeout(500);
+const conAntes = await compara();
+check('el botón fija el antes', conAntes.activo && conAntes.fijado);
+check('y se ve una etiqueta que lo dice', conAntes.etiqueta);
+await page.locator('.iconbtn[aria-label="Ver el antes"]').click();
+await page.waitForTimeout(500);
+const sinAntes = await compara();
+check('volver a tocarlo devuelve el después', !sinAntes.activo && !sinAntes.etiqueta);
+
+await page.locator('.tabbar__tab[data-tab="library"]').click();
+await page.waitForTimeout(1000);
+
 console.log('\n── Selección múltiple ──');
 await page.locator('.lib__baractions .btn', { hasText: 'Seleccionar' }).click();
 await page.waitForTimeout(400);
@@ -137,8 +205,12 @@ console.log('\n── Exportar del laboratorio conserva la activación ──');
 await page.evaluate(() => { window.__shareLog.length = 0; });
 await page.locator('.lib__baractions .btn', { hasText: 'Hecho' }).click();
 await page.waitForTimeout(300);
+// Tocar una miniatura abre el VISOR; al laboratorio se llega desde su botón.
 await page.locator('.tile').first().click();
-await page.waitForFunction(() => !!window.__lab?.views?.lab?.proxy, null, { timeout: 60_000 });
+await page.waitForFunction(() => !!document.querySelector('.viewer__media'), null, { timeout: 20_000 });
+await page.locator('.viewer__action').first().click();
+await page.waitForFunction(() => window.__lab.current === 'lab' && !!window.__lab.views.lab.proxy,
+  null, { timeout: 60_000 });
 await page.waitForTimeout(800);
 await page.locator('.lab__export').click();
 await page.waitForTimeout(600);

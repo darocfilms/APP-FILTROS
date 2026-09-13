@@ -69,6 +69,38 @@ export function makeSlider(ctrl, value, onChange) {
   return root;
 }
 
+/**
+ * Envuelve un deslizador suelto con la misma vía visible que los del panel.
+ *
+ * Sin la línea, el pulgar flota sobre el fondo y no se ve por dónde puede
+ * moverse ni dónde está el valor neutro. La vía y el relleno desde el origen lo
+ * dicen de un vistazo.
+ *
+ * @param {HTMLInputElement} input
+ * @param {{center?:number}} [opts] valor neutro desde el que se rellena
+ */
+export function rangeTrack(input, { center = null } = {}) {
+  const min = parseFloat(input.min);
+  const max = parseFloat(input.max);
+  const origin = center === null ? min : center;
+  const span = (max - min) || 1;
+
+  const tick = el('span', { class: 'slider__tick', 'aria-hidden': 'true' });
+  const wrap = el('div', { class: 'slider__track' }, tick, input);
+
+  const paint = () => {
+    const v = parseFloat(input.value);
+    wrap.style.setProperty('--pos', (v - min) / span);
+    wrap.style.setProperty('--origin', (origin - min) / span);
+  };
+  input.addEventListener('input', paint);
+  paint();
+  wrap.refresh = paint;
+  // La marca del neutro sólo tiene sentido si no coincide con un extremo.
+  tick.hidden = origin <= min + 1e-9 || origin >= max - 1e-9;
+  return wrap;
+}
+
 export function makeSegmented(options, value, onChange, { label } = {}) {
   const buttons = options.map((opt) =>
     el('button', {

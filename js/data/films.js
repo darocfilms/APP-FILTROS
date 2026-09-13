@@ -375,6 +375,180 @@ export const FILMS = [
     },
   }),
 
+
+  /* ────────────────── Positivo de copia (cine) ─────────────────────── */
+  film({
+    id: 'kodak2383',
+    name: 'Vision Premier 2383',
+    brand: 'Kodak',
+    kind: 'Copia de cine',
+    iso: null,
+    note: 'La película de COPIA, no de cámara: lo que se proyecta en una sala. De aquí sale el contraste de cine, con sombras que tiran a cian y altas luces cálidas.',
+    swatch: ['#1d4d52', '#e0a05a'],
+    curves: {
+      // El pie más duro es el del rojo, así que las sombras pierden rojo antes
+      // y viran a cian; y el blanco lo alcanza primero, de ahí las luces
+      // cálidas. Ese cruce es la firma de la copia proyectada.
+      r: ch(1.62, 2.35, 1.30, { y: +0.006, w: -0.20 }),
+      g: ch(1.58, 2.10, 1.38, { w: -0.10 }),
+      b: ch(1.55, 1.95, 1.45, { y: -0.004, w: +0.02 }),
+    },
+    matrix: [[1.16, -0.11, -0.05], [-0.07, 1.14, -0.07], [-0.05, -0.12, 1.17]],
+    look: {
+      contrast: 0.08, saturation: 0.16, vibrance: 0.04, temp: 40,
+      grade: { shadows: { h: 192, s: 0.10, l: -0.012 }, highs: { h: 32, s: 0.06, l: 0 } },
+      effects: { grain: 0.10, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.12, halation: 0.14, haloThresh: 0.74 },
+    },
+  }),
+
+  film({
+    id: 'kodak2393',
+    name: 'Vision Premier 2393',
+    brand: 'Kodak',
+    kind: 'Copia de cine',
+    iso: null,
+    note: 'La copia de gama alta: mismo idioma que la 2383 pero con menos contraste y más latitud. Sostiene mejor los medios cuando la escena ya es dura.',
+    swatch: ['#2b5b60', '#d8a877'],
+    curves: {
+      r: ch(1.34, 1.95, 1.48, { y: +0.004, w: -0.12 }),
+      g: ch(1.32, 1.80, 1.54, { w: -0.06 }),
+      b: ch(1.30, 1.70, 1.58, { y: -0.002, w: +0.04 }),
+    },
+    matrix: [[1.10, -0.07, -0.03], [-0.05, 1.09, -0.04], [-0.03, -0.08, 1.11]],
+    look: {
+      contrast: 0.03, saturation: 0.10, vibrance: 0.05, temp: 30,
+      grade: { shadows: { h: 196, s: 0.07, l: -0.006 }, highs: { h: 34, s: 0.04, l: 0 } },
+      effects: { grain: 0.09, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.12, halation: 0.11, haloThresh: 0.76 },
+    },
+  }),
+
+  /* ──────────────── Fujifilm: fidelidad de color ───────────────────── */
+  film({
+    id: 'reala100',
+    name: 'Reala 100',
+    brand: 'Fujifilm',
+    kind: 'Negativo color',
+    iso: 100,
+    note: 'La emulsión de la cuarta capa sensible al cian, hecha para acertar el color bajo luz mezclada. Es la más fiel del catálogo: casi no cruza los canales.',
+    swatch: ['#cfd6cf', '#e3c9b4'],
+    curves: {
+      // Fidelidad significa exactamente esto: los tres canales casi iguales, de
+      // modo que apenas hay viraje entre sombras y altas luces.
+      r: ch(1.06, 1.48, 1.66, { y: +0.002 }),
+      g: ch(1.06, 1.46, 1.66 ),
+      b: ch(1.05, 1.50, 1.68, { y: -0.002, w: +0.03 }),
+    },
+    matrix: [[1.03, -0.02, -0.01], [-0.02, 1.03, -0.01], [-0.01, -0.02, 1.03]],
+    look: {
+      saturation: 0.02, vibrance: 0.07, temp: -30,
+      effects: { grain: 0.11, grainSize: 0.95, grainRough: 0.4, grainChroma: 0.14, halation: 0.07, haloThresh: 0.80 },
+    },
+  }),
+
+  film({
+    id: 'pro160ns',
+    name: 'Pro 160NS',
+    brand: 'Fujifilm',
+    kind: 'Negativo color',
+    iso: 160,
+    note: 'Retrato de estudio japonés: contraste bajo, piel exacta y ningún color que levante la voz. Pensada para que el vestido salga del color que era.',
+    swatch: ['#e6d3c4', '#c8d4cc'],
+    curves: {
+      r: ch(0.95, 1.32, 1.78, { y: +0.004, w: +0.08 }),
+      g: ch(0.95, 1.32, 1.78, { w: +0.08 }),
+      b: ch(0.94, 1.36, 1.80, { y: -0.002, w: +0.12 }),
+    },
+    matrix: [[1.01, -0.01, 0.00], [-0.01, 1.02, -0.01], [0.00, -0.01, 1.01]],
+    look: {
+      saturation: -0.06, vibrance: 0.10, temp: 40,
+      grade: { highs: { h: 38, s: 0.03, l: 0 } },
+      effects: { grain: 0.12, grainSize: 1.0, grainRough: 0.4, grainChroma: 0.16, halation: 0.08, haloThresh: 0.78 },
+    },
+  }),
+
+  film({
+    id: 'astia100f',
+    name: 'Astia 100F',
+    brand: 'Fujifilm',
+    kind: 'Diapositiva',
+    iso: 100,
+    note: 'La diapositiva suave de Fuji: la fidelidad de piel de una Provia sin su dureza. Cuando quieres transparencia pero la escena ya tiene bastante contraste.',
+    swatch: ['#dcc4b8', '#8fb6c4'],
+    curves: {
+      r: ch(1.20, 1.70, 1.48, { y: +0.004, w: -0.08 }),
+      g: ch(1.20, 1.70, 1.50, { w: -0.06 }),
+      b: ch(1.21, 1.68, 1.48, { y: +0.002, w: -0.08 }),
+    },
+    matrix: [[1.07, -0.05, -0.02], [-0.04, 1.07, -0.03], [-0.02, -0.05, 1.07]],
+    look: {
+      contrast: 0.02, saturation: 0.05, vibrance: 0.08, temp: -20,
+      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12, halation: 0.06, haloThresh: 0.82 },
+    },
+  }),
+
+  film({
+    id: 'c200',
+    name: 'Fujicolor C200',
+    brand: 'Fujifilm',
+    kind: 'Negativo color',
+    iso: 200,
+    note: 'La de toda la vida en el estante del supermercado. Verdes que tiran a amarillo, cielos limpios y un precio que invitaba a disparar sin pensar.',
+    swatch: ['#7fae5a', '#63a3c4'],
+    curves: {
+      r: ch(1.12, 1.52, 1.58, { y: -0.004, w: +0.06 }),
+      g: ch(1.16, 1.48, 1.54, { y: +0.008, w: -0.06 }),
+      b: ch(1.13, 1.52, 1.56, { w: -0.02 }),
+    },
+    matrix: [[1.07, -0.05, -0.02], [-0.04, 1.08, -0.04], [-0.02, -0.06, 1.08]],
+    look: {
+      saturation: 0.10, vibrance: 0.08, temp: -120, tint: -4,
+      grade: { shadows: { h: 195, s: 0.06, l: 0 }, highs: { h: 90, s: 0.03, l: 0 } },
+      effects: { grain: 0.22, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.28, halation: 0.11, haloThresh: 0.75 },
+    },
+  }),
+
+  film({
+    id: 'natura1600',
+    name: 'Natura 1600',
+    brand: 'Fujifilm',
+    kind: 'Negativo color',
+    iso: 1600,
+    note: 'Hecha para fotografiar de noche sin flash. Cálida, granulada y sorprendentemente limpia de color para lo rápida que es.',
+    swatch: ['#e0a878', '#5f7f9e'],
+    curves: {
+      r: ch(1.02, 1.30, 1.72, { y: +0.010, w: +0.06 }),
+      g: ch(1.00, 1.34, 1.74, { w: +0.08 }),
+      b: ch(0.99, 1.38, 1.76, { y: -0.008, w: +0.14 }),
+    },
+    matrix: [[1.04, -0.03, -0.01], [-0.02, 1.04, -0.02], [-0.01, -0.03, 1.04]],
+    look: {
+      saturation: -0.02, vibrance: 0.12, temp: 180, matteLow: 0.022,
+      grade: { shadows: { h: 210, s: 0.06, l: 0.008 }, highs: { h: 34, s: 0.05, l: 0 } },
+      effects: { grain: 0.42, grainSize: 1.35, grainRough: 0.62, grainChroma: 0.3, halation: 0.20, haloThresh: 0.68 },
+    },
+  }),
+
+  film({
+    id: 'eterna250d',
+    name: 'Eterna 250D',
+    brand: 'Fujifilm',
+    kind: 'Cine',
+    iso: 250,
+    note: 'La respuesta de Fuji a la Vision3: aún más plana y con los verdes algo más fríos. Material de partida para etalonar, no para mirar tal cual.',
+    swatch: ['#a8b2a8', '#8c9caa'],
+    curves: {
+      r: ch(0.82, 1.18, 2.05, { w: +0.32 }),
+      g: ch(0.83, 1.16, 2.05, { y: +0.004, w: +0.30 }),
+      b: ch(0.83, 1.20, 2.06, { y: +0.002, w: +0.32 }),
+    },
+    matrix: [[1.02, -0.01, -0.01], [-0.01, 1.02, -0.01], [-0.01, -0.01, 1.02]],
+    look: {
+      saturation: -0.10, vibrance: 0.06, temp: -60, matteLow: 0.022, matteHigh: 0.975,
+      grade: { shadows: { h: 200, s: 0.05, l: 0.008 } },
+      effects: { grain: 0.13, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.16, halation: 0.09, haloThresh: 0.78 },
+    },
+  }),
+
   /* ────────────────────────── Blanco y negro ───────────────────────── */
   film({
     id: 'trix400',
