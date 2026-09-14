@@ -67,6 +67,7 @@ export class LibraryView {
     this.viewer = new Viewer({
       onEdit: (item) => { this.viewer.close(); this.app.openInLab(item); },
       onSave: (item) => { this.viewer.close(); this._download(item); },
+      onDelete: (item) => this._deleteFromViewer(item),
     });
     // Va al body, no dentro de la vista: es una capa modal a pantalla completa,
     // y colgando de una vista con scroll acababa por debajo de la barra de
@@ -175,6 +176,26 @@ export class LibraryView {
       title: blobs.length > 1 ? `${blobs.length} archivos` : names[0],
       detail: blobs.length > 1 ? `${blobs.length} archivos` : null,
     });
+  }
+
+  /**
+   * Borrado desde el visor: la foto se está mirando a pantalla completa, así
+   * que al confirmarla desaparece y el visor sigue con la siguiente en vez de
+   * cerrarse y devolver a la cuadrícula.
+   */
+  async _deleteFromViewer(item) {
+    if (!item) return;
+    const ok = await confirmDialog(
+      item.kind === 'video'
+        ? '¿Eliminar este vídeo de la carpeta local? No se puede deshacer.'
+        : '¿Eliminar esta foto de la carpeta local? No se puede deshacer.',
+      { confirmLabel: 'Eliminar', danger: true });
+    if (!ok) return;
+    await library.remove(item.id);
+    this.selection.delete(item.id);
+    toast('Eliminado');
+    await this.viewer.dropCurrent();
+    await this.render();
   }
 
   async _deleteSelection() {

@@ -80,7 +80,7 @@ agrupadas por función, y se esconden con el mismo gesto que las abre.
 
 | Grupo | Qué hace |
 |---|---|
-| **Filtros** | Las 19 emulsiones e intensidad, en directo sobre el visor |
+| **Filtros** | Las 27 emulsiones por familias e intensidad, en directo sobre el visor |
 | **Exposición** | Compensación en diafragmas reales |
 | **Zoom** | Objetivos, deslizador y pasos rápidos; también pellizcando sobre la imagen |
 | **Flash** | Apagado, linterna o destello de pantalla |
@@ -88,6 +88,13 @@ agrupadas por función, y se esconden con el mismo gesto que las abre.
 | **Guías** | Cuadrícula de tercios |
 | **Voltear** | Espejo de la imagen |
 | **Cambiar** | Frontal o trasera |
+
+**Las 27, antes de disparar.** El catálogo entero está en el visor, no sólo en
+el laboratorio: una fila de familias arriba —negativo color, diapositiva, cine,
+**copia de cine**, blanco y negro…— y debajo la tira de esa familia. En una tira
+única de veintisiete, las copias de cine quedaban a diez dedos de desplazamiento
+a la derecha; así están a dos toques, y se ve la emulsión puesta antes de
+apretar el botón, que es cuando importa.
 
 **Zoom.** El 0,5× no es zoom: es **otra cámara**, con su propio objetivo, y no
 hay restricción que lleve hasta ella — hay que pedirla por su identificador. La
@@ -143,7 +150,7 @@ Diez paneles de ajustes:
 
 | Panel | Contenido |
 |---|---|
-| **Película** | 19 emulsiones con previsualización real de tu propia foto, e intensidad |
+| **Película** | 27 emulsiones con previsualización real de tu propia foto, e intensidad |
 | **Luz** | Exposición, contraste, altas luces, sombras, blancos, negros, velado |
 | **Color** | Temperatura en kelvin, matiz, intensidad, saturación, rotación de tono, blanco y negro con mezclador de canal |
 | **HSL** | Tono, saturación y luminancia en ocho bandas de color |
@@ -154,8 +161,12 @@ Diez paneles de ajustes:
 | **Viñeta** | Cantidad, punto medio, suavizado, redondez |
 | **Encuadre** | Recorte con proporciones, giro, enderezado, espejo |
 
-La imagen se queda **quieta** al fondo y los ajustes flotan encima con
-transparencia. Antes su tamaño dependía del panel abierto, así que la foto
+La imagen se queda **quieta** al fondo y los ajustes flotan encima **casi
+transparentes**: el velo no lo pone una capa opaca sino un filtro sobre lo que
+hay detrás, así que la foto se sigue viendo entera a través de los mandos y el
+texto se lee igual sobre un cielo blanco que sobre una sombra. Las barras —la de
+pestañas y los raíles de los deslizadores— van al revés, apenas veladas: son
+donde se pulsa a ciegas, y un objetivo que se confunde con la foto se falla. Antes su tamaño dependía del panel abierto, así que la foto
 saltaba al cambiar de pestaña — justo cuando estás mirando un color. Ahora no se
 mueve ni un píxel: plegar los ajustes revela lo que tapaban, sin recolocar nada.
 
@@ -175,8 +186,10 @@ Los ajustes se guardan junto al archivo: al reabrirlo sigue donde lo dejaste.
 ### Biblioteca
 
 Tocar una miniatura abre un **visor a pantalla completa**: la foto sobre negro y
-nada más. Un toque saca los tres botones que hacen falta —cerrar, abrir en el
-laboratorio, guardar en el dispositivo— y otro los quita. Se desliza en
+nada más. Un toque saca los botones que hacen falta —cerrar, abrir en el
+laboratorio, guardar en el dispositivo, borrar— y otro los quita. Borrar
+pregunta antes, y al confirmar el visor sigue con la siguiente en vez de
+devolverte a la cuadrícula: se estaba mirando, no ordenando. Se desliza en
 horizontal para pasar de una a otra, y se carga un archivo cada vez: con doce
 megapíxeles por imagen, mantener varias abiertas es la forma más rápida de que
 Safari cierre la pestaña.
@@ -265,18 +278,18 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 
 | Suite | Qué comprueba |
 |---|---|
-| `engine` | Los seis programas GLSL compilan · las 19 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
+| `engine` | Los seis programas GLSL compilan · las 27 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
 | `flow` | Importar → carpeta local → laboratorio → los diez paneles → aplicar emulsión → deslizadores → deshacer/rehacer → exportar a resolución original y reabrir el JPEG → guardar en biblioteca → recorte 1:1 → persistencia tras recargar |
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
-| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, y ningún panel desborda |
-| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4, y que reabrir una captura no vuelva a aplicar la emulsión. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, el destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
-| `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote y la reserva de mantener pulsado |
+| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
+| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4, y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas y la copia de cine 2383 se pueda elegir antes de disparar. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, el destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
+| `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
 continuidad C¹, monotonía, asíntota del pie) se verifican canal a canal para
-las 19 emulsiones.
+las 27 emulsiones.
 
 `CHROMIUM_PATH` permite apuntar a un Chromium ya instalado en lugar del que
 descarga Playwright.

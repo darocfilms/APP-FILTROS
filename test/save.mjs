@@ -101,7 +101,8 @@ const visor = await page.evaluate(() => {
 });
 check('el visor se abre a pantalla completa', visor.abierto && visor.ocupaAncho);
 check('sobre negro, sin nada más', visor.fondo === 'rgb(0, 0, 0)', visor.fondo);
-check('con los dos botones justos', visor.acciones.length === 2, visor.acciones.join(' · '));
+check('con los tres botones justos', visor.acciones.length === 3, visor.acciones.join(' · '));
+check('y borrar está entre ellos', visor.acciones.includes('Borrar'), visor.acciones.join(' · '));
 check('y dice por cuál vas', /1 \/ 3/.test(visor.contador), visor.contador);
 await page.screenshot({ path: SHOT + '/visor.png' });
 
@@ -278,6 +279,53 @@ check('la hoja servida declara el menú de mantener pulsado de iOS',
 check('nada global lo anula',
   !/(^|\})\s*(html|body|\*)[^{]*\{[^}]*(-webkit-touch-callout:\s*none|user-select:\s*none)/.test(css));
 check('explica qué hacer', /pulsada/.test(longpress.texto), longpress.texto);
+
+console.log('\n── Borrar desde el visor ──');
+await page.locator('.tabbar__tab[data-tab="library"]').click();
+await page.waitForTimeout(1000);
+const habia = await page.locator('.tile').count();
+await page.locator('.tile').first().click();
+await page.waitForFunction(() => !!document.querySelector('.viewer__media'), null, { timeout: 20_000 });
+await page.waitForTimeout(400);
+const borrando = await page.evaluate(() => window.__lab.views.library.viewer.current.id);
+
+await page.locator('.viewer__action--danger').click();
+await page.waitForSelector('.sheet--dialog', { timeout: 10_000 });
+check('borrar pregunta antes, que no se deshace',
+  /Eliminar|eliminar/.test(await page.locator('.sheet__message').textContent()),
+  await page.locator('.sheet__message').textContent());
+// Cancelar no borra nada.
+await page.locator('.sheet--dialog .btn', { hasText: 'Cancelar' }).click();
+await page.waitForTimeout(500);
+check('cancelar deja la foto donde estaba',
+  await page.evaluate(async () => {
+    const { library } = await import('./js/store/library.js');
+    return (await library.list()).length;
+  }) === habia);
+
+await page.locator('.viewer__action--danger').click();
+await page.waitForSelector('.sheet--dialog', { timeout: 10_000 });
+await page.locator('.sheet--dialog .btn--danger').click();
+await page.waitForFunction((n) => document.querySelectorAll('.tile').length === n - 1,
+  habia, { timeout: 20_000 });
+const quedan = await page.evaluate(async () => {
+  const { library } = await import('./js/store/library.js');
+  const items = await library.list();
+  return { n: items.length, ids: items.map((i) => i.id) };
+});
+check('confirmar la quita de la carpeta local',
+  quedan.n === habia - 1 && !quedan.ids.includes(borrando), `${habia} → ${quedan.n}`);
+// Y el visor sigue mirando: pasa a la siguiente en vez de devolver a la rejilla.
+const siguiendo = await page.evaluate(() => {
+  const v = window.__lab.views.library.viewer;
+  return { abierto: !v.root.hidden, restantes: v.items.length, actual: v.current?.id || null };
+});
+check('el visor sigue con la siguiente foto',
+  siguiendo.abierto && siguiendo.restantes === habia - 1 && siguiendo.actual !== borrando,
+  JSON.stringify(siguiendo));
+await page.screenshot({ path: SHOT + '/visor-borrar.png' });
+await page.evaluate(() => window.__lab.views.library.viewer.close());
+await page.waitForTimeout(300);
 
 console.log('\n── Errores de consola ──');
 const real = errors.filter((e) => !/favicon|vibrate/i.test(e));

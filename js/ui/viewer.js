@@ -2,8 +2,8 @@
  * viewer.js — Visor a pantalla completa de la biblioteca.
  *
  * La cuadrícula sirve para encontrar; esto sirve para MIRAR. Por eso arranca
- * limpio: la foto sobre negro y nada más. Un toque saca los tres botones que
- * hacen falta —cerrar, editar, guardar— y otro los quita.
+ * limpio: la foto sobre negro y nada más. Un toque saca los botones que hacen
+ * falta —cerrar, editar, guardar, borrar— y otro los quita.
  *
  * Se carga un archivo cada vez y se suelta al pasar al siguiente: con doce
  * megapíxeles por imagen, mantener varios abiertos es la forma más rápida de
@@ -13,9 +13,19 @@
 import { el, clear, haptic } from '../utils/dom.js';
 import { library } from '../store/library.js';
 
+/**
+ * La papelera va dibujada, no como carácter: el glifo de «borrar» de Unicode
+ * sale como tres letras diminutas en las fuentes del sistema, y un icono que
+ * hay que descifrar no es un icono.
+ */
+const PAPELERA = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" '
+  + 'stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" '
+  + 'aria-hidden="true" focusable="false">'
+  + '<path d="M4 6.5h16M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10.5 10v6M13.5 10v6"/></svg>';
+
 export class Viewer {
   /**
-   * @param {{onEdit:(item)=>void, onSave:(item)=>void}} hooks
+   * @param {{onEdit:(item)=>void, onSave:(item)=>void, onDelete:(item)=>void}} hooks
    */
   constructor(hooks) {
     this.hooks = hooks;
@@ -35,16 +45,24 @@ export class Viewer {
       }, '✕'),
       this.counter);
 
-    this.bottom = el('div', { class: 'viewer__bottom' },
+    // El pie va en dos filas: los datos arriba y los botones abajo. Con tres
+    // acciones, repartirlos a los lados del texto los dejaba del ancho de un
+    // dedo mal puesto.
+    this.actions = el('div', { class: 'viewer__actions' },
       el('button', {
         type: 'button', class: 'viewer__action',
         onclick: (e) => { e.stopPropagation(); this.hooks.onEdit?.(this.current); },
       }, el('span', { class: 'viewer__icon', text: '◑' }), 'Laboratorio'),
-      this.caption,
       el('button', {
         type: 'button', class: 'viewer__action',
         onclick: (e) => { e.stopPropagation(); this.hooks.onSave?.(this.current); },
-      }, el('span', { class: 'viewer__icon', text: '⤓' }), 'Guardar'));
+      }, el('span', { class: 'viewer__icon', text: '⤓' }), 'Guardar'),
+      el('button', {
+        type: 'button', class: 'viewer__action viewer__action--danger',
+        onclick: (e) => { e.stopPropagation(); this.hooks.onDelete?.(this.current); },
+      }, el('span', { class: 'viewer__icon', html: PAPELERA }), 'Borrar'));
+
+    this.bottom = el('div', { class: 'viewer__bottom' }, this.caption, this.actions);
 
     this.root = el('div', {
       class: 'viewer', hidden: true, role: 'dialog', 'aria-modal': 'true',
@@ -80,6 +98,17 @@ export class Viewer {
   toggleChrome() {
     this.chrome = !this.chrome;
     this.root.classList.toggle('is-clean', !this.chrome);
+  }
+
+  /**
+   * Quita del visor la foto que ya no existe y sigue con la siguiente; si era
+   * la última, no queda nada que mirar y se cierra.
+   */
+  async dropCurrent() {
+    this.items.splice(this.index, 1);
+    if (!this.items.length) { this.close(); return; }
+    if (this.index >= this.items.length) this.index = this.items.length - 1;
+    await this._load();
   }
 
   async go(delta) {

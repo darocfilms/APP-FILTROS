@@ -17,7 +17,7 @@ import { el, clear, toast, haptic } from '../utils/dom.js';
 import { Renderer, renderToBlob } from '../engine/renderer.js';
 import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
 import { rangeTrack } from '../ui/controls.js';
-import { getFilm, FILMS } from '../data/films.js';
+import { getFilm, FILMS, filmsByKind } from '../data/films.js';
 import { library, makeThumb } from '../store/library.js';
 
 /**
@@ -128,6 +128,8 @@ export class CameraView {
     // película, y el visor debe enseñar desde el primer momento a qué se parece
     // lo que se va a capturar.
     this.params = applyFilmLook(defaultParams(), getFilm(DEFAULT_FILM));
+    /** Familia de emulsiones visible en la tira; se fija al abrir el panel. */
+    this.stripKind = null;
     this.mode = 'photo';
     this.facing = 'environment';
     this.stream = null;
@@ -319,6 +321,26 @@ export class CameraView {
   }
 
   _filmPanel() {
+    // Con veintitantas emulsiones una tira única obliga a desplazarse a ciegas
+    // hasta el final para llegar a las copias de cine. Los grupos las ponen
+    // todas a dos toques: familia y emulsión.
+    this.filmKinds = filmsByKind();
+    const activa = getFilm(this.params.film.id);
+    if (!this.filmKinds.some((g) => g.kind === this.stripKind)) {
+      this.stripKind = this.filmKinds.some((g) => g.kind === activa.kind)
+        ? activa.kind
+        : this.filmKinds[0].kind;
+    }
+    this.kindRow = el('div', { class: 'campanel__chips' },
+      this.filmKinds.map((g) => el('button', {
+        type: 'button',
+        class: 'chip' + (g.kind === this.stripKind ? ' is-active' : ''),
+        dataset: { kind: g.kind },
+        'aria-pressed': g.kind === this.stripKind,
+        text: g.kind,
+        onclick: () => this.setStripKind(g.kind),
+      })));
+
     this.filmStrip = el('div', { class: 'strip' });
     this._buildStrip();
     const strength = el('input', {
@@ -331,6 +353,7 @@ export class CameraView {
       readout.textContent = Math.round(this.params.film.strength * 100) + '%';
     });
     return el('div', { class: 'campanel__body' },
+      this.kindRow,
       this.filmStrip,
       el('div', { class: 'campanel__row' },
         el('span', { class: 'campanel__label', text: 'Intensidad' }),
@@ -782,10 +805,23 @@ export class CameraView {
     this.resLabel.textContent = `${w}×${h} · ${mp.toFixed(1)} Mpx${completo}`;
   }
 
+  /** Cambia la familia visible en la tira sin tocar la emulsión activa. */
+  setStripKind(kind) {
+    this.stripKind = kind;
+    for (const b of this.kindRow?.children || []) {
+      const on = b.dataset.kind === kind;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    this._buildStrip();
+    haptic();
+  }
+
   _buildStrip() {
     if (!this.filmStrip) return;
     clear(this.filmStrip);
     for (const f of FILMS) {
+      if (this.stripKind && f.kind !== this.stripKind) continue;
       const btn = el('button', {
         type: 'button',
         class: 'strip__item' + (f.id === this.params.film.id ? ' is-active' : ''),
@@ -795,6 +831,10 @@ export class CameraView {
       }, el('span', { class: 'strip__swatch' }), el('span', { class: 'strip__name', text: f.name }));
       this.filmStrip.append(btn);
     }
+    // La emulsión puesta se busca sola: en un grupo de once no debería haber
+    // que desplazarse para ver cuál está activa.
+    const activa = this.filmStrip.querySelector('.is-active');
+    if (activa) requestAnimationFrame(() => activa.scrollIntoView({ inline: 'center', block: 'nearest' }));
   }
 
   setFilm(id) {

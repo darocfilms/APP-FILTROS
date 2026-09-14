@@ -34,6 +34,9 @@ console.log('\n── Estilos derivados de propiedades personalizadas ──');
 // La tira de emulsiones vive dentro de su ventana flotante: hay que abrirla.
 await page.locator('.camtool[data-tool="film"]').click();
 await page.waitForTimeout(700);
+// Y dentro, cada familia tiene su tira: Portra es negativo color.
+await page.locator('.chip[data-kind="Negativo color"]').click();
+await page.waitForTimeout(300);
 const styles = await page.evaluate(() => {
   const sw = document.querySelector('.strip__item[data-film="portra400"] .strip__swatch');
   const bg = sw ? getComputedStyle(sw).backgroundImage : '';
@@ -116,6 +119,8 @@ console.log('\n── Elegir emulsión desde la cámara ──');
 // La tira vive dentro de la ventana de Filtros, y ahora mismo está abierta otra.
 await page.locator('.camtool[data-tool="film"]').click();
 await page.waitForTimeout(600);
+await page.locator('.chip[data-kind="Diapositiva"]').click();
+await page.waitForTimeout(300);
 await page.locator('.strip__item[data-film="velvia50"]').click();
 await page.waitForTimeout(500);
 const camFilm = await page.evaluate(() => ({
@@ -123,6 +128,41 @@ const camFilm = await page.evaluate(() => ({
   sat: window.__lab.views.camera.params.color.saturation,
 }));
 check('la emulsión se aplica en directo', camFilm.id === 'velvia50' && camFilm.sat > 0.2, JSON.stringify(camFilm));
+
+console.log('\n── Todo el catálogo, al alcance del disparo ──');
+// Lo que se puede revelar después tiene que poder verse antes: si una familia
+// no se alcanza desde la cámara, esas emulsiones sólo existen en teoría.
+const familias = await page.evaluate(async () => {
+  const { filmsByKind } = await import('./js/data/films.js');
+  return filmsByKind().map((g) => ({ kind: g.kind, ids: g.items.map((f) => f.id) }));
+});
+let todas = true;
+const faltan = [];
+for (const g of familias) {
+  await page.locator(`.chip[data-kind="${g.kind}"]`).click();
+  await page.waitForTimeout(120);
+  const visibles = await page.evaluate(() =>
+    [...document.querySelectorAll('.strip__item')].map((b) => b.dataset.film));
+  const ok = g.ids.every((id) => visibles.includes(id)) && visibles.length === g.ids.length;
+  if (!ok) { todas = false; faltan.push(g.kind); }
+}
+check('cada familia enseña sus emulsiones y sólo las suyas',
+  todas, faltan.length ? 'fallan: ' + faltan.join(', ') : familias.length + ' familias');
+
+// La copia de cine es el caso que lo motivó: al final de un catálogo de 27,
+// en una tira única quedaba fuera de la pantalla.
+await page.locator('.chip[data-kind="Copia de cine"]').click();
+await page.waitForTimeout(200);
+await page.locator('.strip__item[data-film="kodak2383"]').click();
+await page.waitForTimeout(400);
+const copia = await page.evaluate(() => window.__lab.views.camera.params.film.id);
+check('la copia de cine 2383 se elige antes de disparar', copia === 'kodak2383', copia);
+
+// Y se vuelve a la que se va a usar para el resto de la prueba.
+await page.locator('.chip[data-kind="Diapositiva"]').click();
+await page.waitForTimeout(200);
+await page.locator('.strip__item[data-film="velvia50"]').click();
+await page.waitForTimeout(400);
 
 console.log('\n── Disparar una foto ──');
 await page.locator('.shutter').click();

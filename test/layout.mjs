@@ -199,16 +199,25 @@ await page.waitForTimeout(900);
 check('desplegar tampoco la mueve',
   JSON.stringify(await caja()) === JSON.stringify(antesDePlegar));
 
-// Y los ajustes dejan ver la foto a través.
+// Y los ajustes dejan ver la foto a través. El velo no es uniforme a propósito:
+// los controles casi no tapan, las barras sí se ven siempre.
 const transparencia = await page.evaluate(() => {
-  const cs = getComputedStyle(document.querySelector('.panels'));
-  const m = cs.backgroundColor.match(/[\d.]+/g) || [];
-  return { alfa: parseFloat(m[3] ?? '1'), blur: cs.backdropFilter || cs.webkitBackdropFilter };
+  const leer = (sel) => {
+    const cs = getComputedStyle(document.querySelector(sel));
+    const m = cs.backgroundColor.match(/[\d.]+/g) || [];
+    return {
+      alfa: cs.backgroundColor === 'rgba(0, 0, 0, 0)' ? 0 : parseFloat(m[3] ?? '1'),
+      blur: cs.backdropFilter || cs.webkitBackdropFilter,
+    };
+  };
+  return { cuerpo: leer('.panelbody'), barra: leer('.panelbar') };
 });
-check('los ajustes son translúcidos sobre la foto',
-  transparencia.alfa < 0.85, 'alfa ' + transparencia.alfa);
+check('los ajustes son casi transparentes sobre la foto',
+  transparencia.cuerpo.alfa <= 0.25, 'alfa ' + transparencia.cuerpo.alfa);
 check('y desenfocan lo que hay detrás para seguir siendo legibles',
-  /blur/.test(transparencia.blur), transparencia.blur);
+  /blur/.test(transparencia.cuerpo.blur), transparencia.cuerpo.blur);
+check('la barra de ajustes apenas se vela, para no fallar el toque',
+  transparencia.barra.alfa >= 0.8 && transparencia.barra.alfa < 1, 'alfa ' + transparencia.barra.alfa);
 
 // Ningún panel puede desbordar horizontalmente.
 console.log('\n── Ningún panel desborda su caja ──');
