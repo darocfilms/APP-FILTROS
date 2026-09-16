@@ -98,7 +98,9 @@ await page.waitForTimeout(400);
 
 console.log('\n── Cámara: los ajustes son ventanas flotantes ──');
 const grupos = await page.evaluate(() => [...document.querySelectorAll('.camtool')].map((b) => b.textContent.trim()));
-check('hay un mando por grupo de funciones', grupos.length === 8, grupos.join(' · '));
+check('hay un mando por grupo de funciones', grupos.length === 7, grupos.join(' · '));
+check('sin espejo manual: lo decide la cámara elegida',
+  !grupos.some((g) => /Voltear/i.test(g)), grupos.join(' · '));
 
 for (const [tool, titulo] of [['film', 'Filtros'], ['exposure', 'Exposición'],
                               ['zoom', 'Zoom'], ['flash', 'Flash'], ['size', 'Dimensiones']]) {

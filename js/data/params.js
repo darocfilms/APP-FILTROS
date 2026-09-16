@@ -284,6 +284,13 @@ export function applyFilmLook(params, filmDef) {
     balance: look.grade.balance,
   };
   params.effects = { ...look.effects, haloTint: [...look.effects.haloTint] };
+  // Las bandas HSL se escriben siempre, también a cero: si no, la banda que
+  // bajó una emulsión se quedaría puesta al elegir la siguiente.
+  params.hsl = {
+    hue: [...look.hsl.hue],
+    sat: [...look.hsl.sat],
+    lum: [...look.hsl.lum],
+  };
   return params;
 }
 

@@ -20,10 +20,14 @@
  *           diagonal ensanchan o comprimen la gama.
  *
  *   look    Ajustes que se copian al panel al elegir la emulsión. A partir de
- *           ahí son del usuario: la emulsión propone, no impone.
+ *           ahí son del usuario: la emulsión propone, no impone. Puede incluir
+ *           `hsl: { sat: { orange: -0.3 } }` para tocar una banda de color
+ *           concreta, que es lo que hace falta cuando una emulsión carga un
+ *           color en particular y no la imagen entera.
  */
 
 import { MID_GREY_PRINT, WHITE_STOPS } from '../engine/colorscience.js';
+import { HSL_BANDS } from './params.js';
 
 const P = MID_GREY_PRINT;
 const W = WHITE_STOPS;
@@ -38,6 +42,24 @@ function ch(gamma, toe, shoulder, opts = {}) {
     pivotY: P + (opts.y || 0),
     whiteStops: W + (opts.w || 0),
   };
+}
+
+/**
+ * Expande las bandas HSL declaradas por nombre al vector de ocho del motor.
+ * Declararlas por índice sería pedir un error silencioso el día que cambie el
+ * orden de las bandas.
+ */
+function hslLook(spec = {}) {
+  const ceros = () => new Array(HSL_BANDS.length).fill(0);
+  const out = { hue: ceros(), sat: ceros(), lum: ceros() };
+  for (const eje of ['hue', 'sat', 'lum']) {
+    for (const [banda, valor] of Object.entries(spec[eje] || {})) {
+      const i = HSL_BANDS.findIndex((b) => b.key === banda);
+      if (i < 0) throw new Error('Banda HSL desconocida en el catálogo: ' + banda);
+      out[eje][i] = valor;
+    }
+  }
+  return out;
 }
 
 /** Matriz identidad con las filas normalizadas a 1. */
@@ -76,6 +98,7 @@ function film(def) {
       ...def.look,
       grade: { ...BASE_LOOK.grade, ...(def.look?.grade || {}) },
       effects: { ...BASE_LOOK.effects, ...(def.look?.effects || {}) },
+      hsl: hslLook(def.look?.hsl),
     },
   };
 }
@@ -323,8 +346,8 @@ export const FILMS = [
     },
     matrix: [[1.02, -0.01, -0.01], [-0.01, 1.02, -0.01], [-0.01, -0.02, 1.03]],
     look: {
-      saturation: -0.08, vibrance: 0.06, matteLow: 0.020, matteHigh: 0.975,
-      grade: { shadows: { h: 200, s: 0.04, l: 0.008 } },
+      saturation: -0.13, vibrance: 0.02, matteLow: 0.020, matteHigh: 0.975,
+      grade: { shadows: { h: 200, s: 0.03, l: 0.008 } },
       effects: { grain: 0.14, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.18, halation: 0.11, haloThresh: 0.76 },
     },
   }),
@@ -344,8 +367,8 @@ export const FILMS = [
     },
     matrix: [[1.03, -0.02, -0.01], [-0.01, 1.02, -0.01], [-0.01, -0.03, 1.04]],
     look: {
-      saturation: -0.05, vibrance: 0.08, temp: -700, matteLow: 0.024, matteHigh: 0.98,
-      grade: { shadows: { h: 210, s: 0.08, l: 0.008 }, highs: { h: 30, s: 0.03, l: 0 } },
+      saturation: -0.11, vibrance: 0.03, temp: -700, matteLow: 0.024, matteHigh: 0.98,
+      grade: { shadows: { h: 210, s: 0.06, l: 0.008 }, highs: { h: 30, s: 0.02, l: 0 } },
       effects: { grain: 0.26, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.25, halation: 0.18, haloThresh: 0.70 },
     },
   }),
@@ -365,62 +388,48 @@ export const FILMS = [
     },
     matrix: [[1.05, -0.03, -0.02], [-0.02, 1.04, -0.02], [-0.01, -0.04, 1.05]],
     look: {
-      saturation: 0.04, vibrance: 0.10, temp: -900, matteLow: 0.018,
-      grade: { shadows: { h: 205, s: 0.10, l: 0.006 }, highs: { h: 20, s: 0.05, l: 0 } },
+      saturation: -0.03, vibrance: 0.04, temp: -900, matteLow: 0.018,
+      grade: { shadows: { h: 205, s: 0.07, l: 0.006 }, highs: { h: 20, s: 0.03, l: 0 } },
       effects: {
         grain: 0.28, grainSize: 1.25, grainRough: 0.6, grainChroma: 0.3,
-        halation: 0.72, haloThresh: 0.55, haloTint: [1.0, 0.20, 0.08],
+        halation: 0.60, haloThresh: 0.55, haloTint: [1.0, 0.20, 0.08],
         bloom: 0.06, diffusion: 0.05,
       },
     },
   }),
 
-
-  /* ────────────────── Positivo de copia (cine) ─────────────────────── */
   film({
     id: 'kodak2383',
-    name: 'Vision Premier 2383',
+    name: 'Copia de cine 2383',
     brand: 'Kodak',
-    kind: 'Copia de cine',
+    kind: 'Cine',
     iso: null,
-    note: 'La película de COPIA, no de cámara: lo que se proyecta en una sala. De aquí sale el contraste de cine, con sombras que tiran a cian y altas luces cálidas.',
-    swatch: ['#1d4d52', '#e0a05a'],
+    note: 'La película de COPIA, no de cámara: lo que se proyecta en una sala. De aquí sale el contraste de cine, con sombras que tiran a cian y altas luces cálidas. Unifica la 2383 y la 2393 en una sola curva, algo más suave que la de sala.',
+    swatch: ['#1d4d52', '#d59a68'],
     curves: {
       // El pie más duro es el del rojo, así que las sombras pierden rojo antes
       // y viran a cian; y el blanco lo alcanza primero, de ahí las luces
-      // cálidas. Ese cruce es la firma de la copia proyectada.
-      r: ch(1.62, 2.35, 1.30, { y: +0.006, w: -0.20 }),
-      g: ch(1.58, 2.10, 1.38, { w: -0.10 }),
-      b: ch(1.55, 1.95, 1.45, { y: -0.004, w: +0.02 }),
+      // cálidas. Ese cruce es la firma de la copia proyectada, y se conserva
+      // entero: lo que baja respecto de la 2383 pura es el contraste, tomando
+      // de la 2393 la latitud que sostiene los medios.
+      r: ch(1.34, 2.10, 1.40, { y: +0.005, w: -0.15 }),
+      g: ch(1.32, 1.92, 1.47, { w: -0.08 }),
+      b: ch(1.30, 1.80, 1.53, { y: -0.003, w: +0.03 }),
     },
-    matrix: [[1.16, -0.11, -0.05], [-0.07, 1.14, -0.07], [-0.05, -0.12, 1.17]],
+    matrix: [[1.07, -0.05, -0.02], [-0.03, 1.06, -0.03], [-0.02, -0.05, 1.07]],
     look: {
-      contrast: 0.08, saturation: 0.16, vibrance: 0.04, temp: 40,
-      grade: { shadows: { h: 192, s: 0.10, l: -0.012 }, highs: { h: 32, s: 0.06, l: 0 } },
-      effects: { grain: 0.10, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.12, halation: 0.14, haloThresh: 0.74 },
+      contrast: 0.02, saturation: -0.12, vibrance: 0.02, temp: 30,
+      // El naranja es el color que esta copia carga de más: el cruce ya calienta
+      // las luces por la curva, y encima saturarlo deja las pieles y los ladrillos
+      // en anaranjado de postal. Se baja la banda, no la saturación general, para
+      // que el resto de la imagen no pierda color.
+      hsl: { sat: { orange: -0.50 } },
+      grade: { shadows: { h: 192, s: 0.08, l: -0.010 }, highs: { h: 32, s: 0.04, l: 0 } },
+      effects: { grain: 0.32, grainSize: 1.05, grainRough: 0.5, grainChroma: 0.14, halation: 0.12, haloThresh: 0.75 },
     },
   }),
 
-  film({
-    id: 'kodak2393',
-    name: 'Vision Premier 2393',
-    brand: 'Kodak',
-    kind: 'Copia de cine',
-    iso: null,
-    note: 'La copia de gama alta: mismo idioma que la 2383 pero con menos contraste y más latitud. Sostiene mejor los medios cuando la escena ya es dura.',
-    swatch: ['#2b5b60', '#d8a877'],
-    curves: {
-      r: ch(1.34, 1.95, 1.48, { y: +0.004, w: -0.12 }),
-      g: ch(1.32, 1.80, 1.54, { w: -0.06 }),
-      b: ch(1.30, 1.70, 1.58, { y: -0.002, w: +0.04 }),
-    },
-    matrix: [[1.10, -0.07, -0.03], [-0.05, 1.09, -0.04], [-0.03, -0.08, 1.11]],
-    look: {
-      contrast: 0.03, saturation: 0.10, vibrance: 0.05, temp: 30,
-      grade: { shadows: { h: 196, s: 0.07, l: -0.006 }, highs: { h: 34, s: 0.04, l: 0 } },
-      effects: { grain: 0.09, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.12, halation: 0.11, haloThresh: 0.76 },
-    },
-  }),
+
 
   /* ──────────────── Fujifilm: fidelidad de color ───────────────────── */
   film({
@@ -543,8 +552,8 @@ export const FILMS = [
     },
     matrix: [[1.02, -0.01, -0.01], [-0.01, 1.02, -0.01], [-0.01, -0.01, 1.02]],
     look: {
-      saturation: -0.10, vibrance: 0.06, temp: -60, matteLow: 0.022, matteHigh: 0.975,
-      grade: { shadows: { h: 200, s: 0.05, l: 0.008 } },
+      saturation: -0.15, vibrance: 0.02, temp: -60, matteLow: 0.022, matteHigh: 0.975,
+      grade: { shadows: { h: 200, s: 0.04, l: 0.008 } },
       effects: { grain: 0.13, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.16, halation: 0.09, haloThresh: 0.78 },
     },
   }),

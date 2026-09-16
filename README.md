@@ -80,21 +80,23 @@ agrupadas por función, y se esconden con el mismo gesto que las abre.
 
 | Grupo | Qué hace |
 |---|---|
-| **Filtros** | Las 27 emulsiones por familias e intensidad, en directo sobre el visor |
+| **Filtros** | Las 26 emulsiones por familias e intensidad, en directo sobre el visor |
 | **Exposición** | Compensación en diafragmas reales |
 | **Zoom** | Objetivos, deslizador y pasos rápidos; también pellizcando sobre la imagen |
 | **Flash** | Apagado, linterna o destello de pantalla |
 | **Dimensiones** | Encuadre, con los megapíxeles que cuesta cada uno |
 | **Guías** | Cuadrícula de tercios |
-| **Voltear** | Espejo de la imagen |
 | **Cambiar** | Frontal o trasera |
 
-**Las 27, antes de disparar.** El catálogo entero está en el visor, no sólo en
+**Las 26, antes de disparar.** El catálogo entero está en el visor, no sólo en
 el laboratorio: una fila de familias arriba —negativo color, diapositiva, cine,
-**copia de cine**, blanco y negro…— y debajo la tira de esa familia. En una tira
-única de veintisiete, las copias de cine quedaban a diez dedos de desplazamiento
-a la derecha; así están a dos toques, y se ve la emulsión puesta antes de
-apretar el botón, que es cuando importa.
+blanco y negro…— y debajo la tira de esa familia. En una tira única, la copia de
+cine quedaba a diez dedos de desplazamiento a la derecha; así está a dos toques,
+y se ve la emulsión puesta antes de apretar el botón, que es cuando importa.
+
+**El espejo no es una opción**, es la cámara que estés usando: la frontal se ve
+en espejo y la trasera no, como en la cámara del sistema. Un interruptor aparte
+sólo servía para acabar con la foto al revés sin saber por qué.
 
 **Zoom.** El 0,5× no es zoom: es **otra cámara**, con su propio objetivo, y no
 hay restricción que lleve hasta ella — hay que pedirla por su identificador. La
@@ -150,7 +152,7 @@ Diez paneles de ajustes:
 
 | Panel | Contenido |
 |---|---|
-| **Película** | 27 emulsiones con previsualización real de tu propia foto, e intensidad |
+| **Película** | 26 emulsiones con previsualización real de tu propia foto, e intensidad |
 | **Luz** | Exposición, contraste, altas luces, sombras, blancos, negros, velado |
 | **Color** | Temperatura en kelvin, matiz, intensidad, saturación, rotación de tono, blanco y negro con mezclador de canal |
 | **HSL** | Tono, saturación y luminancia en ocho bandas de color |
@@ -278,18 +280,18 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 
 | Suite | Qué comprueba |
 |---|---|
-| `engine` | Los seis programas GLSL compilan · las 27 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
+| `engine` | Los seis programas GLSL compilan · las 26 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
 | `flow` | Importar → carpeta local → laboratorio → los diez paneles → aplicar emulsión → deslizadores → deshacer/rehacer → exportar a resolución original y reabrir el JPEG → guardar en biblioteca → recorte 1:1 → persistencia tras recargar |
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
-| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
-| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4, y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas y la copia de cine 2383 se pueda elegir antes de disparar. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, el destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
+| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, hay un mando por grupo de funciones y ninguno de más, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
+| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, el destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
 continuidad C¹, monotonía, asíntota del pie) se verifican canal a canal para
-las 27 emulsiones.
+las 26 emulsiones.
 
 `CHROMIUM_PATH` permite apuntar a un Chromium ya instalado en lugar del que
 descarga Playwright.
@@ -366,8 +368,8 @@ escala sin amputarla, así que nunca recorta.
 Superia X-TRA 400, Pro 400H, Vista Plus 200, Reala 100, Pro 160NS,
 Fujicolor C200, Natura 1600
 **Diapositiva** — Velvia 50, Provia 100F, Astia 100F, Kodachrome 64
-**Cine** — Vision3 250D, Vision3 500T, CineStill 800T, Eterna 250D
-**Copia de cine** — Vision Premier 2383, Vision Premier 2393
+**Cine** — Vision3 250D, Vision3 500T, CineStill 800T, Copia de cine 2383,
+Eterna 250D
 **Blanco y negro** — Tri-X 400, HP5 Plus 400, Delta 3200
 **Instantánea** — Polaroid 600
 **Creativa** — LomoChrome Purple
@@ -375,17 +377,25 @@ Fujicolor C200, Natura 1600
 
 Dos añadidos merecen una nota, porque son casos límite del modelo:
 
-**Vision Premier 2383** es película de *copia*, no de cámara: lo que se proyecta
+**Copia de cine 2383** es película de *copia*, no de cámara: lo que se proyecta
 en una sala. Su firma es el cruce que da nombre al «teal and orange», y aquí
 sale de la propia curva, no de un tinte pegado encima — el pie del rojo es el
 más duro, así que las sombras pierden rojo antes y viran a cian, y es el primero
-en llegar al blanco, de ahí las luces cálidas. Medido: R−B vale −0,019 en
-sombras y +0,028 en altas luces.
+en llegar al blanco, de ahí las luces cálidas. Medido: R−B vale −0,026 en
+sombras y +0,025 en altas luces.
+
+Unifica la 2383 y la 2393, que eran dos entradas del mismo idioma: conserva el
+cruce entero y se queda con la gamma de la 2393, más suave que la de sala. Y
+lleva **los naranjas bajados por banda**, no con la saturación general: el cruce
+ya calienta las luces por la curva, así que saturarlos encima dejaba las pieles
+y los ladrillos en anaranjado de postal, mientras el resto de la imagen sí
+necesitaba su color. Medido sobre una carta de parches, con la copia puesta la
+saturación del naranja baja de 0,81 a 0,68 y la de la piel de 0,41 a 0,32.
 
 **Reala 100** es la contraria: la emulsión de la cuarta capa sensible al cian,
 hecha para acertar el color bajo luz mezclada. Fidelidad significa aquí que los
 tres canales van casi juntos, y se ve en el número — su crossover es de 0,003 a
-0,005 en toda la escala, veinte veces menor que el de la 2383.
+0,005 en toda la escala, ocho veces menor que el de la 2383.
 
 ---
 
@@ -441,7 +451,10 @@ y la exportación: sólo cambia el tamaño del lienzo.
 - **HTTPS o localhost** — para la cámara.
 - **OPFS** — recomendado (Safari 16.4+). Sin él se usa IndexedDB.
 - **MediaRecorder** — para grabar vídeo. Safari lo admite desde iOS 14.3 y
-  produce MP4; en otros navegadores se elige WebM.
+  produce MP4; en otros navegadores se elige WebM. La cadencia es de 30 fps
+  fijos: el lienzo no se captura solo, cada fotograma lo pide un reloj que
+  descarta los vencimientos perdidos en vez de recuperarlos de golpe, así que el
+  archivo no sale a cadencia variable aunque el revelado se retrase.
 
 ---
 

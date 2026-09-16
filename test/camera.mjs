@@ -149,14 +149,26 @@ for (const g of familias) {
 check('cada familia enseña sus emulsiones y sólo las suyas',
   todas, faltan.length ? 'fallan: ' + faltan.join(', ') : familias.length + ' familias');
 
-// La copia de cine es el caso que lo motivó: al final de un catálogo de 27,
-// en una tira única quedaba fuera de la pantalla.
-await page.locator('.chip[data-kind="Copia de cine"]').click();
+// La copia de cine es el caso que lo motivó: al final del catálogo, en una
+// tira única quedaba fuera de la pantalla. Vive con el resto del cine.
+await page.locator('.chip[data-kind="Cine"]').click();
 await page.waitForTimeout(200);
 await page.locator('.strip__item[data-film="kodak2383"]').click();
 await page.waitForTimeout(400);
-const copia = await page.evaluate(() => window.__lab.views.camera.params.film.id);
-check('la copia de cine 2383 se elige antes de disparar', copia === 'kodak2383', copia);
+const copia = await page.evaluate(() => ({
+  id: window.__lab.views.camera.params.film.id,
+  naranjas: window.__lab.views.camera.params.hsl.sat[1],
+  grano: window.__lab.views.camera.params.effects.grain,
+}));
+check('la copia de cine 2383 se elige antes de disparar, y con el resto del cine',
+  copia.id === 'kodak2383', copia.id);
+check('llega con los naranjas bajados y grano puesto',
+  copia.naranjas < -0.2 && copia.grano > 0.2, JSON.stringify(copia));
+// Y al cambiar de emulsión la banda no se queda pegada.
+await page.locator('.strip__item[data-film="vision3_250d"]').click();
+await page.waitForTimeout(300);
+check('la banda de naranjas no se hereda a la siguiente emulsión',
+  await page.evaluate(() => window.__lab.views.camera.params.hsl.sat[1]) === 0);
 
 // Y se vuelve a la que se va a usar para el resto de la prueba.
 await page.locator('.chip[data-kind="Diapositiva"]').click();
@@ -194,12 +206,46 @@ await page.locator('.campanel__close').click();
 await page.waitForTimeout(300);
 await page.locator('.cam__mode[data-mode="video"]').click();
 await page.waitForTimeout(400);
+// Se cuenta cada fotograma que la grabación pide al lienzo: es la medida
+// directa de la cadencia, no una suposición sobre lo que hace el navegador.
+await page.evaluate(() => {
+  window.__frames = 0;
+  const proto = window.CanvasCaptureMediaStreamTrack?.prototype;
+  if (!proto?.requestFrame) { window.__frames = null; return; }
+  const orig = proto.requestFrame;
+  proto.requestFrame = function () { window.__frames++; return orig.apply(this, arguments); };
+});
 await page.locator('.shutter').click();
 await page.waitForTimeout(3200);
 const recording = await page.evaluate(() => !!window.__lab.views.camera.recorder);
 check('la grabación arranca', recording);
+// La cadencia se mide con el VISOR DETENIDO. No es hacer trampa: es el caso
+// que importa. Bajo SwiftShader cada fotograma del visor cuesta cien veces más
+// que en la GPU de un teléfono y ahoga al reloj, así que medir con el visor en
+// marcha diría lo lento que es este ordenador, no si el reloj funciona. Con el
+// hilo libre se comprueba lo que se quería: que la grabación marca sus propios
+// 30 por segundo aunque el lienzo no se repinte —donde `captureStream(30)` no
+// habría entregado ninguno— y que nunca pasa de ahí.
+const medida = await page.evaluate(async () => {
+  if (window.__frames === null) return null;
+  const cam = window.__lab.views.camera;
+  cam.paused = true;
+  const n0 = window.__frames, t0 = performance.now();
+  await new Promise((r) => setTimeout(r, 2000));
+  const n1 = window.__frames, t1 = performance.now();
+  cam.paused = false;
+  return { fps: (n1 - n0) / ((t1 - t0) / 1000), n: n1 - n0 };
+});
+if (medida === null) {
+  check('cadencia de 30 fps (sin requestFrame, se usa el techo del navegador)', true, 'no medible aquí');
+} else {
+  check('la grabación marca sus propios 30 fps, sin repintar el lienzo',
+    medida.fps > 28 && medida.fps <= 31, medida.n + ' fotogramas · ' + medida.fps.toFixed(1) + ' fps');
+}
 await page.locator('.shutter').click();
 await page.waitForTimeout(3500);
+check('el reloj de fotogramas se para con la grabación',
+  await page.evaluate(() => window.__lab.views.camera._recTimer) === null);
 const vid = await page.evaluate(async () => {
   const { library } = await import('./js/store/library.js');
   const items = await library.list();

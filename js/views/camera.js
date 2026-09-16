@@ -31,6 +31,15 @@ import { library, makeThumb } from '../store/library.js';
 const DEFAULT_FILM = 'vision3_250d';
 
 /**
+ * Cadencia de grabación, en fotogramas por segundo.
+ *
+ * Es un número fijo y no «lo que dé el dispositivo» a propósito: un archivo de
+ * cadencia variable se monta mal, se reproduce a tirones en la mitad de los
+ * reproductores y no encaja con nada grabado a 30. Ver `_startFrameClock`.
+ */
+const REC_FPS = 30;
+
+/**
  * Lado mayor de la previsualización en directo.
  *
  * Se ajusta a la pantalla: en un iPhone con densidad 3× no tiene sentido
@@ -141,7 +150,6 @@ export class CameraView {
     this.gridOn = false;
     this.busy = false;
     this.aspect = 'screen';
-    this.flipped = false;
     this.openPanelKey = null;
     this.paused = false;
     /** Factor de zoom pedido por el usuario, 1 = sin acercar. */
@@ -233,10 +241,6 @@ export class CameraView {
         type: 'button', class: 'camtool', 'aria-pressed': 'false',
         onclick: () => this.toggleGrid(),
       }, el('span', { class: 'camtool__icon', text: '⊞' }), el('span', { class: 'camtool__label', text: 'Guías' })),
-      this.flipBtn = el('button', {
-        type: 'button', class: 'camtool', 'aria-pressed': 'false',
-        onclick: () => this.toggleFlip(),
-      }, el('span', { class: 'camtool__icon', text: '⇋' }), el('span', { class: 'camtool__label', text: 'Voltear' })),
       el('button', {
         type: 'button', class: 'camtool',
         onclick: () => this.flip(),
@@ -716,14 +720,6 @@ export class CameraView {
     haptic();
   }
 
-  /** Espejo de la imagen, independiente de qué cámara esté activa. */
-  toggleFlip() {
-    this.flipped = !this.flipped;
-    this.flipBtn.classList.toggle('is-on', this.flipped);
-    this.flipBtn.setAttribute('aria-pressed', String(this.flipped));
-    haptic();
-  }
-
   /** Oculta los mandos para ver el encuadre limpio. */
   toggleImmersive() {
     this.immersive = !this.immersive;
@@ -1028,7 +1024,12 @@ export class CameraView {
 
   /** La frontal se espeja para que encuadrar sea natural; el volteo manual se
    *  suma a eso, así que el resultado es la combinación de ambos. */
-  get mirrored() { return (this.facing === 'user') !== this.flipped; }
+  /**
+   * La frontal se ve en espejo y la trasera no. No hay interruptor: es lo que
+   * hace la cámara del sistema, y la foto guardada sale sin espejo igual que
+   * allí.
+   */
+  get mirrored() { return this.facing === 'user'; }
 
   /* ─────────────────────────── Bucle de dibujo ───────────────────────── */
 
@@ -1220,7 +1221,19 @@ export class CameraView {
     }
 
     try {
-      const canvasStream = this.canvas.captureStream(30);
+      // `captureStream(30)` es un TECHO, no un suelo: el lienzo se captura
+      // cuando se pinta, así que si la cámara entrega 24 fps o un fotograma
+      // tarda de más, el archivo sale por debajo y a cadencia variable. Con
+      // `captureStream(0)` no se captura solo: cada fotograma lo pide el reloj
+      // de `_startFrameClock`, que va a 30 exactos. Si el navegador no expone
+      // `requestFrame` se vuelve al techo, que es lo que había.
+      let canvasStream = this.canvas.captureStream(0);
+      let clock = canvasStream.getVideoTracks()[0];
+      if (typeof clock?.requestFrame !== 'function') {
+        try { clock?.stop(); } catch { /* daba igual */ }
+        canvasStream = this.canvas.captureStream(REC_FPS);
+        clock = null;
+      }
       const audio = this.stream.getAudioTracks();
       if (audio.length) canvasStream.addTrack(audio[0]);
 
@@ -1233,6 +1246,7 @@ export class CameraView {
       this.recorder.ondataavailable = (e) => { if (e.data?.size) this.chunks.push(e.data); };
       this.recorder.onstop = () => this._finishRecording(mime);
       this.recorder.start(1000);
+      this._startFrameClock(clock);
 
       this.recStart = performance.now();
       // La linterna se queda encendida mientras dura la toma.
@@ -1247,6 +1261,41 @@ export class CameraView {
     }
   }
 
+  /**
+   * Reloj de fotogramas: pide uno cada 1/30 de segundo mientras dure la toma.
+   *
+   * Cada vencimiento se calcula sobre el instante de inicio y no encadenando
+   * esperas de 33 ms, porque `setTimeout` siempre llega un poco tarde y sumar
+   * esos retrasos haría que un minuto de grabación diera menos de un minuto de
+   * fotogramas: el vídeo acabaría corriendo por delante del sonido.
+   *
+   * Los vencimientos que ya han pasado se dan por perdidos en lugar de
+   * recuperarlos. Es la diferencia entre un reloj y un contador: en una captura
+   * en directo no se puede insertar un fotograma hacia atrás, así que pagar la
+   * deuda de golpe sólo mete una ráfaga de imágenes repetidas con la marca de
+   * tiempo equivocada. Si el aparato no da para 30, entrega los que pueda —
+   * nunca más de 30 por segundo, nunca a destiempo.
+   */
+  _startFrameClock(track) {
+    this._stopFrameClock();
+    if (!track) return;
+    const periodo = 1000 / REC_FPS;
+    const t0 = performance.now();
+    let n = 0;
+    const tick = () => {
+      if (!this.recorder) return;
+      try { track.requestFrame(); } catch { /* la pista ya se fue */ }
+      n = Math.max(n + 1, Math.ceil((performance.now() - t0) / periodo));
+      this._recTimer = setTimeout(tick, Math.max(0, t0 + n * periodo - performance.now()));
+    };
+    this._recTimer = setTimeout(tick, periodo);
+  }
+
+  _stopFrameClock() {
+    clearTimeout(this._recTimer);
+    this._recTimer = null;
+  }
+
   _tickRecording() {
     const s = Math.floor((performance.now() - this.recStart) / 1000);
     const text = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -1257,6 +1306,7 @@ export class CameraView {
   _stopRecording(silent = false) {
     if (!this.recorder) return;
     this._silentStop = silent;
+    this._stopFrameClock();
     try { this.recorder.stop(); } catch { /* ya estaba parada */ }
     this._setTorch(false);
     this.recPill.hidden = true;
