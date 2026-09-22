@@ -233,8 +233,8 @@ export class CameraView {
       }, el('span', { class: 'camtool__icon', text: '⚡' }), el('span', { class: 'camtool__label', text: 'Flash' })),
       el('button', {
         type: 'button', class: 'camtool',
-        onclick: () => this.app.go('lab'),
-      }, el('span', { class: 'camtool__icon', text: '◑' }), el('span', { class: 'camtool__label', text: 'Laboratorio' })));
+        onclick: () => this.app.go('library'),
+      }, el('span', { class: 'camtool__icon', text: '▦' }), el('span', { class: 'camtool__label', text: 'Biblioteca' })));
 
     /* ── Disparador y modo ─────────────────────────────────────────────── */
     this.shutter = el('button', {
@@ -259,10 +259,10 @@ export class CameraView {
           onclick: () => this.toggleImmersive(),
         }, '⤢'),
         this.shutter,
-        el('button', {
-          type: 'button', class: 'iconbtn', 'aria-label': 'Ir a la biblioteca',
-          onclick: () => this.app.go('library'),
-        }, '▦')));
+        this.flipBtn = el('button', {
+          type: 'button', class: 'iconbtn', 'aria-label': 'Cambiar de cámara',
+          onclick: () => this.flip(),
+        }, '⟳')));
 
     this._buildRails();
 
@@ -964,10 +964,36 @@ export class CameraView {
   }
 
   /**
-   * La frontal se vería en espejo y la trasera no, como en la cámara del
-   * sistema. La pantalla de cámara ya no cambia de una a otra —ese sitio de la
-   * fila lo ocupa el laboratorio—, así que hoy esto es siempre la trasera; la
-   * regla se queda escrita donde va, y no repartida por el código de dibujo.
+   * Frontal o trasera, junto al disparador.
+   *
+   * Va ahí y no en la fila de mandos porque es lo único que se decide con el
+   * teléfono ya levantado y el encuadre hecho: el pulgar está a un centímetro
+   * del botón. Grabando no se toca — reabrir el flujo cortaría la toma.
+   */
+  async flip() {
+    if (this.recorder) return;
+    const anterior = this.facing;
+    this.facing = this.facing === 'environment' ? 'user' : 'environment';
+    // El gran angular es de la trasera: al pasar a la frontal no hay objetivo
+    // que elegir, y volver tiene que empezar otra vez por el principal.
+    this.lens = 'wide';
+    this.zoom = 1;
+    this.digitalZoom = 1;
+    haptic();
+    try {
+      await this._openStream();
+    } catch {
+      this.facing = anterior;
+      toast('No se pudo cambiar de cámara', { error: true });
+      try { await this._openStream(); } catch { /* el mensaje ya está puesto */ }
+    }
+    this._syncZoomRail();
+  }
+
+  /**
+   * La frontal se ve en espejo y la trasera no, como en la cámara del sistema.
+   * No hay interruptor aparte: lo decide qué cámara esté puesta, y la foto
+   * guardada sale sin espejo igual que allí.
    */
   get mirrored() { return this.facing === 'user'; }
 

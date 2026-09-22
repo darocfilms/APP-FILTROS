@@ -101,9 +101,21 @@ const grupos = await page.evaluate(() => [...document.querySelectorAll('.camtool
 check('hay un mando por grupo de funciones', grupos.length === 4, grupos.join(' · '));
 check('sin espejo manual: lo decide la cámara elegida',
   !grupos.some((g) => /Voltear/i.test(g)), grupos.join(' · '));
-check('sin guías y sin cambio de cámara: ese sitio lo ocupa el laboratorio',
-  !grupos.some((g) => /Guías|Cambiar/i.test(g)) && grupos.some((g) => /Laboratorio/i.test(g)),
+check('sin guías, y en su sitio la biblioteca',
+  !grupos.some((g) => /Guías/i.test(g)) && grupos.some((g) => /Biblioteca/i.test(g)),
   grupos.join(' · '));
+// Cambiar de cámara se decide con el teléfono ya levantado, así que vive junto
+// al disparador y no en la fila, donde habría que ir a buscarlo.
+const cambiar = await page.evaluate(() => {
+  const b = document.querySelector('.cam__bar .iconbtn[aria-label="Cambiar de cámara"]');
+  if (!b) return null;
+  const r = b.getBoundingClientRect();
+  const d = document.querySelector('.shutter').getBoundingClientRect();
+  return { alLado: Math.abs((r.top + r.height / 2) - (d.top + d.height / 2)) < 12,
+           enLaFila: !!b.closest('.cam__tools'), ancho: Math.round(r.width) };
+});
+check('cambiar de cámara está junto al disparador',
+  cambiar && cambiar.alLado && !cambiar.enLaFila && cambiar.ancho >= 44, JSON.stringify(cambiar));
 // Exposición y zoom salen de la fila: son barras sobre la imagen.
 check('la exposición y el zoom ya no son ventanas',
   !grupos.some((g) => /Exposición|Zoom/i.test(g))

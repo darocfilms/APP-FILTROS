@@ -456,6 +456,10 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .cam__modes.is-locked { opacity: 0.4; pointer-events: none; }
 
 .cam__bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+/* Los dos redondos de esta barra se pulsan con el teléfono ya levantado y sin
+   mirarlos: 40 px se fallan, y fallar el de la derecha te da la vuelta a la
+   cámara en mitad del encuadre. */
+.cam__bar .iconbtn { width: 46px; height: 46px; flex-basis: 46px; font-size: 17px; }
 .cam__bar .iconbtn:first-child { justify-self: start; }
 .cam__bar .iconbtn:last-child { justify-self: end; }
 .cam__bar .iconbtn {

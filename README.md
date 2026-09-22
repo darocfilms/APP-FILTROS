@@ -84,9 +84,10 @@ interruptor actúan de un toque.
 | **Filtros** | Ventana: las 26 emulsiones por familias e intensidad, en directo sobre el visor |
 | **Dimensiones** | Ventana: encuadre, con los megapíxeles que cuesta cada uno |
 | **Flash** | Un toque: encendido o apagado |
-| **Laboratorio** | Un toque: lleva la pestaña de revelado |
+| **Biblioteca** | Un toque: lleva a lo ya guardado |
 | **Barra izquierda** | Exposición, en diafragmas reales |
 | **Barra derecha** | Zoom, con el 0,5× incluido si hay gran angular |
+| **Junto al disparador** | Ocultar los mandos, y cambiar de cámara |
 
 **Las barras de los lados.** La exposición y el zoom se buscan MIRANDO el
 encuadre, así que taparlo con una ventana para decidirlos esconde justo el dato
@@ -129,9 +130,13 @@ donde alcanza esta versión— y el destello de pantalla cuando no, y la insigni
 dice cuál toca al encenderlo en vez de obligar a decidirlo. La linterna, si la
 hay, permanece encendida mientras grabas.
 
-**La pantalla de cámara no cambia de cámara**: ese sitio de la fila lo ocupa el
-laboratorio, que es adonde se va después de disparar. El espejo, por tanto, es
-el de la trasera — sin espejo, como en la cámara del sistema.
+**Cambiar de cámara va junto al disparador**, no en la fila de mandos: es lo
+único que se decide con el teléfono ya levantado y el encuadre hecho, y ahí el
+pulgar está a un centímetro. Al pasar a la frontal el zoom y el objetivo vuelven
+al principio —el gran angular es de la trasera, y llevarse su aumento a la otra
+cámara sería prometer algo que no da—, y el espejo lo decide la cámara puesta:
+la frontal sí, la trasera no, como en la cámara del sistema. Grabando no se
+toca: reabrir el flujo cortaría la toma.
 
 Tocar la imagen esconde los mandos y deja el encuadre limpio; un asidero en la
 esquina los devuelve.

@@ -168,6 +168,39 @@ check('con gran angular presente se ofrece 0,5×', simulado.disponible === true)
 check('el 0,5× se muestra como medio aumento', simulado.factor === 0.5, simulado.factor + '×');
 check('y el zoom se compone sobre él', simulado.conZoom === 1, simulado.conZoom + '×');
 
+console.log('\n── Cambiar de cámara ──');
+check('el botón vive junto al disparador, no en la fila',
+  await page.locator('.cam__bar .iconbtn[aria-label="Cambiar de cámara"]').count() === 1
+  && await page.locator('.cam__tools .camtool', { hasText: 'Biblioteca' }).count() === 1);
+const antesCam = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  v.zoom = 2.5; v.lens = 'ultra';
+  return { cara: v.facing, espejo: v.mirrored };
+});
+await page.locator('.cam__bar .iconbtn[aria-label="Cambiar de cámara"]').click();
+await page.waitForTimeout(2500);
+const frontal = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  return { cara: v.facing, espejo: v.mirrored, zoom: v.zoom, lente: v.lens, viva: !!v.track };
+});
+check('pasa a la frontal', frontal.cara === 'user' && antesCam.cara === 'environment',
+  antesCam.cara + ' → ' + frontal.cara);
+check('y la frontal se ve en espejo', frontal.espejo === true && antesCam.espejo === false);
+// El gran angular es de la trasera: llevarse su objetivo y su zoom a la frontal
+// dejaría la barra prometiendo un aumento que esta cámara no da.
+check('el zoom y el objetivo vuelven al principio',
+  frontal.zoom === 1 && frontal.lente === 'wide', JSON.stringify(frontal));
+check('y el flujo sigue vivo', frontal.viva === true);
+await page.locator('.cam__bar .iconbtn[aria-label="Cambiar de cámara"]').click();
+await page.waitForTimeout(2500);
+const vuelta = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  return { cara: v.facing, espejo: v.mirrored, pintando: v.canvas.width > 0 };
+});
+check('y vuelve a la trasera, sin espejo',
+  vuelta.cara === 'environment' && vuelta.espejo === false && vuelta.pintando,
+  JSON.stringify(vuelta));
+
 console.log('\n── Elegir emulsión desde la cámara ──');
 // La tira vive dentro de la ventana de Filtros, y ahora mismo está abierta otra.
 await page.locator('.camtool[data-tool="film"]').click();
