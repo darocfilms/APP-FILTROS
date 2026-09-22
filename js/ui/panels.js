@@ -194,24 +194,13 @@ export class PanelStack {
   _filmPanel() {
     this.filmPicker = new FilmPicker((id) => {
       this.hooks.onPickFilm?.(id);
-      this._updateFilmNote(id);
       this.syncAll();
     });
     this.filmPicker.select(this.params.film.id);
-    this.filmNote = el('p', { class: 'filmnote' });
-    this._updateFilmNote(this.params.film.id);
-    // La ficha va arriba: es lo que explica qué estás mirando, y enterrada bajo
-    // seis filas de tarjetas no la lee nadie.
-    return el('div', {}, this.filmNote, this.filmPicker.root);
-  }
-
-  _updateFilmNote(id) {
-    if (!this.filmNote) return;
-    const d = this.filmPicker.describe(id);
-    clear(this.filmNote).append(
-      el('strong', { text: d.brand + ' ' + d.name }),
-      el('span', { class: 'filmnote__kind', text: d.kind + (d.iso ? ' · ISO ' + d.iso : '') }),
-      el('span', { class: 'filmnote__text', text: d.note }));
+    // Sin ficha de texto: cada tarjeta ya enseña la emulsión aplicada a TU foto,
+    // que dice más que el párrafo, y el párrafo se comía media pantalla de la
+    // imagen justo mientras se elige.
+    return this.filmPicker.root;
   }
 
   /* ──────────────────────────────── HSL ─────────────────────────────── */

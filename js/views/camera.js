@@ -40,6 +40,35 @@ const DEFAULT_FILM = 'kodak2383';
 const REC_FPS = 30;
 
 /**
+ * Los iconos de la fila, dibujados.
+ *
+ * Sin etiqueta debajo, el icono es lo único que queda: tiene que reconocerse
+ * de un vistazo y a 22 px. Los glifos de Unicode no sirven para eso —cambian
+ * de forma en cada sistema y varios salen como una caja— así que van en SVG,
+ * con la misma rejilla de 24 y el mismo grosor de trazo los tres.
+ */
+const svg = (d, { relleno = false } = {}) =>
+  '<svg viewBox="0 0 24 24" width="23" height="23" aria-hidden="true" focusable="false"'
+  + ` fill="${relleno ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.7"`
+  + ' stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+
+const ICONOS = {
+  // Tres círculos superpuestos: la marca de toda la vida de los filtros de
+  // color, que es exactamente lo que hay dentro.
+  film: svg('<circle cx="12" cy="8.6" r="5.1"/><circle cx="7.9" cy="15.2" r="5.1"/>'
+    + '<circle cx="16.1" cy="15.2" r="5.1"/>'),
+  // Cuatro esquinas de encuadre: se lee como «marco» sin explicarlo.
+  size: svg('<path d="M4 8.5V5.8A1.8 1.8 0 0 1 5.8 4H8.5"/><path d="M15.5 4h2.7A1.8 1.8 0 0 1 20 5.8v2.7"/>'
+    + '<path d="M20 15.5v2.7a1.8 1.8 0 0 1-1.8 1.8h-2.7"/><path d="M8.5 20H5.8A1.8 1.8 0 0 1 4 18.2v-2.7"/>'),
+  // El rayo relleno cuando está encendido y tachado cuando no: es la señal
+  // que ya usa la cámara del sistema, y se distingue sin leer nada.
+  flashOn: svg('<path d="M13 2.5 5.5 13.2a.6.6 0 0 0 .5.95h4.6l-.6 7.35 7.5-10.7a.6.6 0 0 0-.5-.95h-4.6l.6-7.35Z"/>',
+    { relleno: true }),
+  flashOff: svg('<path d="M13 2.5 5.5 13.2a.6.6 0 0 0 .5.95h4.6l-.6 7.35 7.5-10.7a.6.6 0 0 0-.5-.95h-4.6l.6-7.35Z"/>'
+    + '<path d="M4 4 20 20"/>'),
+};
+
+/**
  * Lado mayor de la previsualización en directo.
  *
  * Se ajusta a la pantalla: en un iPhone con densidad 3× no tiene sentido
@@ -205,36 +234,33 @@ export class CameraView {
     // en las barras verticales de los lados.
     this.tools = [
       {
-        key: 'film', icon: '▤', label: 'Filtros',
+        key: 'film', icon: ICONOS.film, label: 'Filtros',
         build: () => this._filmPanel(),
       },
       {
-        key: 'size', icon: '⛶', label: 'Dimensiones',
+        key: 'size', icon: ICONOS.size, label: 'Dimensiones',
         build: () => this._sizePanel(),
       },
     ];
 
+    // Tres iconos sueltos sobre la imagen, sin caja que los agrupe ni texto
+    // debajo: lo que sobra aquí tapa el encuadre. El nombre de cada uno vive en
+    // `aria-label`, para quien no ve el icono, y en el título de su ventana.
     this.toolButtons = new Map();
     const toolRow = el('div', { class: 'cam__tools', role: 'toolbar', 'aria-label': 'Ajustes de cámara' },
       this.tools.map((t) => {
         const btn = el('button', {
           type: 'button', class: 'camtool', dataset: { tool: t.key },
-          'aria-expanded': 'false',
+          'aria-expanded': 'false', 'aria-label': t.label,
           onclick: () => this.openPanel(this.openPanelKey === t.key ? null : t.key),
-        }, el('span', { class: 'camtool__icon', text: t.icon }), el('span', { class: 'camtool__label', text: t.label }));
+        }, el('span', { class: 'camtool__icon', html: t.icon }));
         this.toolButtons.set(t.key, btn);
         return btn;
       }),
-      el('span', { class: 'cam__toolsep', 'aria-hidden': 'true' }),
-      // Acciones inmediatas: no abren nada, actúan y se ve el efecto al momento.
       this.flashBtn = el('button', {
-        type: 'button', class: 'camtool', 'aria-pressed': 'false',
+        type: 'button', class: 'camtool', 'aria-pressed': 'false', 'aria-label': 'Flash',
         onclick: () => this.toggleFlash(),
-      }, el('span', { class: 'camtool__icon', text: '⚡' }), el('span', { class: 'camtool__label', text: 'Flash' })),
-      el('button', {
-        type: 'button', class: 'camtool',
-        onclick: () => this.app.go('library'),
-      }, el('span', { class: 'camtool__icon', text: '▦' }), el('span', { class: 'camtool__label', text: 'Biblioteca' })));
+      }, this.flashIcon = el('span', { class: 'camtool__icon', html: ICONOS.flashOff })));
 
     /* ── Disparador y modo ─────────────────────────────────────────────── */
     this.shutter = el('button', {
@@ -599,6 +625,7 @@ export class CameraView {
     this._applyFlashToTrack();
     this.flashBtn?.classList.toggle('is-on', on);
     this.flashBtn?.setAttribute('aria-pressed', String(!!on));
+    if (this.flashIcon) this.flashIcon.innerHTML = on ? ICONOS.flashOn : ICONOS.flashOff;
     haptic();
   }
 

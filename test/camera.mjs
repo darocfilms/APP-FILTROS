@@ -171,7 +171,7 @@ check('y el zoom se compone sobre él', simulado.conZoom === 1, simulado.conZoom
 console.log('\n── Cambiar de cámara ──');
 check('el botón vive junto al disparador, no en la fila',
   await page.locator('.cam__bar .iconbtn[aria-label="Cambiar de cámara"]').count() === 1
-  && await page.locator('.cam__tools .camtool', { hasText: 'Biblioteca' }).count() === 1);
+  && await page.locator('.cam__tools .camtool').count() === 3);
 const antesCam = await page.evaluate(() => {
   const v = window.__lab.views.camera;
   v.zoom = 2.5; v.lens = 'ultra';
@@ -460,21 +460,24 @@ const flash = await page.evaluate(() => {
   return { modo: v.flash, linterna: v.canTorch };
 });
 check('empieza apagado', flash.modo === 'off', 'LED accesible: ' + flash.linterna);
-const botonFlash = page.locator('.camtool', { hasText: 'Flash' });
+const botonFlash = page.locator('.camtool[aria-label="Flash"]');
 check('el flash no abre ninguna ventana', await botonFlash.getAttribute('aria-expanded') === null);
 await botonFlash.click();
 await page.waitForTimeout(300);
 const encendido = await page.evaluate(() => {
-  const b = [...document.querySelectorAll('.camtool')].find((n) => /Flash/.test(n.textContent));
+  const b = document.querySelector('.camtool[aria-label="Flash"]');
   return {
     modo: window.__lab.views.camera.flash,
     marcado: b.getAttribute('aria-pressed'),
     resaltado: b.classList.contains('is-on'),
+    // El rayo se tacha cuando está apagado: la forma cambia, no sólo el color.
+    tachado: b.querySelectorAll('svg path').length,
     ventanas: document.querySelectorAll('.campanel').length,
   };
 });
 check('un toque lo enciende', encendido.modo === 'on' && encendido.marcado === 'true' && encendido.resaltado,
   JSON.stringify(encendido));
+check('y el rayo deja de estar tachado', encendido.tachado === 1, encendido.tachado + ' trazos');
 check('y no abre nada por el camino', encendido.ventanas === 0);
 // Sin LED accesible, «encendido» tiene que dar luz igualmente.
 const destello = await page.evaluate(async () => {
@@ -498,6 +501,8 @@ const apagadoDeNuevo = await page.evaluate(async () => {
 });
 check('otro toque lo apaga, y entonces no da luz',
   apagadoDeNuevo.modo === 'off' && !apagadoDeNuevo.dioLuz, JSON.stringify(apagadoDeNuevo));
+check('y el rayo vuelve a salir tachado',
+  await page.evaluate(() => document.querySelectorAll('.camtool[aria-label="Flash"] svg path').length) === 2);
 
 console.log('\n── Navegador dentro de otra aplicación ──');
 /* Abrir el enlace desde WhatsApp o Instagram lo muestra en una vista web

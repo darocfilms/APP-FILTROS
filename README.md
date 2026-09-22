@@ -79,12 +79,20 @@ La imagen ocupa la pantalla entera. Nada de la interfaz la recorta. Sólo abren
 valor continuo van en dos barras sobre la propia imagen, y los que son un
 interruptor actúan de un toque.
 
+Lo que queda son **tres iconos sueltos**, sin caja que los agrupe y sin texto
+debajo: la barra translúcida ocupaba todo el ancho del visor para sostener tres
+símbolos, y lo que sobra aquí tapa el encuadre. Van dibujados en SVG y no como
+glifos de Unicode, que cambian de forma en cada sistema y alguno sale como una
+caja: tres círculos superpuestos para el color, cuatro esquinas de marco para el
+encuadre y el rayo del flash, tachado cuando está apagado. Lo que los separa de
+la foto es la sombra, no un fondo, y su nombre vive en `aria-label` para quien
+no ve el icono.
+
 | Mando | Qué hace |
 |---|---|
 | **Filtros** | Ventana: las 26 emulsiones por familias e intensidad, en directo sobre el visor |
 | **Dimensiones** | Ventana: encuadre, con los megapíxeles que cuesta cada uno |
 | **Flash** | Un toque: encendido o apagado |
-| **Biblioteca** | Un toque: lleva a lo ya guardado |
 | **Barra izquierda** | Exposición, en diafragmas reales |
 | **Barra derecha** | Zoom, con el 0,5× incluido si hay gran angular |
 | **Junto al disparador** | Ocultar los mandos, y cambiar de cámara |
@@ -174,7 +182,7 @@ Diez paneles de ajustes:
 
 | Panel | Contenido |
 |---|---|
-| **Película** | 26 emulsiones con previsualización real de tu propia foto, e intensidad |
+| **Película** | 26 emulsiones con previsualización real de tu propia foto, e intensidad. Sin ficha de texto: la tarjeta enseña la emulsión aplicada a TU foto, que dice más que el párrafo y no se come media pantalla de imagen |
 | **Luz** | Exposición, contraste, altas luces, sombras, blancos, negros, velado |
 | **Color** | Temperatura en kelvin, matiz, intensidad, saturación, rotación de tono, blanco y negro con mezclador de canal |
 | **HSL** | Tono, saturación y luminancia en ocho bandas de color |

@@ -105,8 +105,14 @@ const cards = await page.locator('.filmcard').count();
 check('el selector muestra todas las emulsiones del catálogo', cards === FILM_COUNT, cards + ' de ' + FILM_COUNT);
 await page.locator('.filmcard[data-film="cinestill800t"]').click();
 await page.waitForTimeout(900);
-const noteText = await page.locator('.filmnote').textContent();
-check('se aplica CineStill 800T', /CineStill/.test(noteText));
+// Sin ficha de texto, la tarjeta elegida es la que dice cuál está puesta.
+const elegida = await page.evaluate(() => {
+  const c = document.querySelector('.filmcard.is-active');
+  return { id: c?.dataset.film, nombre: c?.textContent.trim(), marcada: c?.getAttribute('aria-pressed') };
+});
+check('se aplica CineStill 800T',
+  elegida.id === 'cinestill800t' && /CineStill/.test(elegida.nombre) && elegida.marcada === 'true',
+  JSON.stringify(elegida));
 const stateAfterFilm = await page.evaluate(() => ({
   film: window.__lab.views.lab.params.film.id,
   halation: window.__lab.views.lab.params.effects.halation,

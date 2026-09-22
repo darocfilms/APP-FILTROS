@@ -97,13 +97,38 @@ await page.locator('.campanel__close').click();
 await page.waitForTimeout(400);
 
 console.log('\n── Cámara: los ajustes son ventanas flotantes ──');
-const grupos = await page.evaluate(() => [...document.querySelectorAll('.camtool')].map((b) => b.textContent.trim()));
-check('hay un mando por grupo de funciones', grupos.length === 4, grupos.join(' · '));
-check('sin espejo manual: lo decide la cámara elegida',
-  !grupos.some((g) => /Voltear/i.test(g)), grupos.join(' · '));
-check('sin guías, y en su sitio la biblioteca',
-  !grupos.some((g) => /Guías/i.test(g)) && grupos.some((g) => /Biblioteca/i.test(g)),
-  grupos.join(' · '));
+// Sin etiqueta debajo, el nombre del mando vive en `aria-label`: es lo que se
+// lee aquí, y lo que oye quien no ve el icono.
+const grupos = await page.evaluate(() =>
+  [...document.querySelectorAll('.camtool')].map((b) => b.getAttribute('aria-label')));
+check('quedan tres mandos y ninguno más', grupos.length === 3, grupos.join(' · '));
+check('los tres son Filtros, Dimensiones y Flash',
+  ['Filtros', 'Dimensiones', 'Flash'].every((n) => grupos.includes(n)), grupos.join(' · '));
+check('sin espejo, sin guías y sin biblioteca en la fila',
+  !grupos.some((g) => /Voltear|Guías|Biblioteca/i.test(g)), grupos.join(' · '));
+// Iconos dibujados y sin recuadro que los agrupe.
+const pinta = await page.evaluate(() => {
+  const fila = document.querySelector('.cam__tools');
+  const cs = getComputedStyle(fila);
+  const btn = document.querySelector('.camtool');
+  const r = btn.getBoundingClientRect();
+  return {
+    fondo: cs.backgroundColor, velo: cs.backdropFilter || cs.webkitBackdropFilter,
+    dibujados: document.querySelectorAll('.camtool__icon svg').length,
+    conTexto: [...document.querySelectorAll('.camtool')].some((b) => b.textContent.trim() !== ''),
+    area: Math.round(r.width) + '×' + Math.round(r.height),
+    tocable: r.width >= 44 && r.height >= 44,
+    sombra: getComputedStyle(document.querySelector('.camtool__icon')).filter,
+  };
+});
+check('la fila no tiene recuadro flotante',
+  pinta.fondo === 'rgba(0, 0, 0, 0)' && (!pinta.velo || pinta.velo === 'none'), JSON.stringify(pinta));
+check('los tres iconos van dibujados, sin texto debajo',
+  pinta.dibujados === 3 && !pinta.conTexto, pinta.dibujados + ' svg');
+check('y se despegan de la imagen con sombra, no con fondo',
+  /drop-shadow/.test(pinta.sombra), pinta.sombra);
+check('sin etiqueta, el área táctil sigue siendo de dedo',
+  pinta.tocable, pinta.area);
 // Cambiar de cámara se decide con el teléfono ya levantado, así que vive junto
 // al disparador y no en la fila, donde habría que ir a buscarlo.
 const cambiar = await page.evaluate(() => {

@@ -333,38 +333,31 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 .view--camera.is-immersive .cam__reveal { opacity: 1; pointer-events: auto; }
 
+/* Tres iconos sueltos sobre la imagen. Sin caja que los agrupe: la barra
+   translúcida ocupaba todo el ancho del visor para sostener tres símbolos, y
+   lo que sobra aquí tapa el encuadre. Lo que los separa de la foto es la
+   sombra, no un fondo. */
 .cam__tools {
-  display: flex; align-items: center; gap: 2px;
-  padding: 4px; border-radius: 16px;
-  background: rgba(0, 0, 0, 0.42);
-  backdrop-filter: saturate(140%) blur(16px);
-  -webkit-backdrop-filter: saturate(140%) blur(16px);
-  /* Con la exposición y el zoom fuera de la fila, los cuatro mandos que quedan
-     caben de sobra: se centran en vez de desplazarse. */
-  justify-content: center;
-  overflow-x: auto; scrollbar-width: none;
-}
-.cam__tools::-webkit-scrollbar { display: none; }
-.cam__toolsep {
-  flex: 0 0 auto; width: 1px; height: 26px; margin: 0 2px;
-  background: rgba(255, 255, 255, 0.16);
+  display: flex; align-items: center; justify-content: center; gap: 18px;
 }
 
 .camtool {
-  flex: 0 0 auto; min-width: 58px; min-height: 46px;
-  scroll-snap-align: center;
-  display: grid; place-items: center; gap: 1px;
-  padding: 4px 2px; border-radius: 12px;
-  color: rgba(255, 255, 255, 0.72);
-  transition: background 0.15s, color 0.15s;
+  flex: 0 0 auto; width: 46px; height: 46px;
+  display: grid; place-items: center;
+  color: #fff;
+  transition: color 0.15s, transform 0.1s var(--ease);
 }
-.camtool__icon { font-size: 16px; line-height: 1; }
-.camtool__label {
-  font-size: 9px; letter-spacing: -0.01em; white-space: nowrap;
+.camtool__icon {
+  display: grid; place-items: center; line-height: 1;
+  /* Doble sombra: la corta define el borde sobre un fondo claro y la larga lo
+     despega de uno con textura. Es lo que sustituye al recuadro. */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 2px 7px rgba(0, 0, 0, 0.55));
 }
-.camtool.is-open { background: var(--accent); color: var(--accent-ink); }
-.camtool.is-on { background: rgba(232, 179, 74, 0.22); color: var(--accent); }
-.camtool:active { background: rgba(255, 255, 255, 0.14); }
+/* Con ventana abierta o con el flash encendido, el icono se tiñe. Un recuadro
+   de color volvería a meter la caja que se acaba de quitar. */
+.camtool.is-open, .camtool.is-on { color: var(--accent); }
+.camtool:active { transform: scale(0.88); }
 
 /* Destello de pantalla: la única luz que un navegador puede dar cuando no
    expone el LED. Va sobre el visor, no sobre toda la vista, para que los
@@ -800,14 +793,6 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 .filmcard.is-active .filmcard__name { color: var(--text); font-weight: 600; }
 
-.filmnote {
-  display: grid; gap: 2px; padding: 8px 11px; margin: 2px 0 4px;
-  background: var(--bg-input); border-radius: var(--radius-sm);
-  border: 1px solid var(--line-soft);
-}
-.filmnote strong { font-size: 12.5px; }
-.filmnote__kind { font-size: 10px; color: var(--accent); letter-spacing: 0.04em; }
-.filmnote__text { font-size: 11.5px; color: var(--text-dim); line-height: 1.4; }
 
 /* ── HSL ────────────────────────────────────────────────────────────────── */
 
