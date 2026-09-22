@@ -98,12 +98,20 @@ await page.waitForTimeout(400);
 
 console.log('\n── Cámara: los ajustes son ventanas flotantes ──');
 const grupos = await page.evaluate(() => [...document.querySelectorAll('.camtool')].map((b) => b.textContent.trim()));
-check('hay un mando por grupo de funciones', grupos.length === 7, grupos.join(' · '));
+check('hay un mando por grupo de funciones', grupos.length === 4, grupos.join(' · '));
 check('sin espejo manual: lo decide la cámara elegida',
   !grupos.some((g) => /Voltear/i.test(g)), grupos.join(' · '));
+check('sin guías y sin cambio de cámara: ese sitio lo ocupa el laboratorio',
+  !grupos.some((g) => /Guías|Cambiar/i.test(g)) && grupos.some((g) => /Laboratorio/i.test(g)),
+  grupos.join(' · '));
+// Exposición y zoom salen de la fila: son barras sobre la imagen.
+check('la exposición y el zoom ya no son ventanas',
+  !grupos.some((g) => /Exposición|Zoom/i.test(g))
+  && await page.locator('.cam__rail--left').count() === 1
+  && await page.locator('.cam__rail--right').count() === 1,
+  grupos.join(' · '));
 
-for (const [tool, titulo] of [['film', 'Filtros'], ['exposure', 'Exposición'],
-                              ['zoom', 'Zoom'], ['flash', 'Flash'], ['size', 'Dimensiones']]) {
+for (const [tool, titulo] of [['film', 'Filtros'], ['size', 'Dimensiones']]) {
   await page.locator(`.camtool[data-tool="${tool}"]`).click();
   await page.waitForTimeout(350);
   const abierto = await page.evaluate(() => {

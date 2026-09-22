@@ -198,15 +198,6 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 @keyframes flash { from { opacity: 0.9; } to { opacity: 0; } }
 
-.cam__grid {
-  position: absolute; inset: 0; pointer-events: none;
-  background:
-    linear-gradient(to right, transparent 33.33%, rgba(255,255,255,0.22) 33.33%, rgba(255,255,255,0.22) calc(33.33% + 1px), transparent calc(33.33% + 1px)),
-    linear-gradient(to right, transparent 66.66%, rgba(255,255,255,0.22) 66.66%, rgba(255,255,255,0.22) calc(66.66% + 1px), transparent calc(66.66% + 1px)),
-    linear-gradient(to bottom, transparent 33.33%, rgba(255,255,255,0.22) 33.33%, rgba(255,255,255,0.22) calc(33.33% + 1px), transparent calc(33.33% + 1px)),
-    linear-gradient(to bottom, transparent 66.66%, rgba(255,255,255,0.22) 66.66%, rgba(255,255,255,0.22) calc(66.66% + 1px), transparent calc(66.66% + 1px));
-}
-
 .cam__badge {
   position: absolute; top: calc(44px + env(safe-area-inset-top)); left: 50%;
   transform: translateX(-50%);
@@ -249,6 +240,76 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 .cam__message p { color: var(--text-dim); max-width: 32ch; }
 
+/* ── Barras verticales del visor ────────────────────────────────────────── */
+
+/* Lo delgado es la LÍNEA, no el objetivo: la caja mide 46 px para que el pulgar
+   la encuentre sin mirar, y dentro va un raíl de 3 px que casi no tapa nada.
+   Se colocan entre la insignia de arriba y los mandos de abajo, pegadas a cada
+   borde, donde el pulgar de esa mano llega sin recolocar el teléfono. */
+.cam__rail {
+  position: absolute; z-index: 5;
+  top: calc(96px + env(safe-area-inset-top));
+  bottom: calc(var(--tab-h) + 178px);
+  min-height: 150px;
+  width: 46px;
+  touch-action: none;   /* el arrastre es del raíl, no del desplazamiento */
+  transition: opacity 0.24s var(--ease);
+}
+.cam__rail--left { left: 0; }
+.cam__rail--right { right: 0; }
+/* Se esconden con el resto de los mandos: el encuadre limpio es limpio. */
+.view--camera.is-immersive .cam__rail { opacity: 0; pointer-events: none; }
+
+.rail { --pos: 0.5; --origin: 0; }
+.rail__track {
+  position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 3px; margin-left: -1.5px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.55);
+}
+/* Relleno desde el valor neutro: de un vistazo se ve cuánto te has desviado y
+   hacia dónde, sin leer el número. */
+.rail__fill {
+  position: absolute; left: 0; right: 0; border-radius: 2px;
+  background: var(--accent);
+  bottom: calc(min(var(--pos), var(--origin)) * 100%);
+  top: calc((1 - max(var(--pos), var(--origin))) * 100%);
+}
+.rail__tick {
+  position: absolute; left: -3px; right: -3px; height: 2px; margin-top: -1px;
+  top: calc((1 - var(--origin)) * 100%);
+  background: rgba(255, 255, 255, 0.6); border-radius: 1px;
+}
+.rail__thumb {
+  position: absolute; left: 50%; width: 20px; height: 20px;
+  margin: -10px 0 0 -10px;
+  top: calc((1 - var(--pos)) * 100%);
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  transition: transform 0.12s var(--ease);
+}
+.rail.is-active .rail__thumb { transform: scale(1.25); }
+
+/* El número sólo aparece mientras se mueve: el resto del tiempo estorba a la
+   imagen, que es lo que se está mirando para decidir. */
+.rail__value {
+  position: absolute; top: calc((1 - var(--pos)) * 100% - 13px);
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(10px);
+  font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 0.18s;
+}
+.cam__rail--left .rail__value { left: calc(100% - 4px); }
+.cam__rail--right .rail__value { right: calc(100% - 4px); }
+.rail.is-active .rail__value { opacity: 1; }
+/* Sin gran angular no hay nada por debajo de 1×: el tramo se apaga en vez de
+   prometer un objetivo que este teléfono no tiene. */
+.cam__rail.is-noultra .rail__track {
+  background: linear-gradient(to top,
+    rgba(255, 255, 255, 0.08) 0, rgba(255, 255, 255, 0.08) calc(var(--origin) * 100%),
+    rgba(255, 255, 255, 0.28) calc(var(--origin) * 100%));
+}
+
 /* ── HUD flotante ───────────────────────────────────────────────────────── */
 
 .cam__hud {
@@ -278,13 +339,10 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   background: rgba(0, 0, 0, 0.42);
   backdrop-filter: saturate(140%) blur(16px);
   -webkit-backdrop-filter: saturate(140%) blur(16px);
-  /* Ocho grupos no caben de una vez en 390 px con las etiquetas legibles, así
-     que la fila se desplaza. El desvanecido de los bordes lo anuncia: sin él
-     el último grupo parece cortado por un fallo. */
+  /* Con la exposición y el zoom fuera de la fila, los cuatro mandos que quedan
+     caben de sobra: se centran en vez de desplazarse. */
+  justify-content: center;
   overflow-x: auto; scrollbar-width: none;
-  scroll-snap-type: x proximity;
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 14px), transparent);
 }
 .cam__tools::-webkit-scrollbar { display: none; }
 .cam__toolsep {

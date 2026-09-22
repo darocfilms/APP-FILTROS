@@ -43,6 +43,10 @@ const styles = await page.evaluate(() => {
   return { gradient: bg, c1: sw ? getComputedStyle(sw.parentElement).getPropertyValue('--c1').trim() : '' };
 });
 check('las muestras de la tira tienen degradado', /linear-gradient\(.*rgb/.test(styles.gradient), styles.c1);
+// El mando de Filtros es un interruptor: dejarlo abierto haría que el siguiente
+// toque de esta prueba lo CERRARA en vez de abrirlo.
+await page.locator('.campanel__close').click();
+await page.waitForTimeout(300);
 
 console.log('\n── Vista de cámara en marcha ──');
 const cam = await page.evaluate(() => {
@@ -63,34 +67,83 @@ const arranque = await page.evaluate(() => {
   const v = window.__lab.views.camera;
   return { id: v.params.film.id, fuerza: v.params.film.strength, mate: v.params.light.matteLow };
 });
-check('la cámara arranca con Vision3 250D puesta',
-  arranque.id === 'vision3_250d', JSON.stringify(arranque));
+check('la cámara arranca con la copia de cine 2383 puesta',
+  arranque.id === 'kodak2383', JSON.stringify(arranque));
 const enLab = await page.evaluate(() => window.__lab.views.lab.params.film.id);
 check('el laboratorio NO la impone a las fotos importadas', enLab === 'neutral', enLab);
 
-console.log('\n── Las barras muestran por dónde se desliza ──');
-for (const [tool, etiqueta] of [['exposure', 'Exposición'], ['zoom', 'Zoom']]) {
-  await page.locator(`.camtool[data-tool="${tool}"]`).click();
-  await page.waitForTimeout(400);
-  const via = await page.evaluate(() => {
-    const t = document.querySelector('.campanel .slider__track');
-    if (!t) return null;
-    const cs = getComputedStyle(t, '::before');
-    const relleno = getComputedStyle(t, '::after');
+console.log('\n── Barras verticales de exposición y zoom ──');
+// Lo delgado tiene que ser la línea, no el objetivo: se mide la caja que se
+// toca, no la que se ve.
+const barras = await page.evaluate(() => {
+  const leer = (sel) => {
+    const n = document.querySelector(sel);
+    if (!n) return null;
+    const r = n.getBoundingClientRect();
+    const t = n.querySelector('.rail__track').getBoundingClientRect();
     return {
-      linea: cs.height,
-      lineaVisible: cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && parseFloat(cs.height) > 0,
-      relleno: relleno.backgroundColor,
-      marca: !!t.querySelector('.slider__tick:not([hidden])'),
+      caja: Math.round(r.width), linea: +t.width.toFixed(1),
+      alto: Math.round(r.height),
+      x: Math.round(r.left + r.width / 2), vw: innerWidth,
+      marca: !n.querySelector('.rail__tick').hidden,
+      rol: n.getAttribute('role'), etiqueta: n.getAttribute('aria-label'),
     };
-  });
-  check(`«${etiqueta}» tiene la vía dibujada`, via && via.lineaVisible, JSON.stringify(via));
-  // La marca del neutro sólo aparece cuando el neutro está DENTRO del recorrido:
-  // en el zoom, 1× es el mínimo, y marcarlo ahí sería repetir el extremo.
-  const debeMarcar = tool === 'exposure';
-  check(`«${etiqueta}» ${debeMarcar ? 'marca el valor neutro' : 'no marca un extremo como si fuera neutro'}`,
-    !!via.marca === debeMarcar);
+  };
+  return { izq: leer('.cam__rail--left'), der: leer('.cam__rail--right') };
+});
+check('la exposición está a la izquierda',
+  barras.izq && barras.izq.x < barras.izq.vw / 3, JSON.stringify(barras.izq));
+check('el zoom está a la derecha',
+  barras.der && barras.der.x > barras.der.vw * 2 / 3, JSON.stringify(barras.der));
+for (const [lado, b] of [['exposición', barras.izq], ['zoom', barras.der]]) {
+  check(`la barra de ${lado} es una línea fina`, b.linea <= 4, b.linea + ' px de línea');
+  check(`pero se puede tocar sin mirar`, b.caja >= 44, b.caja + ' px de área táctil');
+  check(`y es vertical`, b.alto > b.caja * 2, b.alto + '×' + b.caja);
+  check(`marca su valor neutro`, b.marca === true);
+  check(`se anuncia como deslizador`, b.rol === 'slider' && !!b.etiqueta, b.etiqueta);
 }
+
+// Arrastrar de verdad: del centro hacia arriba sube la exposición.
+const antesEV = await page.evaluate(() => window.__lab.views.camera.params.light.exposure);
+const caja = await page.locator('.cam__rail--left').boundingBox();
+await page.mouse.move(caja.x + caja.width / 2, caja.y + caja.height / 2);
+await page.mouse.down();
+await page.mouse.move(caja.x + caja.width / 2, caja.y + caja.height * 0.2, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+const despuesEV = await page.evaluate(() => window.__lab.views.camera.params.light.exposure);
+check('arrastrar hacia arriba sube la exposición',
+  despuesEV > antesEV + 0.5, antesEV.toFixed(2) + ' → ' + despuesEV.toFixed(2) + ' EV');
+await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  v.params.light.exposure = 0;
+  v.evRail.set(0);
+});
+
+// Y el zoom se refleja en su barra aunque se cambie desde fuera (el pellizco).
+await page.evaluate(() => window.__lab.views.camera.setZoom(3));
+await page.waitForTimeout(400);
+const posBarra = await page.evaluate(() => {
+  const n = document.querySelector('.cam__rail--right');
+  return { pos: parseFloat(getComputedStyle(n).getPropertyValue('--pos')), zoom: window.__lab.views.camera.zoom };
+});
+check('la barra de zoom sigue al pellizco',
+  posBarra.zoom === 3 && posBarra.pos > 0.5, JSON.stringify(posBarra));
+
+// El tramo por debajo de 1× es OTRA cámara. Sin gran angular no existe, y la
+// barra no puede prometerlo: arrastrar hasta el fondo tiene que quedarse en 1×.
+const fondo = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  v.setEffectiveZoom(0.5);
+  return { ultra: v.hasUltraWide, lente: v.lens, efectivo: v.effectiveZoom,
+           apagado: document.querySelector('.cam__rail--right').classList.contains('is-noultra') };
+});
+check('sin gran angular, la barra no baja de 1×',
+  fondo.ultra === false && fondo.efectivo === 1 && fondo.lente === 'wide', JSON.stringify(fondo));
+check('y el tramo que no existe se ve apagado', fondo.apagado === true);
+
+await page.evaluate(() => window.__lab.views.camera.setZoom(1));
+await page.waitForTimeout(400);
 
 console.log('\n── Gran angular ──');
 const objetivos = await page.evaluate(() => {
@@ -368,25 +421,50 @@ check('el zoom no se pasa de su tope', zoomTope === zoom0.max, zoomTope + '×');
 await page.evaluate(() => window.__lab.views.camera.setZoom(1));
 await page.waitForTimeout(500);
 
-console.log('\n── Flash ──');
+console.log('\n── Flash: un botón, dos estados ──');
 const flash = await page.evaluate(() => {
   const v = window.__lab.views.camera;
   return { modo: v.flash, linterna: v.canTorch };
 });
 check('empieza apagado', flash.modo === 'off', 'LED accesible: ' + flash.linterna);
+const botonFlash = page.locator('.camtool', { hasText: 'Flash' });
+check('el flash no abre ninguna ventana', await botonFlash.getAttribute('aria-expanded') === null);
+await botonFlash.click();
+await page.waitForTimeout(300);
+const encendido = await page.evaluate(() => {
+  const b = [...document.querySelectorAll('.camtool')].find((n) => /Flash/.test(n.textContent));
+  return {
+    modo: window.__lab.views.camera.flash,
+    marcado: b.getAttribute('aria-pressed'),
+    resaltado: b.classList.contains('is-on'),
+    ventanas: document.querySelectorAll('.campanel').length,
+  };
+});
+check('un toque lo enciende', encendido.modo === 'on' && encendido.marcado === 'true' && encendido.resaltado,
+  JSON.stringify(encendido));
+check('y no abre nada por el camino', encendido.ventanas === 0);
+// Sin LED accesible, «encendido» tiene que dar luz igualmente.
 const destello = await page.evaluate(async () => {
   const v = window.__lab.views.camera;
-  v.setFlash('screen');
   const apagar = await v._flashOn();
   const visible = !v.screenFlash.hidden
     && getComputedStyle(v.screenFlash).backgroundColor === 'rgb(255, 255, 255)';
   apagar();
-  const apagado = v.screenFlash.hidden;
-  v.setFlash('off');
-  return { visible, apagado };
+  return { visible, apagado: v.screenFlash.hidden };
 });
-check('el destello de pantalla se enciende', destello.visible);
+check('encendido y sin LED, destella la pantalla', destello.visible);
 check('y se apaga después', destello.apagado);
+await botonFlash.click();
+await page.waitForTimeout(300);
+const apagadoDeNuevo = await page.evaluate(async () => {
+  const v = window.__lab.views.camera;
+  const apagar = await v._flashOn();
+  const dioLuz = !v.screenFlash.hidden;
+  apagar();
+  return { modo: v.flash, dioLuz };
+});
+check('otro toque lo apaga, y entonces no da luz',
+  apagadoDeNuevo.modo === 'off' && !apagadoDeNuevo.dioLuz, JSON.stringify(apagadoDeNuevo));
 
 console.log('\n── Navegador dentro de otra aplicación ──');
 /* Abrir el enlace desde WhatsApp o Instagram lo muestra en una vista web

@@ -8,7 +8,7 @@
  * valor neutro.
  */
 
-import { el, haptic } from '../utils/dom.js';
+import { el, haptic, setStyle } from '../utils/dom.js';
 import { formatValue } from '../data/params.js';
 
 /**
@@ -142,4 +142,138 @@ export function makeButton(text, onClick, { variant = '', icon = null } = {}) {
     class: 'btn ' + (variant ? 'btn--' + variant : ''),
     onclick: (e) => { haptic(); onClick(e); },
   }, icon, text);
+}
+
+/**
+ * Barra vertical delgada para el visor de la cámara.
+ *
+ * No es un `input[type=range]` girado: rotar un control nativo deja el área
+ * táctil peleada con lo que se ve, y aquí el dedo llega de lado, con el pulgar,
+ * sobre una imagen en movimiento. Se dibuja una línea fina —lo justo para no
+ * tapar el encuadre— dentro de una caja ancha que sí se puede tocar: lo
+ * delgado es la línea, no el objetivo.
+ *
+ * La escala puede ser logarítmica, que es como se percibe el zoom: de 1× a 2×
+ * se nota lo mismo que de 5× a 10×, y en lineal el primer tramo quedaría
+ * aplastado contra el extremo.
+ *
+ * @param {object} opts
+ * @param {number} opts.min  extremo inferior de la barra
+ * @param {number} opts.max  extremo superior
+ * @param {number} opts.value valor inicial
+ * @param {string} opts.label nombre para lectores de pantalla
+ * @param {(v:number)=>string} opts.format texto de la burbuja
+ * @param {(v:number)=>void} opts.onInput
+ * @param {'lineal'|'log'} [opts.scale]
+ * @param {number|null} [opts.origin] valor neutro: de ahí arranca el relleno
+ * @param {number} [opts.step] redondeo del valor
+ */
+export function verticalRail({
+  min, max, value, label, format, onInput,
+  scale = 'lineal', origin = null, step = 0,
+}) {
+  // `min` y `max` se reasignan desde `setRange`, así que no pueden ser const.
+  const aT = (v) => {
+    const c = Math.min(max, Math.max(min, v));
+    return scale === 'log'
+      ? Math.log(c / min) / Math.log(max / min)
+      : (c - min) / (max - min);
+  };
+  const aValor = (t) => {
+    const c = Math.min(1, Math.max(0, t));
+    const v = scale === 'log' ? min * Math.pow(max / min, c) : min + c * (max - min);
+    return step > 0 ? Math.round(v / step) * step : v;
+  };
+
+  const fill = el('div', { class: 'rail__fill' });
+  const thumb = el('div', { class: 'rail__thumb' });
+  const tick = el('div', { class: 'rail__tick', hidden: origin == null });
+  const track = el('div', { class: 'rail__track' }, tick, fill, thumb);
+  const bubble = el('div', { class: 'rail__value' });
+
+  const root = el('div', {
+    class: 'rail', role: 'slider', tabindex: '0',
+    'aria-label': label,
+    'aria-valuemin': String(min), 'aria-valuemax': String(max),
+  }, track, bubble);
+
+  let actual = value;
+
+  const pintar = () => {
+    const t = aT(actual);
+    const o = origin == null ? 0 : aT(origin);
+    setStyle(root, { '--pos': t.toFixed(4), '--origin': o.toFixed(4) });
+    bubble.textContent = format(actual);
+    root.setAttribute('aria-valuenow', String(+actual.toFixed(3)));
+    root.setAttribute('aria-valuetext', bubble.textContent);
+  };
+
+  /** Fija el valor sin avisar: para reflejar cambios de fuera (el pellizco). */
+  const set = (v) => { actual = Math.min(max, Math.max(min, v)); pintar(); };
+
+  const desdeY = (clientY) => {
+    const r = track.getBoundingClientRect();
+    if (!r.height) return actual;
+    // Arriba es más: es lo que espera la mano en una barra vertical.
+    return aValor(1 - (clientY - r.top) / r.height);
+  };
+
+  let arrastrando = false;
+  const mover = (clientY, conTacto) => {
+    const v = desdeY(clientY);
+    if (Math.abs(v - actual) < 1e-6) return;
+    actual = v;
+    pintar();
+    if (conTacto) haptic(4);
+    onInput(actual);
+  };
+
+  root.addEventListener('pointerdown', (ev) => {
+    // El visor escucha el pellizco y el toque que esconde los mandos: ninguno
+    // de los dos debe dispararse porque se haya tocado la barra.
+    ev.stopPropagation();
+    ev.preventDefault();
+    arrastrando = true;
+    root.classList.add('is-active');
+    root.setPointerCapture(ev.pointerId);
+    mover(ev.clientY, true);
+  });
+  root.addEventListener('pointermove', (ev) => {
+    if (!arrastrando) return;
+    ev.stopPropagation();
+    mover(ev.clientY, false);
+  });
+  const soltar = (ev) => {
+    if (!arrastrando) return;
+    arrastrando = false;
+    root.classList.remove('is-active');
+    try { root.releasePointerCapture(ev.pointerId); } catch { /* ya se soltó */ }
+  };
+  root.addEventListener('pointerup', soltar);
+  root.addEventListener('pointercancel', soltar);
+
+  root.addEventListener('keydown', (ev) => {
+    const paso = (max - min) / 40;
+    if (ev.key === 'ArrowUp') set(actual + paso);
+    else if (ev.key === 'ArrowDown') set(actual - paso);
+    else return;
+    ev.preventDefault();
+    onInput(actual);
+  });
+
+  /**
+   * Cambia los extremos ya montado. El techo del zoom no se sabe hasta que la
+   * cámara está abierta, y hasta entonces la barra trabaja con uno de reserva.
+   */
+  const setRange = (nuevoMin, nuevoMax) => {
+    if (nuevoMin === min && nuevoMax === max) return;
+    min = nuevoMin;
+    max = nuevoMax;
+    root.setAttribute('aria-valuemin', String(min));
+    root.setAttribute('aria-valuemax', String(max));
+    set(actual);
+  };
+
+  pintar();
+  return { node: root, set, setRange, get value() { return actual; } };
 }

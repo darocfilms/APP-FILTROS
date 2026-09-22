@@ -74,19 +74,32 @@ Safari → Compartir → **Añadir a pantalla de inicio**. Merece la pena hacerl
 
 ### Cámara
 
-La imagen ocupa la pantalla entera. Nada de la interfaz la recorta: los ajustes
-no viven en un panel fijo, emergen como **ventanas flotantes**, una a la vez,
-agrupadas por función, y se esconden con el mismo gesto que las abre.
+La imagen ocupa la pantalla entera. Nada de la interfaz la recorta. Sólo abren
+**ventana flotante** los ajustes que son una LISTA de opciones; los que son un
+valor continuo van en dos barras sobre la propia imagen, y los que son un
+interruptor actúan de un toque.
 
-| Grupo | Qué hace |
+| Mando | Qué hace |
 |---|---|
-| **Filtros** | Las 26 emulsiones por familias e intensidad, en directo sobre el visor |
-| **Exposición** | Compensación en diafragmas reales |
-| **Zoom** | Objetivos, deslizador y pasos rápidos; también pellizcando sobre la imagen |
-| **Flash** | Apagado, linterna o destello de pantalla |
-| **Dimensiones** | Encuadre, con los megapíxeles que cuesta cada uno |
-| **Guías** | Cuadrícula de tercios |
-| **Cambiar** | Frontal o trasera |
+| **Filtros** | Ventana: las 26 emulsiones por familias e intensidad, en directo sobre el visor |
+| **Dimensiones** | Ventana: encuadre, con los megapíxeles que cuesta cada uno |
+| **Flash** | Un toque: encendido o apagado |
+| **Laboratorio** | Un toque: lleva la pestaña de revelado |
+| **Barra izquierda** | Exposición, en diafragmas reales |
+| **Barra derecha** | Zoom, con el 0,5× incluido si hay gran angular |
+
+**Las barras de los lados.** La exposición y el zoom se buscan MIRANDO el
+encuadre, así que taparlo con una ventana para decidirlos esconde justo el dato
+que hace falta. Van en dos líneas de 3 px pegadas a cada borde —una a cada lado,
+donde el pulgar de esa mano llega sin recolocar el teléfono— con una marca en su
+valor neutro y el número flotando sólo mientras se arrastra. Lo delgado es la
+línea, no el objetivo: la caja que se toca mide 46 px.
+
+El zoom va en escala **logarítmica**, que es como se percibe: de 1× a 2× se nota
+lo mismo que de 5× a 10×, y en lineal el primer tramo —el que más se usa— queda
+aplastado contra el extremo. Por debajo de 1× no hay zoom sino otra cámara; si
+el dispositivo no tiene gran angular ese tramo se ve apagado en vez de prometer
+un objetivo que no existe.
 
 **Las 26, antes de disparar.** El catálogo entero está en el visor, no sólo en
 el laboratorio: una fila de familias arriba —negativo color, diapositiva, cine,
@@ -94,27 +107,31 @@ blanco y negro…— y debajo la tira de esa familia. En una tira única, la cop
 cine quedaba a diez dedos de desplazamiento a la derecha; así está a dos toques,
 y se ve la emulsión puesta antes de apretar el botón, que es cuando importa.
 
-**El espejo no es una opción**, es la cámara que estés usando: la frontal se ve
-en espejo y la trasera no, como en la cámara del sistema. Un interruptor aparte
-sólo servía para acabar con la foto al revés sin saber por qué.
+**Arranca con la copia de cine 2383 puesta.** Es una decisión de look y no de
+neutralidad: el visor enseña desde el primer momento aquello a lo que se va a
+parecer la foto, con su cruce a cian en sombras y cálido en luces.
 
-**Zoom.** El 0,5× no es zoom: es **otra cámara**, con su propio objetivo, y no
-hay restricción que lleve hasta ella — hay que pedirla por su identificador. La
-aplicación busca el gran angular entre las cámaras del dispositivo y lo ofrece
-como objetivo aparte, no como un valor del deslizador, porque mezclarlos en la
-misma escala mentiría sobre lo que ocurre.
+**El 0,5× no es zoom**: es **otra cámara**, con su propio objetivo, y no hay
+restricción que lleve hasta ella — hay que pedirla por su identificador. Cruzar
+el 1× en la barra cambia de objetivo, que obliga a reabrir el flujo, así que
+sólo se pide cuando el objetivo de destino es distinto del que ya está puesto.
 
 A partir de 1×, cuando el dispositivo expone el zoom del sensor se usa primero,
 porque es zoom real y no pierde detalle; más allá se recorta, y entonces sí se
-pierde. El panel dice cuál de las dos cosas está pasando, y los
-megapíxeles anunciados descuentan el recorte en lugar de prometer un detalle que
-la foto no va a tener.
+pierde. La insignia dice cuál de las dos cosas está pasando, y los megapíxeles
+anunciados descuentan el recorte en lugar de prometer un detalle que la foto no
+va a tener.
 
-**Flash.** La linterna se enciende al disparar y permanece encendida mientras
-grabas — cuando el navegador da acceso al LED. Safari en iPhone no lo hace,
-hasta donde alcanza esta versión, así que la aplicación lo comprueba en marcha:
-si no puede, la opción aparece marcada y se usa el destello de pantalla, que no
-alumbra como un LED pero sirve con la cámara frontal y de cerca.
+**Flash: encendido o apagado, y ya está.** Elegir entre «linterna» y «pantalla»
+era una pregunta sobre el hardware, no sobre la foto: quien dispara quiere luz.
+Se usa el LED cuando el navegador lo deja —Safari en iPhone no lo hace, hasta
+donde alcanza esta versión— y el destello de pantalla cuando no, y la insignia
+dice cuál toca al encenderlo en vez de obligar a decidirlo. La linterna, si la
+hay, permanece encendida mientras grabas.
+
+**La pantalla de cámara no cambia de cámara**: ese sitio de la fila lo ocupa el
+laboratorio, que es adonde se va después de disparar. El espejo, por tanto, es
+el de la trasera — sin espejo, como en la cámara del sistema.
 
 Tocar la imagen esconde los mandos y deja el encuadre limpio; un asidero en la
 esquina los devuelve.
@@ -285,8 +302,8 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
-| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, hay un mando por grupo de funciones y ninguno de más, cada grupo abre su ventana flotante y sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
-| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, el destello de pantalla, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
+| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, hay un mando por grupo de funciones y ninguno de más —con la exposición y el zoom fuera de la fila, en sus barras—, cada ventana abre sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
+| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Las dos barras verticales: que la línea sea fina pero su área táctil llegue a 46 px, que arrastrar hacia arriba suba de verdad la exposición, que la barra siga al pellizco y que sin gran angular no baje de 1×. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,

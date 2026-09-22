@@ -16,19 +16,19 @@
 import { el, clear, toast, haptic } from '../utils/dom.js';
 import { Renderer, renderToBlob } from '../engine/renderer.js';
 import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
-import { rangeTrack } from '../ui/controls.js';
+import { rangeTrack, verticalRail } from '../ui/controls.js';
 import { getFilm, FILMS, filmsByKind } from '../data/films.js';
 import { library, makeThumb } from '../store/library.js';
 
 /**
  * Emulsión con la que arranca la cámara.
  *
- * Vision3 250D: el negativo de cine equilibrado a luz día. Es deliberadamente
- * plano, así que da un punto de partida sin imponer un look del que luego haya
- * que salir. (La línea Vision3 son 50D, 200T, 250D y 500T; no hay una 300D, y
- * la 250D es la de luz día que le corresponde.)
+ * La copia de cine 2383: no el negativo con el que se rueda, sino el positivo
+ * que se proyecta en sala. Es una decisión de look y no de neutralidad — trae
+ * puesto el cruce a cian en sombras y cálido en luces— y por eso el visor
+ * enseña desde el primer momento aquello a lo que se va a parecer la foto.
  */
-const DEFAULT_FILM = 'vision3_250d';
+const DEFAULT_FILM = 'kodak2383';
 
 /**
  * Cadencia de grabación, en fotogramas por segundo.
@@ -147,7 +147,6 @@ export class CameraView {
     this.recorder = null;
     this.chunks = [];
     this.recStart = 0;
-    this.gridOn = false;
     this.busy = false;
     this.aspect = 'screen';
     this.openPanelKey = null;
@@ -179,7 +178,6 @@ export class CameraView {
     this.badge = el('div', { class: 'cam__badge' });
     this.recPill = el('div', { class: 'cam__rec', hidden: true },
       el('span', { class: 'cam__recdot' }), el('span', { class: 'cam__rectime', text: '0:00' }));
-    this.grid = el('div', { class: 'cam__grid', hidden: true });
     this.message = el('div', { class: 'cam__message', hidden: true });
     this.resLabel = el('span', { class: 'cam__res' });
 
@@ -193,7 +191,7 @@ export class CameraView {
         if (this.openPanelKey) this.openPanel(null);
         else this.toggleImmersive();
       },
-    }, this.canvas, this.grid, this.badge, this.recPill, this.resLabel,
+    }, this.canvas, this.badge, this.recPill, this.resLabel,
        this.screenFlash = el('div', { class: 'cam__screenflash', hidden: true }),
        this.message);
     this._bindPinch();
@@ -201,22 +199,14 @@ export class CameraView {
     /* ── Ventanas flotantes de ajustes ─────────────────────────────────── */
     this.panelHost = el('div', { class: 'cam__panelhost' });
 
+    // Sólo abren ventana los ajustes que son una LISTA de opciones. La
+    // exposición y el zoom son un valor continuo que se busca mirando la
+    // imagen, y para eso una ventana estorba justo lo que hay que mirar: van
+    // en las barras verticales de los lados.
     this.tools = [
       {
         key: 'film', icon: '▤', label: 'Filtros',
         build: () => this._filmPanel(),
-      },
-      {
-        key: 'exposure', icon: '☀', label: 'Exposición',
-        build: () => this._exposurePanel(),
-      },
-      {
-        key: 'zoom', icon: '⌕', label: 'Zoom',
-        build: () => this._zoomPanel(),
-      },
-      {
-        key: 'flash', icon: '⚡', label: 'Flash',
-        build: () => this._flashPanel(),
       },
       {
         key: 'size', icon: '⛶', label: 'Dimensiones',
@@ -237,14 +227,14 @@ export class CameraView {
       }),
       el('span', { class: 'cam__toolsep', 'aria-hidden': 'true' }),
       // Acciones inmediatas: no abren nada, actúan y se ve el efecto al momento.
-      this.gridBtn = el('button', {
+      this.flashBtn = el('button', {
         type: 'button', class: 'camtool', 'aria-pressed': 'false',
-        onclick: () => this.toggleGrid(),
-      }, el('span', { class: 'camtool__icon', text: '⊞' }), el('span', { class: 'camtool__label', text: 'Guías' })),
+        onclick: () => this.toggleFlash(),
+      }, el('span', { class: 'camtool__icon', text: '⚡' }), el('span', { class: 'camtool__label', text: 'Flash' })),
       el('button', {
         type: 'button', class: 'camtool',
-        onclick: () => this.flip(),
-      }, el('span', { class: 'camtool__icon', text: '⟳' }), el('span', { class: 'camtool__label', text: 'Cambiar' })));
+        onclick: () => this.app.go('lab'),
+      }, el('span', { class: 'camtool__icon', text: '◑' }), el('span', { class: 'camtool__label', text: 'Laboratorio' })));
 
     /* ── Disparador y modo ─────────────────────────────────────────────── */
     this.shutter = el('button', {
@@ -274,13 +264,15 @@ export class CameraView {
           onclick: () => this.app.go('library'),
         }, '▦')));
 
+    this._buildRails();
+
     this.showChrome = el('button', {
       type: 'button', class: 'cam__reveal', 'aria-label': 'Mostrar los mandos',
       onclick: () => this.toggleImmersive(),
     }, '⤡');
 
     const root = el('section', { class: 'view view--camera', id: 'view-camera' },
-      this.stage, this.hud, this.showChrome);
+      this.stage, this.evRail.node, this.zoomRail.node, this.hud, this.showChrome);
 
     // El encuadre "Pantalla" depende del tamaño de la ventana: al girar el
     // teléfono hay que recalcular el recorte o dejaría de llenarla.
@@ -364,108 +356,59 @@ export class CameraView {
         rangeTrack(strength), readout));
   }
 
-  _exposurePanel() {
-    this.evSlider = el('input', {
-      type: 'range', class: 'slider__input', min: -3, max: 3, step: 0.05,
-      value: this.params.light.exposure, 'aria-label': 'Compensación de exposición',
+  /**
+   * Las dos barras de los lados: exposición a la izquierda, zoom a la derecha.
+   *
+   * Van sobre la imagen y no dentro de una ventana porque son ajustes que se
+   * buscan MIRANDO el encuadre: taparlo con un panel para decidir cuánta luz
+   * quieres es esconder justo el dato. Y van una a cada lado porque el pulgar
+   * llega a su lado de la pantalla sin cambiar de mano.
+   */
+  _buildRails() {
+    this.evRail = verticalRail({
+      min: -3, max: 3, step: 0.05, origin: 0,
+      value: this.params.light.exposure,
+      label: 'Compensación de exposición',
+      format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' EV',
+      onInput: (v) => { this.params.light.exposure = v; },
     });
-    const readout = el('span', { class: 'campanel__value' });
-    const paint = () => {
-      const v = this.params.light.exposure;
-      readout.textContent = (v >= 0 ? '+' : '') + v.toFixed(2) + ' EV';
-    };
-    paint();
-    this.evSlider.addEventListener('input', () => {
-      this.params.light.exposure = parseFloat(this.evSlider.value);
-      paint();
+    this.evRail.node.classList.add('cam__rail', 'cam__rail--left');
+
+    // La escala del zoom es logarítmica: de 1× a 2× se nota lo mismo que de 5×
+    // a 10×, y en lineal el primer tramo —el que más se usa— quedaría
+    // aplastado contra el extremo de abajo.
+    this.zoomRail = verticalRail({
+      min: 0.5, max: this.zoomMax, scale: 'log', origin: 1,
+      value: this.effectiveZoom,
+      label: 'Zoom',
+      format: (v) => v.toFixed(1).replace(/\.0$/, '') + '×',
+      onInput: (v) => this.setEffectiveZoom(v),
     });
-    const track = rangeTrack(this.evSlider, { center: 0 });
-    return el('div', { class: 'campanel__body' },
-      el('div', { class: 'campanel__row' },
-        el('span', { class: 'campanel__label', text: 'Exposición' }), track, readout),
-      el('button', {
-        type: 'button', class: 'linkbtn', text: 'Volver a 0 EV',
-        onclick: () => {
-          this.params.light.exposure = 0;
-          this.evSlider.value = 0;
-          track.refresh();
-          paint();
-          haptic();
-        },
-      }));
+    this.zoomRail.node.classList.add('cam__rail', 'cam__rail--right');
+    this._syncZoomRail();
   }
 
-  _zoomPanel() {
-    this.zoomSlider = el('input', {
-      type: 'range', class: 'slider__input', min: 1, max: this.zoomMax, step: 0.05,
-      value: this.zoom, 'aria-label': 'Zoom',
-    });
-    this.zoomSlider.addEventListener('input', () => this.setZoom(parseFloat(this.zoomSlider.value)));
-    this.zoomTrack = rangeTrack(this.zoomSlider, { center: 1 });
-    this.zoomReadout = el('span', { class: 'campanel__value', text: this.effectiveZoom.toFixed(1) + '×' });
-
-    // Los objetivos van primero: el 0,5× no es un valor del deslizador, es otra
-    // cámara, y mezclarlos en la misma escala mentiría sobre lo que ocurre.
-    const objetivos = [
-      this.hasUltraWide ? { key: 'ultra', label: '0,5×', sub: 'Gran angular' } : null,
-      { key: 'wide', label: '1×', sub: 'Principal' },
-    ].filter(Boolean);
-
-    this.lensRow = el('div', { class: 'campanel__chips' },
-      objetivos.map((o) => el('button', {
-        type: 'button', class: 'chip chip--stacked' + (o.key === this.lens && this.zoom === 1 ? ' is-active' : ''),
-        dataset: { lens: o.key },
-        onclick: () => { this.setLens(o.key); this.setZoom(1); },
-      }, el('span', { class: 'chip__label', text: o.label }), el('span', { class: 'chip__sub', text: o.sub }))));
-
-    const pasos = [2, 3, 5].filter((v) => v <= this.zoomMax);
-    const nativo = this.nativeZoomMax > 1
-      ? `El sensor acerca hasta ${this.nativeZoomMax.toFixed(1)}×; más allá se recorta y se pierde detalle.`
-      : 'Este navegador no expone el zoom del sensor, así que se acerca recortando y se pierde detalle. Se recorta del fotograma completo, no de la previsualización.';
-    const sinUltra = !this.hasUltraWide && this.facing === 'environment'
-      ? ' No se ha encontrado gran angular en este dispositivo.'
-      : '';
-
-    return el('div', { class: 'campanel__body' },
-      this.lensRow,
-      el('div', { class: 'campanel__row' },
-        el('span', { class: 'campanel__label', text: 'Zoom' }), this.zoomTrack, this.zoomReadout),
-      el('div', { class: 'campanel__chips' },
-        pasos.map((v) => el('button', {
-          type: 'button', class: 'chip', text: v + '×',
-          onclick: () => { this.setLens('wide'); this.setZoom(v); },
-        }))),
-      el('p', { class: 'campanel__note', text: nativo + sinUltra + ' También puedes pellizcar sobre la imagen.' }));
+  /**
+   * Fija el zoom tal y como lo entiende quien mira, con el 0,5× incluido.
+   *
+   * Por debajo de 1× no hay zoom que valga: hay otra cámara. Cruzar ese punto
+   * en la barra cambia de objetivo, que es una operación lenta —hay que
+   * reabrir el flujo—, así que sólo se pide cuando el objetivo de destino es
+   * distinto del que ya está puesto.
+   */
+  setEffectiveZoom(v) {
+    const quiereUltra = v < 1 && this.hasUltraWide;
+    const destino = quiereUltra ? 'ultra' : 'wide';
+    if (destino !== this.lens) this.setLens(destino);
+    this.setZoom(quiereUltra ? 1 : Math.max(1, v));
   }
 
-  _flashPanel() {
-    const opciones = [
-      { key: 'off', label: 'Apagado', note: 'Sin luz añadida.' },
-      {
-        key: 'torch', label: 'Linterna',
-        note: this.canTorch
-          ? 'Enciende el LED al disparar, y lo mantiene encendido mientras grabas.'
-          : 'Este navegador no da acceso al LED. Al disparar se usará el destello de pantalla.',
-        disabled: !this.canTorch,
-      },
-      {
-        key: 'screen', label: 'Pantalla',
-        note: 'La pantalla destella en blanco. No alumbra como un LED, pero con la cámara frontal y de cerca sirve.',
-      },
-    ];
-    const note = el('p', { class: 'campanel__note' });
-    const paint = () => {
-      note.textContent = opciones.find((o) => o.key === this.flash)?.note || '';
-      for (const b of row.children) b.classList.toggle('is-active', b.dataset.flash === this.flash);
-    };
-    const row = el('div', { class: 'campanel__chips' },
-      opciones.map((o) => el('button', {
-        type: 'button', class: 'chip' + (o.disabled ? ' is-warn' : ''),
-        dataset: { flash: o.key }, text: o.label,
-        onclick: () => { this.setFlash(o.key); paint(); },
-      })));
-    paint();
-    return el('div', { class: 'campanel__body' }, row, note);
+  /** Refleja en la barra el zoom real: también se llega ahí pellizcando. */
+  _syncZoomRail() {
+    if (!this.zoomRail) return;
+    // Sin gran angular la barra no debe prometer un 0,5× que no existe.
+    this.zoomRail.node.classList.toggle('is-noultra', !this.hasUltraWide);
+    this.zoomRail.set(this.effectiveZoom);
   }
 
   /**
@@ -578,7 +521,7 @@ export class CameraView {
       this.lens = anterior;
       toast('No se pudo cambiar de objetivo', { error: true });
     }
-    if (this.openPanelKey === 'zoom') this.openPanel('zoom');
+    this._syncZoomRail();
   }
 
   /* ─────────────────────────────── Zoom ──────────────────────────────── */
@@ -595,6 +538,10 @@ export class CameraView {
     const z = this.caps?.zoom;
     this.nativeZoomMax = (z && typeof z.max === 'number' && z.max > 1) ? z.max : 1;
     this.zoomMin = (z && typeof z.min === 'number') ? Math.max(1, z.min) : 1;
+    // El techo real sólo se conoce con el flujo abierto, después de construir
+    // la barra: si no se le dice, seguiría prometiendo el techo de reserva.
+    this.zoomRail?.setRange(0.5, this.zoomMax);
+    this._syncZoomRail();
     if (this.zoom !== 1) this._applyZoom();
   }
 
@@ -631,12 +578,7 @@ export class CameraView {
     this.badge.classList.remove('is-hidden');
     clearTimeout(this._badgeTimer);
     this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1400);
-    if (this.zoomSlider) this.zoomSlider.value = this.zoom;
-    this.zoomTrack?.refresh?.();
-    if (this.zoomReadout) this.zoomReadout.textContent = this.effectiveZoom.toFixed(1) + '×';
-    for (const b of this.lensRow?.children || []) {
-      b.classList.toggle('is-active', b.dataset.lens === this.lens && this.zoom === 1);
-    }
+    this._syncZoomRail();
   }
 
   /* ─────────────────────────────── Flash ─────────────────────────────── */
@@ -644,16 +586,36 @@ export class CameraView {
   /** ¿Puede este dispositivo encender la linterna desde la web? */
   get canTorch() { return !!(this.caps && 'torch' in this.caps && this.caps.torch); }
 
-  setFlash(mode) {
-    this.flash = mode;
+  /**
+   * Encendido o apagado, y ya está.
+   *
+   * Antes había que elegir entre «linterna» y «pantalla», que es una pregunta
+   * sobre el hardware y no sobre la foto: quien dispara quiere luz. Se usa el
+   * LED cuando el navegador lo deja y el destello de pantalla cuando no, y se
+   * dice cuál toca en la insignia al encenderlo, sin obligar a decidirlo.
+   */
+  setFlash(on) {
+    this.flash = on ? 'on' : 'off';
     this._applyFlashToTrack();
-    this.toolButtons.get('flash')?.classList.toggle('is-on', mode !== 'off');
+    this.flashBtn?.classList.toggle('is-on', on);
+    this.flashBtn?.setAttribute('aria-pressed', String(!!on));
     haptic();
+  }
+
+  toggleFlash() {
+    const on = this.flash !== 'on';
+    this.setFlash(on);
+    this.badge.textContent = on
+      ? (this.canTorch ? 'Flash · linterna' : 'Flash · pantalla')
+      : 'Flash apagado';
+    this.badge.classList.remove('is-hidden');
+    clearTimeout(this._badgeTimer);
+    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1600);
   }
 
   /** La linterna permanece encendida mientras se graba; en foto sólo dispara. */
   _applyFlashToTrack() {
-    const on = this.flash === 'torch' && !!this.recorder;
+    const on = this.flash === 'on' && this.canTorch && !!this.recorder;
     this._setTorch(on);
   }
 
@@ -679,18 +641,17 @@ export class CameraView {
    * @returns {Promise<() => void>} función para apagar lo que se haya encendido
    */
   async _flashOn() {
-    if (this.flash === 'torch' && await this._setTorch(true)) {
+    if (this.flash !== 'on') return () => {};
+    // El LED primero; si el navegador no lo da, destella la pantalla.
+    if (await this._setTorch(true)) {
       await new Promise((r) => setTimeout(r, 320));
       return () => this._setTorch(false);
     }
-    if (this.flash === 'screen' || this.flash === 'torch') {
-      this.screenFlash.hidden = false;
-      // Dos fotogramas para que el blanco esté pintado antes de capturar.
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      await new Promise((r) => setTimeout(r, 220));
-      return () => { this.screenFlash.hidden = true; };
-    }
-    return () => {};
+    this.screenFlash.hidden = false;
+    // Dos fotogramas para que el blanco esté pintado antes de capturar.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 220));
+    return () => { this.screenFlash.hidden = true; };
   }
 
   /** Megapíxeles que quedan tras aplicar un encuadre al fotograma actual. */
@@ -710,14 +671,6 @@ export class CameraView {
     // reflejarlo, o prometería un detalle que la foto no va a tener.
     const k = this.digitalZoom || 1;
     return (nw * w * nh * h) / (k * k) / 1e6;
-  }
-
-  toggleGrid() {
-    this.gridOn = !this.gridOn;
-    this.grid.hidden = !this.gridOn;
-    this.gridBtn.classList.toggle('is-on', this.gridOn);
-    this.gridBtn.setAttribute('aria-pressed', String(this.gridOn));
-    haptic();
   }
 
   /** Oculta los mandos para ver el encuadre limpio. */
@@ -1010,24 +963,11 @@ export class CameraView {
     }
   }
 
-  async flip() {
-    if (this.recorder) return;
-    this.facing = this.facing === 'environment' ? 'user' : 'environment';
-    haptic();
-    try {
-      await this._openStream();
-    } catch {
-      this.facing = this.facing === 'environment' ? 'user' : 'environment';
-      toast('No se pudo cambiar de cámara', { error: true });
-    }
-  }
-
-  /** La frontal se espeja para que encuadrar sea natural; el volteo manual se
-   *  suma a eso, así que el resultado es la combinación de ambos. */
   /**
-   * La frontal se ve en espejo y la trasera no. No hay interruptor: es lo que
-   * hace la cámara del sistema, y la foto guardada sale sin espejo igual que
-   * allí.
+   * La frontal se vería en espejo y la trasera no, como en la cámara del
+   * sistema. La pantalla de cámara ya no cambia de una a otra —ese sitio de la
+   * fila lo ocupa el laboratorio—, así que hoy esto es siempre la trasera; la
+   * regla se queda escrita donde va, y no repartida por el código de dibujo.
    */
   get mirrored() { return this.facing === 'user'; }
 

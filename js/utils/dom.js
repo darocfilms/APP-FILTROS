@@ -25,7 +25,7 @@ export function el(tag, attrs = {}, ...children) {
  * silencio, y las muestras de color y los rellenos de los deslizadores
  * dependen de ellas.
  */
-function setStyle(node, styles) {
+export function setStyle(node, styles) {
   for (const [prop, value] of Object.entries(styles)) {
     if (value == null) continue;
     if (prop.startsWith('--')) node.style.setProperty(prop, String(value));
