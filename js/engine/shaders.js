@@ -5,7 +5,7 @@
  *   1. BASE       — todo lo que es punto a punto (color, tono, curvas, HSL,
  *                   etalonaje). Escribe una imagen ya codificada a display.
  *   2. PIRÁMIDE   — reducciones sucesivas + desenfoque separable. De ahí salen
- *                   el desenfoque corto (claridad) y el largo (halación/bloom).
+ *                   el desenfoque corto (textura) y el largo (claridad y difusión).
  *   3. COMPOSITE  — todo lo que necesita vecindad: nitidez, grano, halación,
  *                   difusión, viñeta, aberración cromática y tramado final.
  */
@@ -301,15 +301,13 @@ out vec4 fragColor;
 
 uniform sampler2D uBase;    // salida de la etapa 1, resolución completa
 uniform sampler2D uBlurS;   // desenfoque corto  (1/4)  → claridad
-uniform sampler2D uBlurL;   // desenfoque largo  (1/16) → halación, bloom, difusión
+uniform sampler2D uBlurL;   // desenfoque largo  (1/16) → claridad y difusión
 uniform vec2  uTexel;       // 1 / resolución del base
 uniform vec2  uAspect;      // (w/h, 1) normalizado, para la viñeta
 
 uniform float uClarity, uTexture, uSharpen, uDenoise;
 uniform float uGrainAmt, uGrainSize, uGrainRough, uGrainChroma;
-uniform float uHaloAmt, uHaloThresh;
-uniform vec3  uHaloTint;
-uniform float uBloomAmt, uBloomThresh, uDiffusion;
+uniform float uDiffusion;
 uniform float uVigAmt, uVigMid, uVigFeather, uVigRound;
 uniform float uCA, uSeed, uGrainRef;
 
@@ -371,21 +369,6 @@ void main() {
   /* ── Difusión tipo Pro-Mist: vela las luces sin tocar el contraste ──── */
   if (uDiffusion > 1.0e-4) {
     c = 1.0 - (1.0 - c) * (1.0 - blurL * uDiffusion * 0.55);
-  }
-
-  /* ── Halación: la luz atraviesa la emulsión, rebota en el soporte y
-        vuelve, velando de rojo-naranja alrededor de las altas luces. ──── */
-  if (uHaloAmt > 1.0e-4) {
-    vec3 bright = max(blurL - vec3(uHaloThresh), vec3(0.0)) / max(1.0 - uHaloThresh, 0.05);
-    float energy = max(max(bright.r, bright.g), bright.b);
-    vec3 halo = uHaloTint * energy * uHaloAmt;
-    c = 1.0 - (1.0 - c) * (1.0 - clamp(halo, 0.0, 1.0));
-  }
-
-  /* ── Bloom neutro ───────────────────────────────────────────────────── */
-  if (uBloomAmt > 1.0e-4) {
-    vec3 bright = max(blurL - vec3(uBloomThresh), vec3(0.0)) / max(1.0 - uBloomThresh, 0.05);
-    c += bright * uBloomAmt * 0.6;
   }
 
   /* ── Grano ──────────────────────────────────────────────────────────

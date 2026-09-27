@@ -84,8 +84,7 @@ const BASE_LOOK = {
   },
   effects: {
     grain: 0, grainSize: 1, grainRough: 0.5, grainChroma: 0.2,
-    halation: 0, haloThresh: 0.72, haloTint: [1.0, 0.32, 0.16],
-    bloom: 0, bloomThresh: 0.8, diffusion: 0, ca: 0,
+    diffusion: 0, ca: 0,
   },
 };
 
@@ -135,7 +134,7 @@ export const FILMS = [
     look: {
       saturation: -0.04, vibrance: 0.10, temp: 120,
       grade: { shadows: { h: 205, s: 0.05, l: 0.005 }, highs: { h: 35, s: 0.045, l: 0 } },
-      effects: { grain: 0.16, grainSize: 1.05, grainRough: 0.45, grainChroma: 0.18, halation: 0.13, haloThresh: 0.74 },
+      effects: { grain: 0.16, grainSize: 1.05, grainRough: 0.45, grainChroma: 0.18 },
     },
   }),
 
@@ -156,7 +155,7 @@ export const FILMS = [
     look: {
       saturation: 0.02, vibrance: 0.08, temp: 150,
       grade: { shadows: { h: 215, s: 0.06, l: 0 }, highs: { h: 32, s: 0.05, l: 0 } },
-      effects: { grain: 0.30, grainSize: 1.25, grainRough: 0.55, grainChroma: 0.28, halation: 0.20, haloThresh: 0.70 },
+      effects: { grain: 0.30, grainSize: 1.25, grainRough: 0.55, grainChroma: 0.28 },
     },
   }),
 
@@ -177,7 +176,7 @@ export const FILMS = [
     look: {
       saturation: 0.08, vibrance: 0.12, temp: 350, tint: 4,
       grade: { shadows: { h: 40, s: 0.05, l: 0 }, highs: { h: 48, s: 0.10, l: 0.01 } },
-      effects: { grain: 0.24, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.25, halation: 0.16, haloThresh: 0.72 },
+      effects: { grain: 0.24, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.25 },
     },
   }),
 
@@ -198,7 +197,7 @@ export const FILMS = [
     look: {
       saturation: 0.18, vibrance: 0.05, temp: -60,
       grade: { shadows: { h: 230, s: 0.04, l: -0.01 } },
-      effects: { grain: 0.07, grainSize: 0.85, grainRough: 0.35, grainChroma: 0.12, halation: 0.07, haloThresh: 0.80 },
+      effects: { grain: 0.07, grainSize: 0.85, grainRough: 0.35, grainChroma: 0.12 },
     },
   }),
 
@@ -219,7 +218,7 @@ export const FILMS = [
     look: {
       saturation: 0.12, vibrance: 0.08, temp: -180, tint: -5,
       grade: { shadows: { h: 190, s: 0.08, l: 0 }, highs: { h: 150, s: 0.03, l: 0 } },
-      effects: { grain: 0.26, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.3, halation: 0.10, haloThresh: 0.76 },
+      effects: { grain: 0.26, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.3 },
     },
   }),
 
@@ -241,7 +240,7 @@ export const FILMS = [
       saturation: -0.12, vibrance: 0.14, temp: -140, tint: -8,
       matteLow: 0.028,
       grade: { shadows: { h: 170, s: 0.07, l: 0.01 }, mids: { h: 150, s: 0.03, l: 0 }, highs: { h: 195, s: 0.04, l: 0.005 } },
-      effects: { grain: 0.18, grainSize: 1.1, grainRough: 0.4, grainChroma: 0.2, halation: 0.09, haloThresh: 0.78 },
+      effects: { grain: 0.18, grainSize: 1.1, grainRough: 0.4, grainChroma: 0.2 },
     },
   }),
 
@@ -262,7 +261,7 @@ export const FILMS = [
     look: {
       saturation: 0.16, vibrance: 0.06, temp: -40,
       grade: { shadows: { h: 240, s: 0.05, l: 0 } },
-      effects: { grain: 0.22, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.3, halation: 0.12, haloThresh: 0.74 },
+      effects: { grain: 0.22, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.3 },
     },
   }),
 
@@ -284,7 +283,7 @@ export const FILMS = [
     look: {
       contrast: 0.10, saturation: 0.30, temp: -80, tint: 6,
       grade: { shadows: { h: 250, s: 0.05, l: -0.015 }, highs: { h: 330, s: 0.03, l: 0 } },
-      effects: { grain: 0.06, grainSize: 0.8, grainRough: 0.3, grainChroma: 0.1, halation: 0.05, haloThresh: 0.84 },
+      effects: { grain: 0.06, grainSize: 0.8, grainRough: 0.3, grainChroma: 0.1 },
     },
   }),
 
@@ -305,7 +304,7 @@ export const FILMS = [
     look: {
       contrast: 0.04, saturation: 0.10, temp: -40,
       grade: { shadows: { h: 225, s: 0.035, l: -0.008 } },
-      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12, halation: 0.05, haloThresh: 0.82 },
+      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12 },
     },
   }),
 
@@ -326,7 +325,7 @@ export const FILMS = [
     look: {
       contrast: 0.06, saturation: 0.14, vibrance: 0.06, temp: 60,
       grade: { shadows: { h: 218, s: 0.09, l: -0.018 }, highs: { h: 30, s: 0.04, l: 0 } },
-      effects: { grain: 0.10, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.1, halation: 0.06, haloThresh: 0.80 },
+      effects: { grain: 0.10, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.1 },
     },
   }),
 
@@ -348,7 +347,7 @@ export const FILMS = [
     look: {
       saturation: -0.13, vibrance: 0.02, matteLow: 0.020, matteHigh: 0.975,
       grade: { shadows: { h: 200, s: 0.03, l: 0.008 } },
-      effects: { grain: 0.14, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.18, halation: 0.11, haloThresh: 0.76 },
+      effects: { grain: 0.14, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.18 },
     },
   }),
 
@@ -369,7 +368,7 @@ export const FILMS = [
     look: {
       saturation: -0.11, vibrance: 0.03, temp: -700, matteLow: 0.024, matteHigh: 0.98,
       grade: { shadows: { h: 210, s: 0.06, l: 0.008 }, highs: { h: 30, s: 0.02, l: 0 } },
-      effects: { grain: 0.26, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.25, halation: 0.18, haloThresh: 0.70 },
+      effects: { grain: 0.26, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.25 },
     },
   }),
 
@@ -379,7 +378,7 @@ export const FILMS = [
     brand: 'CineStill',
     kind: 'Cine',
     iso: 800,
-    note: 'Vision3 500T sin la capa antihalo. Por eso los rojos sangran alrededor de cada luz: es su firma, no un defecto.',
+    note: 'Vision3 500T sin la capa antihalo. De su firma, el sangrado rojo alrededor de cada luz se queda fuera —la halación no está en el motor—; sí está su color de tungsteno y su grano.',
     swatch: ['#ff5b3a', '#3f6fa8'],
     curves: {
       r: ch(1.00, 1.30, 1.75, { y: +0.004, w: +0.10 }),
@@ -392,8 +391,7 @@ export const FILMS = [
       grade: { shadows: { h: 205, s: 0.07, l: 0.006 }, highs: { h: 20, s: 0.03, l: 0 } },
       effects: {
         grain: 0.28, grainSize: 1.25, grainRough: 0.6, grainChroma: 0.3,
-        halation: 0.60, haloThresh: 0.55, haloTint: [1.0, 0.20, 0.08],
-        bloom: 0.06, diffusion: 0.05,
+        diffusion: 0.05,
       },
     },
   }),
@@ -425,7 +423,7 @@ export const FILMS = [
       // que el resto de la imagen no pierda color.
       hsl: { sat: { orange: -0.50 } },
       grade: { shadows: { h: 192, s: 0.08, l: -0.010 }, highs: { h: 32, s: 0.04, l: 0 } },
-      effects: { grain: 0.32, grainSize: 1.05, grainRough: 0.5, grainChroma: 0.14, halation: 0.12, haloThresh: 0.75 },
+      effects: { grain: 0.32, grainSize: 1.05, grainRough: 0.5, grainChroma: 0.14 },
     },
   }),
 
@@ -450,7 +448,7 @@ export const FILMS = [
     matrix: [[1.03, -0.02, -0.01], [-0.02, 1.03, -0.01], [-0.01, -0.02, 1.03]],
     look: {
       saturation: 0.02, vibrance: 0.07, temp: -30,
-      effects: { grain: 0.11, grainSize: 0.95, grainRough: 0.4, grainChroma: 0.14, halation: 0.07, haloThresh: 0.80 },
+      effects: { grain: 0.11, grainSize: 0.95, grainRough: 0.4, grainChroma: 0.14 },
     },
   }),
 
@@ -471,7 +469,7 @@ export const FILMS = [
     look: {
       saturation: -0.06, vibrance: 0.10, temp: 40,
       grade: { highs: { h: 38, s: 0.03, l: 0 } },
-      effects: { grain: 0.12, grainSize: 1.0, grainRough: 0.4, grainChroma: 0.16, halation: 0.08, haloThresh: 0.78 },
+      effects: { grain: 0.12, grainSize: 1.0, grainRough: 0.4, grainChroma: 0.16 },
     },
   }),
 
@@ -491,7 +489,7 @@ export const FILMS = [
     matrix: [[1.07, -0.05, -0.02], [-0.04, 1.07, -0.03], [-0.02, -0.05, 1.07]],
     look: {
       contrast: 0.02, saturation: 0.05, vibrance: 0.08, temp: -20,
-      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12, halation: 0.06, haloThresh: 0.82 },
+      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12 },
     },
   }),
 
@@ -512,7 +510,7 @@ export const FILMS = [
     look: {
       saturation: 0.10, vibrance: 0.08, temp: -120, tint: -4,
       grade: { shadows: { h: 195, s: 0.06, l: 0 }, highs: { h: 90, s: 0.03, l: 0 } },
-      effects: { grain: 0.22, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.28, halation: 0.11, haloThresh: 0.75 },
+      effects: { grain: 0.22, grainSize: 1.15, grainRough: 0.5, grainChroma: 0.28 },
     },
   }),
 
@@ -533,7 +531,7 @@ export const FILMS = [
     look: {
       saturation: -0.02, vibrance: 0.12, temp: 180, matteLow: 0.022,
       grade: { shadows: { h: 210, s: 0.06, l: 0.008 }, highs: { h: 34, s: 0.05, l: 0 } },
-      effects: { grain: 0.42, grainSize: 1.35, grainRough: 0.62, grainChroma: 0.3, halation: 0.20, haloThresh: 0.68 },
+      effects: { grain: 0.42, grainSize: 1.35, grainRough: 0.62, grainChroma: 0.3 },
     },
   }),
 
@@ -554,7 +552,7 @@ export const FILMS = [
     look: {
       saturation: -0.15, vibrance: 0.02, temp: -60, matteLow: 0.022, matteHigh: 0.975,
       grade: { shadows: { h: 200, s: 0.04, l: 0.008 } },
-      effects: { grain: 0.13, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.16, halation: 0.09, haloThresh: 0.78 },
+      effects: { grain: 0.13, grainSize: 1.0, grainRough: 0.45, grainChroma: 0.16 },
     },
   }),
 
@@ -572,7 +570,7 @@ export const FILMS = [
     },
     look: {
       mono: true, monoMix: [0.30, 0.58, 0.12], contrast: 0.05,
-      effects: { grain: 0.34, grainSize: 1.2, grainRough: 0.62, grainChroma: 0, halation: 0.05, haloThresh: 0.82 },
+      effects: { grain: 0.34, grainSize: 1.2, grainRough: 0.62, grainChroma: 0 },
     },
   }),
 
@@ -589,7 +587,7 @@ export const FILMS = [
     },
     look: {
       mono: true, monoMix: [0.28, 0.60, 0.12], matteLow: 0.020, matteHigh: 0.985,
-      effects: { grain: 0.30, grainSize: 1.15, grainRough: 0.58, grainChroma: 0, halation: 0.04, haloThresh: 0.84 },
+      effects: { grain: 0.30, grainSize: 1.15, grainRough: 0.58, grainChroma: 0 },
     },
   }),
 
@@ -606,7 +604,7 @@ export const FILMS = [
     },
     look: {
       mono: true, monoMix: [0.30, 0.56, 0.14], matteLow: 0.038, matteHigh: 0.97,
-      effects: { grain: 0.62, grainSize: 1.7, grainRough: 0.72, grainChroma: 0, halation: 0.06, haloThresh: 0.78, bloom: 0.05 },
+      effects: { grain: 0.62, grainSize: 1.7, grainRough: 0.72, grainChroma: 0 },
     },
   }),
 
@@ -631,7 +629,7 @@ export const FILMS = [
       contrast: -0.06, saturation: -0.16, vibrance: 0.10, temp: 220, tint: 8,
       matteLow: 0.075, matteHigh: 0.955,
       grade: { shadows: { h: 185, s: 0.10, l: 0.02 }, mids: { h: 45, s: 0.03, l: 0 }, highs: { h: 40, s: 0.07, l: 0.005 } },
-      effects: { grain: 0.14, grainSize: 1.5, grainRough: 0.4, grainChroma: 0.35, halation: 0.10, haloThresh: 0.68, diffusion: 0.16, bloom: 0.08 },
+      effects: { grain: 0.14, grainSize: 1.5, grainRough: 0.4, grainChroma: 0.35, diffusion: 0.16 },
     },
   }),
 
@@ -655,7 +653,7 @@ export const FILMS = [
     look: {
       saturation: 0.12, vibrance: 0.08, temp: -60,
       grade: { shadows: { h: 270, s: 0.06, l: 0 }, highs: { h: 50, s: 0.05, l: 0 } },
-      effects: { grain: 0.24, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.35, halation: 0.14, haloThresh: 0.72 },
+      effects: { grain: 0.24, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.35 },
     },
   }),
 ];

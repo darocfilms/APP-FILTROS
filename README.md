@@ -189,7 +189,7 @@ Diez paneles de ajustes:
 | **Curvas** | Curva maestra y por canal, con histograma de fondo |
 | **Etalonaje** | Ruedas de sombras, medios y altas luces con equilibrio |
 | **Detalle** | Claridad, textura, nitidez, reducción de ruido |
-| **Efectos** | Grano, halación, bloom, difusión, aberración cromática |
+| **Efectos** | Grano, difusión, aberración cromática |
 | **Viñeta** | Cantidad, punto medio, suavizado, redondez |
 | **Encuadre** | Recorte con proporciones, giro, enderezado, espejo |
 
@@ -310,7 +310,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 
 | Suite | Qué comprueba |
 |---|---|
-| `engine` | Los seis programas GLSL compilan · las 26 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
+| `engine` | Los seis programas GLSL compilan · **cada uno de los 30 deslizadores mueve píxeles de verdad**, medido a sus dos extremos y con el efecto padre encendido —es lo que destapó que la halación y el bloom no hacían nada— · las 26 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
 | `flow` | Importar → carpeta local → laboratorio → los diez paneles → aplicar emulsión → deslizadores → deshacer/rehacer → exportar a resolución original y reabrir el JPEG → guardar en biblioteca → recorte 1:1 → persistencia tras recargar |
 | `picker` | Las miniaturas del selector salen derechas |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
@@ -381,12 +381,19 @@ convierte el verde en púrpura sin teñir los grises.
 
 ### Resto del pipeline
 
-Halación con umbral y tinte (la CineStill 800T la lleva marcada porque no tiene
-capa antihalo, y por eso los rojos sangran alrededor de cada luz), grano
-dependiente de la densidad —máximo en los medios, casi ausente en el negro
-sólido y el blanco quemado—, difusión tipo Pro-Mist, bloom, viñeta con caída
+Grano dependiente de la densidad —máximo en los medios, casi ausente en el
+negro sólido y el blanco quemado—, difusión tipo Pro-Mist, viñeta con caída
 circular o siguiendo el encuadre, aberración cromática y tramado final para
 romper el bandeado al cuantizar a 8 bits.
+
+**Sin halación ni bloom.** Los llevaba, y no funcionaban: los dos partían del
+desenfoque largo y comparaban ESE resultado contra su umbral, cuando el orden
+correcto es al revés —recortar primero las altas luces sobre la imagen nítida y
+desenfocar después ese recorte—. Desenfocar antes aplasta la luz por debajo del
+umbral justo antes de medirla, así que con el umbral por defecto no aparecía
+nada. Medido sobre una escena oscura con una luz quemada: a la cantidad que
+traían las emulsiones (0,07–0,20) la diferencia máxima era de 1 sobre 255, y al
+máximo del deslizador, de 4. Se quitan en vez de dejar un mando que miente.
 
 El contraste es **biyectivo en [0,1]**: una potencia por debajo del pivote y su
 reflejo por encima, con la misma pendiente a ambos lados. Redistribuye la
@@ -466,7 +473,7 @@ origen → [geometría] → BASE → pirámide de desenfoques → COMPOSICIÓN �
 **BASE** resuelve todo lo que es punto a punto (balance, exposición, curva de
 la emulsión, tono, curvas, HSL, etalonaje, saturación). La **pirámide**
 produce, con reducciones sucesivas y desenfoque separable, el desenfoque corto
-que alimenta la textura y el largo que alimenta halación, bloom y difusión. La
+que alimenta la textura y el largo que alimenta la claridad y la difusión. La
 **composición** añade todo lo que necesita vecindad y escribe el resultado.
 
 La misma clase `Renderer` sirve para la previsualización, la cámara en directo

@@ -301,11 +301,6 @@ export class Renderer {
       uGrainSize: e.grainSize,
       uGrainRough: e.grainRough,
       uGrainChroma: e.grainChroma,
-      uHaloAmt: e.halation,
-      uHaloThresh: e.haloThresh,
-      uHaloTint: new Float32Array(e.haloTint),
-      uBloomAmt: e.bloom,
-      uBloomThresh: e.bloomThresh,
       uDiffusion: e.diffusion,
       uVigAmt: v.amount,
       uVigMid: v.mid,
@@ -399,7 +394,7 @@ export class Renderer {
         cur = dst;
       }
       blurS = this._gaussian(levels[1], scratch);   // 1/4  → textura y claridad
-      blurL = this._gaussian(levels[3], scratch);   // 1/16 → halación y bloom
+      blurL = this._gaussian(levels[3], scratch);   // 1/16 → claridad y difusión
     }
 
     /* Etapa 3 — composición. */
@@ -466,7 +461,7 @@ export class Renderer {
   _needsBlur(params) {
     const e = params.effects, d = params.detail;
     return Math.abs(d.clarity) > 1e-4 || Math.abs(d.texture) > 1e-4
-      || e.halation > 1e-4 || e.bloom > 1e-4 || e.diffusion > 1e-4;
+      || e.diffusion > 1e-4;
   }
 
   /* ──────────────────────────── Histograma ─────────────────────────────── */

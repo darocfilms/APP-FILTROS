@@ -300,6 +300,95 @@ for (const [k, v] of Object.entries(orient)) {
   check('  arriba en ' + k.padEnd(24) + '→ ' + v, v === 'rojo', v === 'rojo' ? '' : 'invertida');
 }
 
+console.log('\n── Ningún mando sin efecto ──');
+/* Un deslizador que no mueve un solo píxel es peor que no estar: se toca, no
+   pasa nada, y no hay forma de saber si el fallo es del control o de la foto.
+   Aquí se mueve CADA control a sus dos extremos y se mide la imagen revelada.
+
+   Dos cuidados, que es donde falla esta medición si se hace a la ligera:
+   la escena tiene que dar a cada efecto dónde actuar (luces quemadas, sombras,
+   bordes duros, una zona plana y ruido de color), y los modificadores se miden
+   con su efecto padre ENCENDIDO — el tamaño del grano no puede notarse con el
+   grano a cero. */
+const sinEfecto = await page.evaluate(async () => {
+  const { Renderer } = await import('./js/engine/renderer.js');
+  const { defaultParams, PANELS, setPath } = await import('./js/data/params.js');
+
+  const W = 480, H = 320;          // apaisada: la viñeta redonda lo necesita
+  const src = document.createElement('canvas');
+  src.width = W; src.height = H;
+  const g = src.getContext('2d');
+  const cielo = g.createLinearGradient(0, 0, 0, H);
+  cielo.addColorStop(0, '#20304a'); cielo.addColorStop(1, '#9fb4c8');
+  g.fillStyle = cielo; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#0a0a0c'; g.fillRect(0, H * 0.62, W, H * 0.38);
+  g.fillStyle = '#ffffff'; g.beginPath(); g.arc(150, 110, 52, 0, 7); g.fill();
+  g.fillStyle = '#c4462a'; g.fillRect(60, 215, 120, 70);
+  g.fillStyle = '#2f7fb8'; g.fillRect(250, 220, 130, 60);
+  const ruido = g.createImageData(W, 60);
+  for (let i = 0; i < ruido.data.length; i += 4) {
+    ruido.data[i] = 120 + (Math.random() - 0.5) * 110;
+    ruido.data[i + 1] = 120 + (Math.random() - 0.5) * 110;
+    ruido.data[i + 2] = 120 + (Math.random() - 0.5) * 110;
+    ruido.data[i + 3] = 255;
+  }
+  g.putImageData(ruido, 0, 0);
+
+  const PADRE = {
+    'film.strength': (p) => { p.film.id = 'kodak2383'; p.color.saturation = 0.3; },
+    'grade.balance': (p) => {
+      p.grade.shadows = { h: 200, s: 0.6, l: 0 };
+      p.grade.highs = { h: 30, s: 0.6, l: 0 };
+    },
+    'effects.grainSize': (p) => { p.effects.grain = 1; },
+    'effects.grainRough': (p) => { p.effects.grain = 1; },
+    'effects.grainChroma': (p) => { p.effects.grain = 1; },
+    'vignette.mid': (p) => { p.vignette.amount = 0.8; },
+    'vignette.feather': (p) => { p.vignette.amount = 0.8; },
+    'vignette.round': (p) => { p.vignette.amount = 0.8; },
+  };
+
+  const cv = document.createElement('canvas');
+  const rend = new Renderer(cv);
+  const pintar = (p) => {
+    rend.setSource(src, W, H);
+    rend.render(p, { seed: 5 });
+    const o = document.createElement('canvas');
+    o.width = cv.width; o.height = cv.height;
+    o.getContext('2d').drawImage(cv, 0, 0);
+    return o.getContext('2d').getImageData(0, 0, o.width, o.height).data;
+  };
+  const maxDif = (a, b) => {
+    let m = 0;
+    for (let i = 0; i < a.length; i += 4) {
+      for (let k = 0; k < 3; k++) {
+        const d = Math.abs(a[i + k] - b[i + k]);
+        if (d > m) m = d;
+      }
+    }
+    return m;
+  };
+
+  const muertos = [];
+  for (const panel of PANELS) {
+    for (const c of panel.controls) {
+      const padre = PADRE[c.path];
+      const conPadre = () => { const p = defaultParams(); padre?.(p); return p; };
+      const base = pintar(conPadre());
+      const medir = (v) => {
+        const p = conPadre();
+        setPath(p, c.path, v);
+        return maxDif(base, pintar(p));
+      };
+      const d = Math.max(medir(c.min), medir(c.max));
+      if (d < 3) muertos.push(c.path + ' (' + d + ')');
+    }
+  }
+  return muertos;
+});
+check('cada deslizador cambia la imagen de verdad',
+  sinEfecto.length === 0, sinEfecto.length ? 'sin efecto: ' + sinEfecto.join(', ') : 'los 30 mueven píxeles');
+
 console.log('\n── Errores de consola ──');
 check('sin errores en consola', errors.length === 0, errors.slice(0, 3).join(' | '));
 

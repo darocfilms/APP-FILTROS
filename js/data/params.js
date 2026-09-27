@@ -80,8 +80,7 @@ export function defaultParams() {
 
     effects: {
       grain: 0, grainSize: 1, grainRough: 0.5, grainChroma: 0.2,
-      halation: 0, haloThresh: 0.72, haloTint: [1.0, 0.32, 0.16],
-      bloom: 0, bloomThresh: 0.8, diffusion: 0, ca: 0,
+      diffusion: 0, ca: 0,
     },
 
     vignette: { amount: 0, mid: 0.62, feather: 0.35, round: 1 },
@@ -175,10 +174,6 @@ export const PANELS = [
       s('effects.grainSize', 'Tamaño del grano', 0.4, 3, 1, { step: 0.01, format: 'x' }),
       s('effects.grainRough', 'Aspereza', 0, 1, 0.5, { format: 'pct' }),
       s('effects.grainChroma', 'Grano de color', 0, 1, 0.2, { format: 'pct' }),
-      s('effects.halation', 'Halación', 0, 1.5, 0, { format: 'pct' }),
-      s('effects.haloThresh', 'Umbral de halación', 0.2, 0.95, 0.72, { format: 'pct' }),
-      s('effects.bloom', 'Bloom', 0, 1, 0, { format: 'pct' }),
-      s('effects.bloomThresh', 'Umbral de bloom', 0.3, 0.98, 0.8, { format: 'pct' }),
       s('effects.diffusion', 'Difusión', 0, 1, 0, { format: 'pct' }),
       s('effects.ca', 'Aberración cromática', -1, 1, 0, { format: 'pct' }),
     ],
@@ -283,7 +278,7 @@ export function applyFilmLook(params, filmDef) {
     highs: { ...look.grade.highs },
     balance: look.grade.balance,
   };
-  params.effects = { ...look.effects, haloTint: [...look.effects.haloTint] };
+  params.effects = { ...look.effects };
   // Las bandas HSL se escriben siempre, también a cero: si no, la banda que
   // bajó una emulsión se quedaría puesta al elegir la siguiente.
   params.hsl = {

@@ -115,10 +115,12 @@ check('se aplica CineStill 800T',
   JSON.stringify(elegida));
 const stateAfterFilm = await page.evaluate(() => ({
   film: window.__lab.views.lab.params.film.id,
-  halation: window.__lab.views.lab.params.effects.halation,
+  grano: window.__lab.views.lab.params.effects.grain,
   temp: window.__lab.views.lab.params.color.temp,
 }));
-check('los ajustes reflejan la emulsión', stateAfterFilm.film === 'cinestill800t' && stateAfterFilm.halation > 0.5,
+// La 800T es de tungsteno y de grano grueso: eso es lo que trae puesto.
+check('los ajustes reflejan la emulsión',
+  stateAfterFilm.film === 'cinestill800t' && stateAfterFilm.grano > 0.2 && stateAfterFilm.temp < 6000,
   JSON.stringify(stateAfterFilm));
 
 console.log('\n── Mover deslizadores ──');
