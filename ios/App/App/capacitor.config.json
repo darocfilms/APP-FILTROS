@@ -1,0 +1,12 @@
+{
+	"appId": "com.darocfilms.laboratorio",
+	"appName": "Laboratorio",
+	"webDir": "dist",
+	"backgroundColor": "#08090b",
+	"appendUserAgent": "LaboratorioApp",
+	"ios": {
+		"contentInset": "never",
+		"backgroundColor": "#08090b"
+	},
+	"packageClassList": []
+}

@@ -1,18 +1,24 @@
 {
   "name": "laboratorio",
   "version": "1.0.0",
-  "description": "Cámara y laboratorio de revelado con ciencia de color, para iPhone. Sin dependencias.",
+  "description": "Cámara y laboratorio de revelado con ciencia de color, para iPhone: web y app nativa (ios/).",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node serve.mjs",
     "start:https": "node serve.mjs --https",
-    "test": "node test/run.mjs"
+    "test": "node test/run.mjs",
+    "build": "node build.mjs",
+    "ios": "node build.mjs && cap sync ios",
+    "ios:abrir": "node build.mjs && cap sync ios && cap open ios"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3",
     "playwright": "^1.49.1"
   }
 }

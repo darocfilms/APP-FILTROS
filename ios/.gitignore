@@ -1,0 +1,13 @@
+App/build
+App/Pods
+App/output
+DerivedData
+xcuserdata
+
+# Cordova plugins for Capacitor
+capacitor-cordova-ios-plugins
+
+# OJO: App/App/public, App/App/capacitor.config.json y App/App/config.xml se
+# versionan a propósito. El proyecto de Xcode los referencia, así que sin ellos
+# no compila; así basta con clonar y abrir en Xcode, sin instalar Node en el Mac.
+# Se regeneran con `npm run ios` cada vez que cambia la app web.

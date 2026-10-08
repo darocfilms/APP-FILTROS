@@ -533,6 +533,46 @@ check('NO confunde el Safari de verdad', detecta.safariReal === false);
 check('NO confunde Chrome en iOS', detecta.chromeIOS === false);
 check('NO confunde un navegador de escritorio', detecta.escritorio === false);
 
+console.log('\n── Dentro de la app nativa (proyecto de Xcode) ──');
+/* La app nativa es una vista web igual que la de WhatsApp: su user agent no
+   dice «Safari». Sin una excepción, se tomaría a sí misma por un navegador
+   incrustado y bloquearía la cámara con un «ábrelo en Safari» que en una app
+   no tiene sentido. Se prueba por las dos vías de detección. */
+const nativa = await page.evaluate(async () => {
+  const { inAppBrowser } = await import('./js/views/camera.js');
+  const { isNativeApp } = await import('./js/utils/share.js');
+  const real = navigator.userAgent;
+  const WKWEBVIEW = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+  const ponerUA = (ua) => Object.defineProperty(navigator, 'userAgent', { value: ua, configurable: true });
+
+  // 1) Por la marca que la app añade a su user agent.
+  ponerUA(WKWEBVIEW + ' LaboratorioApp');
+  const porMarca = { nativa: isNativeApp(), incrustado: inAppBrowser() };
+
+  // 2) Por el puente de Capacitor, aunque la marca faltara.
+  ponerUA(WKWEBVIEW);
+  window.Capacitor = { isNativePlatform: () => true };
+  const porPuente = { nativa: isNativeApp(), incrustado: inAppBrowser() };
+  delete window.Capacitor;
+
+  // 3) Y sin ninguna de las dos, la vista web genérica sigue siendo sospechosa.
+  const sinNada = { nativa: isNativeApp(), incrustado: inAppBrowser() };
+
+  // Una marca parecida no cuenta: tiene que ser la palabra entera.
+  ponerUA(WKWEBVIEW + ' LaboratorioAppX');
+  const parecida = isNativeApp();
+
+  ponerUA(real);
+  return { porMarca, porPuente, sinNada, parecida };
+});
+check('con la marca de la app, se sabe nativa y NO bloquea la cámara',
+  nativa.porMarca.nativa && !nativa.porMarca.incrustado, JSON.stringify(nativa.porMarca));
+check('con el puente de Capacitor, igual', nativa.porPuente.nativa && !nativa.porPuente.incrustado,
+  JSON.stringify(nativa.porPuente));
+check('sin ninguna de las dos, la vista web genérica sigue bloqueada',
+  !nativa.sinNada.nativa && nativa.sinNada.incrustado, JSON.stringify(nativa.sinNada));
+check('una marca parecida no cuela', nativa.parecida === false);
+
 console.log('\n── Errores de consola ──');
 const real = errors.filter((e) => !/favicon|vibrate/i.test(e));
 check('sin errores', real.length === 0, real.slice(0, 3).join(' | '));
