@@ -7,7 +7,7 @@
  * almacenamiento real y no una caché que el navegador pueda desalojar.
  */
 
-const VERSION = 'lab-v1';
+const VERSION = 'lab-v2';
 const SHELL = [
   './',
   './index.html',
@@ -22,12 +22,18 @@ const SHELL = [
   './js/engine/renderer.js',
   './js/engine/shaders.js',
   './js/store/library.js',
+  './js/store/raw.js',
+  // El decodificador de RAW: sin él en la caché, un ARW no abre sin conexión.
+  './js/vendor/libraw/index.js',
+  './js/vendor/libraw/worker.js',
+  './js/vendor/libraw/libraw.wasm',
   './js/ui/controls.js',
   './js/ui/crop.js',
   './js/ui/curve.js',
   './js/ui/filmpicker.js',
   './js/ui/histogram.js',
   './js/ui/panels.js',
+  './js/ui/viewer.js',
   './js/ui/wheel.js',
   './js/utils/dom.js',
   './js/utils/share.js',

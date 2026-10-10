@@ -56,7 +56,10 @@ class App {
         el('span', { class: 'busy__text' })));
 
     this.fileInput = el('input', {
-      type: 'file', accept: 'image/*,video/*', multiple: true,
+      // Las extensiones de RAW de Sony van aparte: no son `image/*` para el
+      // sistema, y sin ellas el selector del iPhone no deja elegir un ARW
+      // desde Archivos.
+      type: 'file', accept: 'image/*,video/*,.arw,.ARW,.sr2,.SR2,.srf,.SRF,image/x-sony-arw', multiple: true,
       class: 'visually-hidden', 'aria-hidden': 'true', tabindex: -1,
     });
     this.fileInput.addEventListener('change', () => this._handleFiles([...this.fileInput.files]));

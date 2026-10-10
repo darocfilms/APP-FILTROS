@@ -22,6 +22,7 @@ const SUITES = [
   ['context', 'pérdida y recuperación del contexto WebGL'],
   ['layout', 'reparto de pantalla: la imagen manda'],
   ['save', 'guardar fuera de la app y selección múltiple'],
+  ['raw', 'RAW de Sony: importar, revelar como luz, exportar a tamaño de sensor'],
   ['ios', 'el proyecto de Xcode lleva la última versión y sus permisos'],
 ];
 

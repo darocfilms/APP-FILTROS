@@ -88,6 +88,12 @@ export class GLContext {
     this.fbo = gl.createFramebuffer();
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
+    // ¿Se puede DIBUJAR en una textura de coma flotante? Leerlas es parte de
+    // WebGL2; escribir en ellas necesita esta extensión. Hace falta para que un
+    // RAW conserve sus altas luces cuando se gira o recorta: sin ella, el pase
+    // de geometría las recortaría a blanco antes de llegar al revelado.
+    this.floatTargets = !!(gl.getExtension('EXT_color_buffer_float')
+      || gl.getExtension('EXT_color_buffer_half_float'));
   }
 
   get lost() { return this.gl.isContextLost(); }
@@ -140,13 +146,17 @@ export class GLContext {
 
   /* ───────────────────────────── Texturas ───────────────────────────── */
 
-  createTexture(width, height, { filter = 'linear', wrap = 'clamp' } = {}) {
+  createTexture(width, height, { filter = 'linear', wrap = 'clamp', float = false } = {}) {
     const gl = this.gl;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    // Media precisión basta para luz lineal (diez bits de mantisa, sin bandas)
+    // y ocupa la mitad que la completa.
+    const f = float && this.floatTargets;
+    if (f) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, width, height, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     this._texParams(tex, filter, wrap);
-    return { tex, width, height };
+    return { tex, width, height, float: f };
   }
 
   _texParams(tex, filter, wrap) {
@@ -179,6 +189,37 @@ export class GLContext {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
+    target.linear = false;
+    return target;
+  }
+
+  /**
+   * Sube una imagen lineal en media precisión (un RAW revelado por LibRaw).
+   *
+   * `image.data` son tres canales en coma flotante de 16 bits, sin recortar:
+   * lo que pase de 1 es luz que el sensor captó por encima del blanco, y es
+   * justo lo que hace que bajar la exposición de un RAW recupere el cielo.
+   *
+   * @param {{width:number,height:number,data:Uint16Array}} image
+   */
+  uploadLinear(existing, image) {
+    const gl = this.gl;
+    const { width, height } = image;
+    let target = existing;
+    if (!target || target.width !== width || target.height !== height) {
+      if (target) gl.deleteTexture(target.tex);
+      target = { tex: gl.createTexture(), width, height };
+      this._texParams(target.tex, 'linear', 'clamp');
+    }
+    gl.bindTexture(gl.TEXTURE_2D, target.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    // Tres canales de dos bytes: con el alineado por defecto (4) una fila de
+    // ancho impar se leería desplazada y la imagen saldría cizallada.
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB16F, width, height, 0, gl.RGB, gl.HALF_FLOAT, image.data);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    target.linear = true;
     return target;
   }
 
@@ -199,13 +240,14 @@ export class GLContext {
   /* ────────────────────── Pool de framebuffers ──────────────────────── */
 
   /** Toma prestada una textura de las dimensiones pedidas. */
-  lease(width, height) {
+  lease(width, height, { float = false } = {}) {
     width = Math.max(1, width | 0);
     height = Math.max(1, height | 0);
-    const idx = this.pool.findIndex((t) => t.width === width && t.height === height);
+    const f = float && this.floatTargets;
+    const idx = this.pool.findIndex((t) => t.width === width && t.height === height && !!t.float === f);
     let t;
     if (idx >= 0) t = this.pool.splice(idx, 1)[0];
-    else t = this.createTexture(width, height);
+    else t = this.createTexture(width, height, { float: f });
     this.leased.add(t);
     return t;
   }

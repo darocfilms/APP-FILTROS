@@ -16,6 +16,7 @@ import {
 } from './shaders.js';
 import * as CS from './colorscience.js';
 import { getFilm } from '../data/films.js';
+import { defaultParams } from '../data/params.js';
 
 /** Resolución de referencia del grano: hace que el tamaño relativo no dependa
  *  de si estamos previsualizando o exportando. */
@@ -112,11 +113,20 @@ export class Renderer {
     return this._programs;
   }
 
-  /** Sube el fotograma o la imagen de origen. Reutiliza la textura si encaja. */
+  /**
+   * Sube el fotograma o la imagen de origen. Reutiliza la textura si encaja.
+   *
+   * Una imagen con `linear: true` (un RAW, ver store/raw.js) va a una textura
+   * de coma flotante y el revelado la trata como luz de escena: sin recortar
+   * en 1 ni descodificar sRGB.
+   */
   setSource(source, width, height) {
     this.srcWidth = width;
     this.srcHeight = height;
-    this.srcTex = this.ctx.uploadSource(this.srcTex, source, width, height);
+    this.srcLinear = !!source?.linear;
+    this.srcTex = this.srcLinear
+      ? this.ctx.uploadLinear(this.srcTex, source)
+      : this.ctx.uploadSource(this.srcTex, source, width, height);
     return this;
   }
 
@@ -257,6 +267,7 @@ export class Renderer {
       uExposure: params.light.exposure,
       uFilmMatrix: film.matrix,
       uFilmMix: mix,
+      uSrcLinear: this.srcLinear ? 1 : 0,
       uFilmM: film.m,
       uFilmQ: film.q,
       uFilmToe: film.toe,
@@ -345,7 +356,9 @@ export class Renderer {
     let geoTex = null;
     let sourceNeedsFlip = true;
     if (!this._isGeometryNeutral(params)) {
-      geoTex = c.lease(width, height);
+      // Con un RAW el intermedio es flotante: girar o recortar no puede costar
+      // las altas luces que el revelado todavía tiene que comprimir.
+      geoTex = c.lease(width, height, { float: this.srcLinear });
       c.draw(P.geometry, geoTex, {
         uSrc: this.srcTex,
         uXform: this._geometryMatrix(params, width, height),
@@ -357,7 +370,19 @@ export class Renderer {
     const flipY = sourceNeedsFlip ? -1 : 1;
 
     if (opts.bypass) {
-      c.draw(P.blit, null, { uSrc: source, uFlip: new Float32Array([mirror[0], flipY]) });
+      if (this.srcLinear) {
+        // El «antes» de un RAW no puede ser la fuente tal cual: es luz lineal y
+        // en pantalla saldría oscura y sin contraste. Es el revelado neutro:
+        // sin emulsión ni ajustes, con el mismo encuadre.
+        const neutro = defaultParams();
+        neutro.geometry = params.geometry;
+        const u = this._baseUniforms(neutro, getFilm('neutral'));
+        u.uSrc = source;
+        u.uFlip = new Float32Array([mirror[0], flipY]);
+        c.draw(P.base, null, u);
+      } else {
+        c.draw(P.blit, null, { uSrc: source, uFlip: new Float32Array([mirror[0], flipY]) });
+      }
       c.release(geoTex);
       return { width, height };
     }
@@ -553,7 +578,11 @@ export async function renderToBlob(source, params, opts = {}) {
 
     let uploadSource = source;
     let temp = null;
-    if (scaled) {
+    if (scaled && source.linear) {
+      // Un RAW no se puede dibujar en un canvas 2D sin perder justo lo que lo
+      // hace RAW: se reduce en su propio formato.
+      uploadSource = source.resized(w, h);
+    } else if (scaled) {
       temp = document.createElement('canvas');
       temp.width = w;
       temp.height = h;

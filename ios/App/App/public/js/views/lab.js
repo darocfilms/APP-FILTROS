@@ -16,6 +16,7 @@ import { PanelStack } from '../ui/panels.js';
 import { CropOverlay } from '../ui/crop.js';
 import { Histogram } from '../ui/histogram.js';
 import { timestampName } from '../utils/share.js';
+import { isRawFile } from '../store/raw.js';
 
 const PRESET_KEY = 'filtros.presets.v1';
 const HISTORY_MAX = 60;
@@ -204,10 +205,11 @@ export class LabView {
   async open(item) {
     if (item.kind === 'video') return this._openVideo(item);
 
-    this.app.setBusy(true, 'Abriendo…');
+    this.app.setBusy(true, item.raw ? 'Revelando el RAW…' : 'Abriendo…');
     try {
       const file = await library.getFile(item.id);
       if (!file) throw new Error('El archivo ya no está en la carpeta local');
+      if (!item.raw && isRawFile(file)) this.app.setBusy(true, 'Revelando el RAW…');
 
       const { bitmap, sourceWidth, sourceHeight, scaled } = await decodeScaled(file, PROXY_SIZE);
       this.proxy?.close?.();
@@ -228,8 +230,12 @@ export class LabView {
       this.historyAt = -1;
       this._pushHistory();
 
-      this.title.textContent = item.kind === 'photo' ? 'Foto' : 'Vídeo';
-      this.subtitle.textContent = `${sourceWidth}×${sourceHeight} · ${formatBytes(item.size)}`
+      // Un RAW se dice como tal, con la cámara: es lo que explica por qué abre
+      // más plano que el JPEG de la cámara y por qué aguanta más ajuste.
+      const esRaw = !!bitmap.linear;
+      this.title.textContent = esRaw ? 'RAW' : item.kind === 'photo' ? 'Foto' : 'Vídeo';
+      this.subtitle.textContent = (esRaw && bitmap.info?.camara ? bitmap.info.camara + ' · ' : '')
+        + `${sourceWidth}×${sourceHeight} · ${formatBytes(item.size)}`
         + (scaled ? ` · proxy ${bitmap.width}×${bitmap.height}` : '');
 
       this._ensureRenderer();

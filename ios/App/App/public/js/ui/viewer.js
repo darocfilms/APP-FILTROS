@@ -11,7 +11,8 @@
  */
 
 import { el, clear, haptic } from '../utils/dom.js';
-import { library } from '../store/library.js';
+import { library, decodeScaled } from '../store/library.js';
+import { isRawFile } from '../store/raw.js';
 
 /**
  * La papelera va dibujada, no como carácter: el glifo de «borrar» de Unicode
@@ -132,14 +133,32 @@ export class Viewer {
     this.stage.append(el('div', { class: 'viewer__loading' }, el('span', { class: 'spinner' })));
 
     const file = await library.getFile(item.id);
+    // Un RAW no lo sabe pintar un <img>: se revela en neutro al tamaño de la
+    // pantalla, que es lo que se va a ver, y se enseña como JPEG.
+    let vista = file;
+    if (file && (item.raw || isRawFile(file))) {
+      try {
+        const lado = Math.round(Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio || 1, 3));
+        const { bitmap } = await decodeScaled(file, lado);
+        const lienzo = bitmap.toCanvas();
+        bitmap.close();
+        vista = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
+        lienzo.width = lienzo.height = 0;
+      } catch (err) {
+        console.error(err);
+        vista = null;
+      }
+    }
     // Puede haberse cambiado de foto mientras se leía la anterior.
     if (this.current !== item) return;
     clear(this.stage);
 
     if (!file) {
       this.stage.append(el('p', { class: 'viewer__missing', text: 'El archivo ya no está en la carpeta local.' }));
+    } else if (!vista) {
+      this.stage.append(el('p', { class: 'viewer__missing', text: 'No se ha podido revelar este RAW.' }));
     } else {
-      this.url = URL.createObjectURL(file);
+      this.url = URL.createObjectURL(vista);
       this.stage.append(item.kind === 'video'
         ? el('video', { class: 'viewer__media', src: this.url, controls: '', playsinline: '', autoplay: '' })
         : el('img', { class: 'viewer__media', src: this.url, alt: '', decoding: 'async' }));
@@ -148,7 +167,7 @@ export class Viewer {
     const fecha = new Date(item.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
     clear(this.caption).append(
       el('span', { class: 'viewer__dims', text: `${item.width}×${item.height}` }),
-      el('span', { class: 'viewer__meta', text: (item.filmName ? item.filmName + ' · ' : '') + fecha }));
+      el('span', { class: 'viewer__meta', text: (item.raw ? 'RAW · ' : '') + (item.filmName ? item.filmName + ' · ' : '') + fecha }));
     this.counter.textContent = this.items.length > 1 ? `${this.index + 1} / ${this.items.length}` : '';
   }
 

@@ -221,6 +221,50 @@ imagen, histograma superpuesto y presets propios.
 
 Los ajustes se guardan junto al archivo: al reabrirlo sigue donde lo dejaste.
 
+#### RAW de Sony
+
+Los **ARW** (y los antiguos SR2/SRF) se importan como cualquier foto y se
+revelan con **LibRaw** compilado a WebAssembly, en su propio worker para no
+congelar la interfaz. Lleva la tabla de color de las Sony actuales —A7 IV,
+A7R V, A1, A7C II, A6700, FX3, FX30, ZV-E1…—, que es lo que hace que el color
+salga bien: sin la matriz de cada sensor, un RAW sale verdoso y apagado.
+
+Un RAW no se convierte a JPEG al abrirlo, porque eso tiraría justo lo que lo
+hace valer la pena. Entra al motor como **luz lineal en coma flotante** de media
+precisión, sin recortar en 1 ni pasar por sRGB: el balance de la cámara ya
+aplicado, la saturación del sensor en el blanco y nada más. Lo demás lo pone el
+revelado, igual que con una foto, y con eso:
+
+- **Subir la exposición no quema.** Sin emulsión, un hombro suave curva las
+  luces hacia el blanco en lugar de cortarlas; con emulsión, el de su propia
+  curva. Medido con la FX30 de las pruebas a +1,5 EV: el RAW no deja ningún
+  píxel en 255; la misma imagen metida como JPEG de 8 bits, un 8,75 %.
+- **Levantar las sombras no hace escalones.** A +3 EV, las sombras del RAW
+  tienen más del doble de tonos distintos que las del mismo JPEG.
+- **Girar o recortar no cuesta nada**: el pase de geometría escribe en flotante.
+
+Para editar se revela a **media resolución sin interpolar** (LibRaw agrupa cada
+cuadrado de cuatro fotositos: cuatro veces más rápido, la cuarta parte de
+memoria) y se reduce al tamaño de pantalla. La resolución completa sólo se
+revela al exportar a *Original*: una FX30 sale a 6240×4168. Por encima de
+36 Mpx (A7R V, A1) también se exporta a media resolución, porque entera serían
+más de 300 MB de luz en coma flotante y Safari cierra la pestaña.
+
+El decodificador es la compilación **sin hilos** de LibRaw. La versión con
+hilos necesita memoria compartida, que Safari sólo da a páginas con cabeceras
+de aislamiento de origen cruzado, y ni GitHub Pages ni la app nativa las tienen.
+Se comprobó en el binario (la versión con hilos importa su memoria como
+compartida; ésta define la suya sin compartir) y revelando la FX30 en un worker
+donde crear memoria compartida estaba prohibido, como en Safari.
+
+**No hay exposición base.** Se probó a igualar el brillo con el JPEG que la
+cámara guarda dentro del ARW, y no sirve de referencia: lleva el estilo de
+imagen de la cámara. El de la FX30 salía 0,7 EV más oscuro que la propia luz
+del sensor; igualarlo habría sido copiar un look, no medir nada.
+
+En el iPhone, el ARW se elige desde **Archivos**: desde la fototeca, iOS suele
+entregar un JPEG en su lugar.
+
 ### Biblioteca
 
 Tocar una miniatura abre un **visor a pantalla completa**: la foto sobre negro y
@@ -324,6 +368,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, hay un mando por grupo de funciones y ninguno de más —con la exposición y el zoom fuera de la fila, en sus barras—, cada ventana abre sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
 | `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Las dos barras verticales: que la línea sea fina pero su área táctil llegue a 46 px, que arrastrar hacia arriba suba de verdad la exposición, que la barra siga al pellizco y que sin gran angular no baje de 1×. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome — ni a la propia app nativa, que también es una vista web sin «Safari» en su user agent y sin la excepción bloquearía su cámara |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
+| `raw` | Con un ARW real de una Sony FX30: que se reconozca por nombre o por tipo, que la conversión a media precisión sea exacta en los 63 488 float16 finitos, que entre en la biblioteca como `.arw` y no como `.bin`, que el laboratorio lo revele como luz lineal en una textura flotante, que a +1,5 EV no queme lo que la misma imagen en 8 bits sí quema, que a +3 EV sus sombras tengan más del doble de tonos, que girarlo no cueste nada de eso, el antes/después, el selector de emulsión, el visor y la exportación a 6240×4168. El ARW (31 MB) se descarga la primera vez; sin red, la suite se omite avisando |
 | `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
@@ -506,6 +551,11 @@ y la exportación: sólo cambia el tamaño del lienzo.
 
 - `getUserMedia` no da acceso a la resolución completa del sensor ni al RAW:
   es un límite de iOS, no de la aplicación. Se pide la máxima disponible.
+- Los RAW que se abren son los de **Sony**. LibRaw sabe leer los de otras
+  marcas, pero sólo los ARW se han probado con un archivo real; abrir los demás
+  es cambiar una línea en `js/store/raw.js`, y probarlos, otra cosa.
+- Revelar un ARW tarda: unos 2 s a media resolución para editar y unos 7 s a
+  resolución completa al exportar, en un ordenador. En un iPhone, más.
 - El revelado de vídeo en el laboratorio va en tiempo real, porque el
   navegador no ofrece codificación más rápida que la reproducción. Un clip de
   un minuto tarda un minuto.

@@ -37,6 +37,9 @@ const TYPES = {
   '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
+  // Sin este tipo el navegador no puede compilar el decodificador RAW mientras
+  // lo descarga, y lo tiene que bajar entero antes de empezar.
+  '.wasm': 'application/wasm',
 };
 
 function handler(req, res) {

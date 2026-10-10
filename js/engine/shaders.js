@@ -116,6 +116,7 @@ uniform mat3  uWB;               // adaptación cromática
 uniform float uExposure;         // diafragmas
 uniform mat3  uFilmMatrix;       // acoplamiento entre capas de la emulsión
 uniform float uFilmMix;          // 0 = digital limpio, 1 = emulsión completa
+uniform float uSrcLinear;        // 1 = la fuente ya es luz lineal (un RAW), sin recortar
 
 // — Curva característica, resuelta en JS —
 uniform vec3 uFilmM, uFilmQ, uFilmToe, uFilmSh, uFilmPivotX, uFilmNorm;
@@ -152,6 +153,19 @@ vec3 filmResponse(vec3 lin) {
   return outc;
 }
 
+// Hombro para la luz lineal de un RAW cuando no hay emulsión que la doble.
+// Hasta K es la identidad; por encima comprime hacia 1 sin llegar nunca, con
+// la misma pendiente en el punto de unión. Sin él, al subir la exposición todo
+// lo que pasa de 1 se cortaría en seco, que es lo que hace que un RAW parezca
+// un JPEG quemado. Es racional (Reinhard sobre lo que sobra) y no exponencial:
+// la exponencial llegaba a 255 en cuanto la luz doblaba el blanco, y a +1,5 EV
+// ya no separaba una nube de otra. (La emulsión tiene su propio hombro.)
+vec3 softClip(vec3 x) {
+  const float K = 0.8;
+  vec3 sobra = max(x - vec3(K), vec3(0.0));
+  return min(x, vec3(K)) + sobra / (1.0 + sobra / (1.0 - K));
+}
+
 float bandWeight(float hueDeg, float center) {
   float d = abs(mod(hueDeg - center + 540.0, 360.0) - 180.0);
   return max(0.0, 1.0 - d / 60.0);
@@ -161,7 +175,8 @@ void main() {
   vec3 c = texture(uSrc, vUV).rgb;
 
   /* ── Escena ─────────────────────────────────────────────────────────── */
-  vec3 lin = srgbToLinear(clamp(c, 0.0, 1.0));
+  // Un RAW llega ya lineal y puede pasar de 1: no se recorta ni se descodifica.
+  vec3 lin = uSrcLinear > 0.5 ? max(c, vec3(0.0)) : srgbToLinear(clamp(c, 0.0, 1.0));
   lin = uWB * lin;
   lin *= exp2(uExposure);
   lin = max(lin, vec3(0.0));
@@ -169,9 +184,12 @@ void main() {
   // Acoplamiento entre capas: la luz que expone una capa vela un poco las otras.
   lin = mix(lin, max(uFilmMatrix * lin, vec3(0.0)), uFilmMix);
 
-  // La entrada ya viene referida a display, así que el "sin película" es la
-  // codificación sRGB exacta (identidad). La emulsión se mezcla contra eso.
-  c = mix(linearToSrgb(lin), filmResponse(lin), uFilmMix);
+  // Una entrada referida a display tiene como "sin película" la codificación
+  // sRGB exacta (identidad). Un RAW no tiene identidad posible —no hay un
+  // original de 8 bits al que parecerse—, así que su "sin película" lleva el
+  // hombro suave. La emulsión se mezcla contra eso.
+  vec3 digital = uSrcLinear > 0.5 ? linearToSrgb(softClip(lin)) : linearToSrgb(lin);
+  c = mix(digital, filmResponse(lin), uFilmMix);
   c = clamp(c, 0.0, 1.0);
 
   /* ── Tono ───────────────────────────────────────────────────────────── */

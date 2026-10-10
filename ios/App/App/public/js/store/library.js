@@ -21,6 +21,8 @@
  * sólo que el navegador es menos generoso con la cuota.
  */
 
+import { isRawFile, rawExtension, decodeRaw, RAW_MIME } from './raw.js';
+
 const DB_NAME = 'filtros-lab';
 const DB_VERSION = 1;
 const STORE_ITEMS = 'items';
@@ -137,13 +139,17 @@ class Library extends EventTarget {
   async put(blob, meta = {}) {
     await this.init();
     const id = newId();
-    const ext = extensionFor(blob.type);
+    // Un ARW suele llegar sin tipo MIME: por el tipo se guardaría como `.bin`
+    // y al volver a abrirlo nada sabría que es un RAW. Se mira el nombre.
+    const raw = isRawFile(blob);
+    const ext = raw ? rawExtension(blob) : extensionFor(blob.type);
     const name = `${id}.${ext}`;
     const item = {
       id,
       name,
       kind: meta.kind || (blob.type.startsWith('video') ? 'video' : 'photo'),
-      mime: blob.type,
+      mime: raw ? (blob.type || RAW_MIME) : blob.type,
+      raw,
       size: blob.size,
       width: meta.width || 0,
       height: meta.height || 0,
@@ -320,6 +326,9 @@ export const library = new Library();
  * @param {number} maxSize lado mayor del resultado
  */
 export async function decodeScaled(file, maxSize) {
+  // Un RAW no lo sabe abrir el navegador: va a LibRaw, y vuelve como luz lineal
+  // en `bitmap`, con la misma forma que el resto para que nadie más distinga.
+  if (isRawFile(file)) return decodeRaw(file, maxSize);
   const probe = await createImageBitmap(file);
   const { width, height } = probe;
   if (Math.max(width, height) <= maxSize) {
@@ -337,6 +346,9 @@ export async function decodeScaled(file, maxSize) {
 
 /** Miniatura JPEG a partir de cualquier fuente dibujable. */
 export async function makeThumb(source, size = THUMB_SIZE) {
+  // La luz lineal de un RAW no se puede dibujar en un canvas tal cual: primero
+  // se revela en neutro, igual que la abrirá el laboratorio.
+  if (source?.linear) source = source.toCanvas(size);
   const w = source.width || source.videoWidth;
   const h = source.height || source.videoHeight;
   const k = Math.min(1, size / Math.max(w, h));

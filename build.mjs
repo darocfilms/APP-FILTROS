@@ -55,6 +55,21 @@ for (const entry of INCLUDE) {
 const sw = fs.readFileSync(path.join(OUT, 'sw.js'), 'utf8');
 const listed = [...sw.matchAll(/'\.\/([^']+)'/g)].map((m) => m[1]).filter(Boolean);
 const missing = listed.filter((f) => f && !fs.existsSync(path.join(OUT, f)));
+// Y al revés: un módulo que se publica pero no se precachea rompe la app sin
+// conexión en cuanto algo lo importa. Así se quedó fuera el visor una vez.
+const publicados = [];
+(function recorre(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) recorre(p);
+    else if (/\.(js|wasm|css)$/.test(e.name) && e.name !== 'sw.js') publicados.push(path.relative(OUT, p).split(path.sep).join('/'));
+  }
+})(OUT);
+const sinCache = publicados.filter((f) => !listed.includes(f));
+if (sinCache.length) {
+  console.error('  se publican sin precachear (no funcionarían sin conexión): ' + sinCache.join(', '));
+  process.exitCode = 1;
+}
 if (missing.length) {
   console.error('  el service worker precachea archivos que no se publican: ' + missing.join(', '));
   process.exitCode = 1;
