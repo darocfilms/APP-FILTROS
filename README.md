@@ -363,6 +363,28 @@ pantalla.
 
 ---
 
+## LUT para Lightroom y vídeo
+
+La carpeta [`luts/`](luts/) tiene las emulsiones Kodak de cine (Vision3 250D,
+Vision3 500T, copia 2383) y de negativo (Portra 400 y 800, Gold 200, Ektar 100,
+Tri-X 400) para usarlas fuera de la app:
+
+- **Perfiles de Lightroom** (`.xmp`), que se importan directamente en
+  Lightroom Classic, Lightroom o Camera Raw, sin pasar por Photoshop, con su
+  deslizador de cantidad de 0 a 200.
+- **`.cube` de 33 puntos** para Photoshop, Premiere, DaVinci o Final Cut.
+
+Cómo instalarlos, en [`luts/LEEME.md`](luts/LEEME.md).
+
+No son una imitación: `tools/luts.mjs` revela cada punto de la retícula con el
+shader del laboratorio, en coma flotante, y antes de escribir nada comprueba
+que el LUT aplicado a una carta de color da lo mismo que la app (0,3 niveles de
+media, el propio tramado). Lo que un LUT no puede llevar se queda fuera: el
+grano y la viñeta. Los perfiles guardan la tabla en el formato del DNG SDK de
+Adobe y se leen de vuelta para comprobarlos.
+
+---
+
 ## El problema del tamaño, y cómo se resuelve
 
 Una foto de iPhone son 12 Mpx. Descodificada en memoria ocupa unos 48 MB, y
@@ -546,6 +568,8 @@ index.html
 styles/app.css
 sw.js · manifest.webmanifest · icons/
 serve.mjs                    servidor de desarrollo, con HTTPS opcional
+tools/luts.mjs               genera luts/: perfiles de Lightroom y .cube
+luts/                        las emulsiones Kodak como LUT
 
 js/
   app.js                     armazón: pestañas, hojas modales, importación
