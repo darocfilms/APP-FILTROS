@@ -4,7 +4,7 @@
  * etalonaje, encuadre) se enchufan aquí por nombre.
  */
 
-import { el, clear, haptic } from '../utils/dom.js';
+import { el, clear, haptic, esEscritorio } from '../utils/dom.js';
 import {
   PANELS, HSL_BANDS, ASPECTS, getPath, setPath, panelIsModified,
 } from '../data/params.js';
@@ -57,7 +57,9 @@ export class PanelStack {
         onclick: () => {
           haptic();
           if (this.collapsed) { this.hooks.onToggleCollapse?.(); this.show(panel.id); }
-          else if (this.active === panel.id) this.hooks.onToggleCollapse?.();
+          // En escritorio la columna está al lado de la foto, no encima: plegarla
+          // no destapa nada y sólo dejaría una columna vacía.
+          else if (this.active === panel.id) { if (!esEscritorio()) this.hooks.onToggleCollapse?.(); }
           else this.show(panel.id);
         },
       },

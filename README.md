@@ -2,7 +2,8 @@
 
 **En marcha: https://darocfilms.github.io/APP-FILTROS/**
 
-Aplicación web de cámara y revelado fotográfico para iPhone. Emulsiones
+Aplicación web de cámara y revelado fotográfico para iPhone, que en el Mac se
+convierte en un editor de escritorio con los ajustes al lado. Emulsiones
 reales aplicadas en directo sobre el visor, grabación de vídeo, un laboratorio
 de edición completo y exportación a resolución original.
 
@@ -220,6 +221,27 @@ Además: deshacer y rehacer, comparación antes/después manteniendo pulsada la
 imagen, histograma superpuesto y presets propios.
 
 Los ajustes se guardan junto al archivo: al reabrirlo sigue donde lo dejaste.
+Y no se quedan en el laboratorio: la biblioteca enseña y guarda la foto tal
+como quedó (ver [Biblioteca](#biblioteca)).
+
+#### En el Mac
+
+Con la ventana ancha (900 px o más, en horizontal) el laboratorio cambia de
+forma: la foto a la izquierda, **los ajustes en una columna a la derecha** con
+las pestañas en dos filas arriba, y nada flotando encima de la imagen. La
+columna no se pliega —en el teléfono plegar sirve para ver la foto entera; aquí
+ya se ve— y se adapta sola si la ventana se estrecha o se agranda.
+
+En la barra aparecen **Copiar** y **Pegar** (en el teléfono no caben y están
+dentro de *Presets*), y los atajos de siempre:
+
+| | |
+|---|---|
+| ⌘Z · ⇧⌘Z | Deshacer · rehacer |
+| ⌘C · ⌘V | Copiar los ajustes de color de la foto · pegarlos |
+
+Siguen funcionando con un deslizador en foco, que es justo después de moverlo.
+En un campo de texto (el nombre de un preset) son del campo.
 
 #### RAW de Sony
 
@@ -279,9 +301,37 @@ Safari cierre la pestaña.
 La carpeta local por dentro. Miniaturas, espacio ocupado, y para cada archivo:
 abrir en el laboratorio, guardar en el dispositivo o eliminar.
 
+**Lo editado en el laboratorio es lo que se ve aquí.** El original no se toca
+nunca —los ajustes se guardan aparte, junto a él—, pero fuera del laboratorio
+la foto se enseña y se entrega revelada:
+
+- **La miniatura** se rehace al salir del laboratorio, con la emulsión, la luz
+  y el encuadre. Sale del propio lienzo del laboratorio, que ya tiene la foto
+  revelada: no hay que volver a leer el original. Una marca ◑ dice con qué
+  emulsión está editada.
+- **El visor** la revela al tamaño de la pantalla.
+- **Guardar** la revela a resolución completa en JPEG, con el nombre de su
+  emulsión. Si hace falta el archivo tal como entró, en la ficha (⋯) está
+  *Guardar el original*, y *Quitar los ajustes* la devuelve a como era.
+
+**Copiar y pegar ajustes.** *Copiar ajustes* (en la ficha de una foto, en el
+laboratorio, o ⌘C) se lleva el **color**: emulsión, luz, color, curvas, HSL,
+etalonaje, detalle, efectos y viñeta. El **encuadre no viaja**: el recorte y el
+giro son de cada foto, y pegar uno ajeno descuadraría las demás. Lo copiado
+sobrevive a cerrar la app.
+
+Para pegarlo **en todas las fotos**: *Seleccionar* → *Todo* → *Pegar ajustes*.
+Pregunta antes, avisa de cuántas ya tenían ajustes de color (se sustituyen),
+enseña el avance y se salta los vídeos, que se revelan en tiempo real y no
+guardan ajustes. Las miniaturas cambian una a una según se van haciendo. Si
+la foto que está abierta en el laboratorio recibe ajustes desde aquí, el
+laboratorio los recoge al volver, y un ⌘Z los deshace.
+
 **Selección múltiple** con el botón *Seleccionar*, o manteniendo pulsada una
-miniatura. Desde ahí se comparten o eliminan varios de una vez; compartir usa la
-hoja del sistema, que en iPhone admite lotes.
+miniatura. Desde ahí se comparten, se pegan ajustes o se eliminan varios de una
+vez; compartir usa la hoja del sistema, que en iPhone admite lotes. En el Mac,
+con la selección abierta: ⌘A todo, ⌘C copia los ajustes de la única elegida y
+⌘V los pega en las elegidas.
 
 ---
 
@@ -369,6 +419,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Las dos barras verticales: que la línea sea fina pero su área táctil llegue a 46 px, que arrastrar hacia arriba suba de verdad la exposición, que la barra siga al pellizco y que sin gran angular no baje de 1×. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome — ni a la propia app nativa, que también es una vista web sin «Safari» en su user agent y sin la excepción bloquearía su cámara |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 | `raw` | Con un ARW real de una Sony FX30: que se reconozca por nombre o por tipo, que la conversión a media precisión sea exacta en los 63 488 float16 finitos, que entre en la biblioteca como `.arw` y no como `.bin`, que el laboratorio lo revele como luz lineal en una textura flotante, que a +1,5 EV no queme lo que la misma imagen en 8 bits sí quema, que a +3 EV sus sombras tengan más del doble de tonos, que girarlo no cueste nada de eso, el antes/después, el selector de emulsión, el visor y la exportación a 6240×4168. El ARW (31 MB) se descarga la primera vez; sin red, la suite se omite avisando |
+| `desktop` | El Mac: que en una ventana de 1440×900 los ajustes vayan en una columna a la derecha sin tapar la foto, que tocar la pestaña activa no los esconda, y que en el iPhone todo siga como estaba. Lo editado en el laboratorio —emulsión, exposición y un giro— tiene que aparecer en la miniatura, en el visor y **en el archivo que se guarda**, abierto y medido: a 1200×900 y más claro, mientras *Guardar el original* entrega los bytes de entrada. Copiar lleva el color y no el encuadre; pegar en las tres fotos pregunta, respeta el recorte y el espejo que tenía cada una y rehace sus miniaturas; la foto abierta en el laboratorio recoge lo pegado; ⌘Z, ⇧⌘Z, ⌘C y ⌘V, también con un deslizador en foco; *Quitar los ajustes* devuelve el original a la cuadrícula. Y que al volver del laboratorio no salgan casillas repetidas |
 | `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
@@ -508,8 +559,12 @@ js/
     params.js                modelo de ajustes; genera también la interfaz
   store/
     library.js               carpeta local: OPFS + IndexedDB
+    raw.js                   RAW de Sony: LibRaw en un worker, luz lineal
+    develop.js               revelar con los ajustes fuera del laboratorio;
+                             portapapeles de ajustes
   ui/
     controls.js curve.js wheel.js crop.js histogram.js filmpicker.js panels.js
+    viewer.js
   views/
     camera.js lab.js library.js
   utils/
@@ -556,6 +611,13 @@ y la exportación: sólo cambia el tamaño del lienzo.
   es cambiar una línea en `js/store/raw.js`, y probarlos, otra cosa.
 - Revelar un ARW tarda: unos 2 s a media resolución para editar y unos 7 s a
   resolución completa al exportar, en un ordenador. En un iPhone, más.
+- Pegar ajustes en muchas fotos rehace sus miniaturas una a una, y la de un
+  RAW pide revelarlo: con cien ARW, son minutos. Y fuera del laboratorio no hay
+  deshacer: por eso pregunta antes.
+- Guardar de una vez varias fotos editadas las revela todas a resolución
+  completa antes de abrir la hoja de compartir (si no, iOS la rechaza), y
+  todas ocupan memoria a la vez. Con decenas de fotos de 24 Mpx en un iPhone,
+  mejor por tandas.
 - El revelado de vídeo en el laboratorio va en tiempo real, porque el
   navegador no ofrece codificación más rápida que la reproducción. Un clip de
   un minuto tarda un minuto.

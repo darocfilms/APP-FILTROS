@@ -6,11 +6,15 @@
  * cuadrícula sigue siendo ligera.
  */
 
-import { el, clear, toast, haptic, confirmDialog } from '../utils/dom.js';
+import { el, clear, toast, haptic, confirmDialog, isTyping } from '../utils/dom.js';
 import { library, formatBytes } from '../store/library.js';
 import { timestampName } from '../utils/share.js';
 import { getFilm } from '../data/films.js';
 import { Viewer } from '../ui/viewer.js';
+import {
+  hasEdits, hasColorEdits, describeEdits, fileForSaving,
+  copySettings, copiedSettings, pasteInto, clearEdits, EVENTO_PORTAPAPELES,
+} from '../store/develop.js';
 
 export class LibraryView {
   constructor(app) {
@@ -74,7 +78,32 @@ export class LibraryView {
     // pestañas, que le comía los botones de abajo.
     document.body.append(this.viewer.root);
 
-    library.addEventListener('change', () => { if (this.app.current === 'library') this.render(); });
+    // Durante un lote (pegar ajustes en cien fotos) cada foto avisa de su
+    // cambio, y repintar la cuadrícula entera cien veces la haría ir a tirones:
+    // se repinta una vez al final, y mientras tanto cambian sólo las casillas.
+    library.addEventListener('change', () => {
+      if (this.app.current === 'library' && !this._lote) this.render();
+    });
+    library.addEventListener('thumb', (e) => this._refreshThumb(e.detail.id));
+    globalThis.addEventListener?.(EVENTO_PORTAPAPELES, () => this._paintSelection());
+    document.addEventListener('keydown', (e) => this._onKey(e));
+  }
+
+  /**
+   * Atajos de teclado del Mac en la selección: ⌘A todo, ⌘C copia los ajustes
+   * de la única foto elegida y ⌘V los pega en todas las elegidas.
+   */
+  _onKey(e) {
+    if (this.app.current !== 'library' || !this.selecting) return;
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (isTyping(e.target)) return;
+    if (document.querySelector('.sheet-backdrop') || !this.viewer.root.hidden) return;
+    const k = e.key.toLowerCase();
+    if (k === 'a') { e.preventDefault(); this.selectAllShown(); }
+    else if (k === 'c' && this.selection.size === 1) {
+      e.preventDefault();
+      this._copy(this.items.find((i) => i.id === [...this.selection][0]));
+    } else if (k === 'v' && this.selection.size) { e.preventDefault(); this._pasteSelection(); }
   }
 
   /* ───────────────────────── Selección múltiple ─────────────────────── */
@@ -96,6 +125,11 @@ export class LibraryView {
         el('button', {
           type: 'button', class: 'btn btn--primary', text: 'Guardar',
           onclick: () => this._saveSelection(),
+        }),
+        this.pasteBtn = el('button', {
+          type: 'button', class: 'btn', text: 'Pegar ajustes',
+          title: 'Pega en las fotos elegidas los ajustes de color copiados',
+          onclick: () => this._pasteSelection(),
         }),
         el('button', {
           type: 'button', class: 'btn btn--danger', text: 'Eliminar',
@@ -136,6 +170,8 @@ export class LibraryView {
     this.selCount.textContent = n === 0 ? 'Nada seleccionado'
       : n === 1 ? '1 seleccionado' : `${n} seleccionados`;
     for (const btn of this.selectionBar.querySelectorAll('.btn')) btn.disabled = n === 0;
+    // Sin nada copiado, pegar no puede hacer nada: se ve, pero apagado.
+    if (!copiedSettings()) this.pasteBtn.disabled = true;
     for (const tile of this.grid.children) {
       const on = this.selection.has(tile.dataset.id);
       tile.classList.toggle('is-selected', on);
@@ -158,15 +194,21 @@ export class LibraryView {
     const names = [];
     let missing = 0;
     try {
-      for (const id of ids) {
-        const item = this.items.find((i) => i.id === id);
-        const file = await library.getFile(id);
-        if (!file) { missing++; continue; }
-        blobs.push(file);
-        names.push(timestampName(item.kind === 'video' ? 'video' : 'foto',
-          item.name.split('.').pop() || 'jpg', item.filmName,
-          ids.length > 1 ? blobs.length - 1 : null));
+      for (const [n, id] of ids.entries()) {
+        // Del almacén y no de la cuadrícula: los ajustes pueden haber cambiado
+        // en el laboratorio después del último repintado.
+        const item = await library.get(id);
+        if (item && hasEdits(item.params) && item.kind === 'photo') {
+          this.app.setBusy(true, ids.length > 1 ? `Revelando ${n + 1} de ${ids.length}…` : 'Revelando a resolución completa…');
+        }
+        const out = item ? await fileForSaving(item) : null;
+        if (!out) { missing++; continue; }
+        blobs.push(out.blob);
+        names.push(this._fileName(item, out, ids.length > 1 ? blobs.length - 1 : null));
       }
+    } catch (err) {
+      toast('No se pudo preparar: ' + (err?.message || err), { error: true });
+      return;
     } finally {
       this.app.setBusy(false);
     }
@@ -231,7 +273,26 @@ export class LibraryView {
     this.urls.clear();
   }
 
-  async render() {
+  /**
+   * Repinta la cuadrícula. Las pasadas van de una en una: al volver del
+   * laboratorio llegan casi a la vez la de entrar en la vista y la del aviso
+   * de que se guardaron los ajustes, y dos pasadas solapadas añadían cada una
+   * sus casillas a la misma cuadrícula. Si se pide otra mientras tanto, se hace
+   * una más al terminar, con lo último.
+   */
+  render() {
+    if (this._pintando) { this._otraVez = true; return this._pintando; }
+    this._pintando = (async () => {
+      try {
+        do { this._otraVez = false; await this._paint(); } while (this._otraVez);
+      } finally {
+        this._pintando = null;
+      }
+    })();
+    return this._pintando;
+  }
+
+  async _paint() {
     this.items = await library.list();
     const shown = this.items.filter((i) => this.filter === 'all' || i.kind === this.filter);
 
@@ -275,9 +336,13 @@ export class LibraryView {
     }
 
     const film = item.filmId ? getFilm(item.filmId) : null;
+    // Lo editado en el laboratorio manda sobre la emulsión con la que se hizo:
+    // es lo que enseña la miniatura y lo que se guardará.
+    const editada = describeEdits(item.params);
     const badges = el('div', { class: 'tile__badges' },
       item.kind === 'video' ? el('span', { class: 'tile__badge', text: this._duration(item.durationMs) }) : null,
-      film && film.id !== 'neutral' ? el('span', { class: 'tile__badge tile__badge--film', text: film.name }) : null);
+      editada ? el('span', { class: 'tile__badge tile__badge--film tile__badge--edit', text: editada })
+        : film && film.id !== 'neutral' ? el('span', { class: 'tile__badge tile__badge--film', text: film.name }) : null);
 
     return el('button', {
       type: 'button', class: 'tile', dataset: { id: item.id },
@@ -299,6 +364,23 @@ export class LibraryView {
         class: 'tile__more', 'aria-label': 'Opciones',
         onclick: (e) => { e.stopPropagation(); this._actions(item); },
       }, '⋯'));
+  }
+
+  /** Cambia la imagen de una casilla sin repintar la cuadrícula. */
+  async _refreshThumb(id) {
+    if (this.app.current !== 'library') return;
+    // A media pasada la casilla puede no existir todavía, o estar a punto de
+    // sustituirse por una con la miniatura vieja: otra pasada al terminar.
+    if (this._pintando) { this._otraVez = true; return; }
+    const tile = [...this.grid.children].find((t) => t.dataset.id === id);
+    if (!tile) return;
+    const blob = await library.getThumbBlob(id);
+    if (!blob || !tile.isConnected) return;
+    const old = this.urls.get(id);
+    const url = URL.createObjectURL(blob);
+    this.urls.set(id, url);
+    tile.querySelector('.tile__img').src = url;
+    if (old) URL.revokeObjectURL(old);
   }
 
   _duration(ms) {
@@ -323,6 +405,9 @@ export class LibraryView {
   _actions(item) {
     haptic();
     const film = item.filmId ? getFilm(item.filmId) : null;
+    const foto = item.kind === 'photo';
+    const editada = foto && hasEdits(item.params);
+    const copiado = foto ? copiedSettings() : null;
     const when = new Date(item.createdAt).toLocaleString('es-ES', {
       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
@@ -332,6 +417,7 @@ export class LibraryView {
         this._metaRow('Dimensiones', `${item.width}×${item.height}`),
         this._metaRow('Tamaño', formatBytes(item.size)),
         this._metaRow('Emulsión', film ? `${film.brand} ${film.name}` : '—'),
+        foto ? this._metaRow('Ajustes', describeEdits(item.params) || 'Ninguno') : null,
         this._metaRow('Origen', item.origin === 'camara' ? 'Cámara' : item.origin === 'importado' ? 'Importado' : 'Laboratorio'),
         this._metaRow('Fecha', when),
         item.kind === 'video' ? this._metaRow('Duración', this._duration(item.durationMs)) : null),
@@ -342,12 +428,39 @@ export class LibraryView {
           onclick: () => { sheet.close(); this.app.openInLab(item); },
         }),
         el('button', {
-          type: 'button', class: 'btn', text: 'Guardar en el dispositivo',
+          type: 'button', class: 'btn', text: editada ? 'Guardar con los ajustes' : 'Guardar en el dispositivo',
           onclick: async () => {
             sheet.close();
             await this._download(item);
           },
         }),
+        editada ? el('button', {
+          type: 'button', class: 'btn', text: 'Guardar el original',
+          onclick: async () => {
+            sheet.close();
+            await this._download(item, { original: true });
+          },
+        }) : null,
+        foto ? el('div', { class: 'sheet__actions sheet__actions--pair' },
+          el('button', {
+            type: 'button', class: 'btn', text: 'Copiar ajustes',
+            disabled: !hasColorEdits(item.params),
+            onclick: () => { sheet.close(); this._copy(item); },
+          }),
+          el('button', {
+            type: 'button', class: 'btn', text: 'Pegar ajustes',
+            disabled: !copiado,
+            onclick: () => { sheet.close(); this._paste([item], copiado); },
+          })) : null,
+        editada ? el('button', {
+          type: 'button', class: 'btn', text: 'Quitar los ajustes',
+          onclick: async () => {
+            sheet.close();
+            if (!await confirmDialog('¿Quitar los ajustes de esta foto? Vuelve a ser el original.', { confirmLabel: 'Quitar' })) return;
+            await clearEdits(item);
+            toast('Ajustes quitados');
+          },
+        }) : null,
         el('button', {
           type: 'button', class: 'btn btn--danger', text: 'Eliminar',
           onclick: async () => {
@@ -367,18 +480,88 @@ export class LibraryView {
     return el('div', { class: 'meta__row' }, el('dt', { text: label }), el('dd', { text: value }));
   }
 
-  async _download(item) {
+  /**
+   * Guarda un elemento fuera de la app. Una foto con ajustes sale revelada con
+   * ellos, a resolución completa: lo que se ve en la biblioteca es lo que se
+   * guarda. `original` saca el archivo tal como entró.
+   */
+  async _download(item, { original = false } = {}) {
     this.app.setBusy(true, 'Preparando el archivo…');
     try {
-      const file = await library.getFile(item.id);
-      if (!file) throw new Error('El archivo ya no está en la carpeta local');
-      const ext = (item.name.split('.').pop() || 'jpg');
-      const name = timestampName(item.kind === 'video' ? 'video' : 'foto', ext, item.filmName);
-      this.app.presentSave([file], [name], { detail: `${item.width}×${item.height}` });
+      item = (await library.get(item.id)) || item;
+      if (!original && item.kind === 'photo' && hasEdits(item.params)) {
+        this.app.setBusy(true, 'Revelando a resolución completa…');
+      }
+      const out = await fileForSaving(item, { original });
+      if (!out) throw new Error('El archivo ya no está en la carpeta local');
+      this.app.presentSave([out.blob], [this._fileName(item, out)], {
+        detail: `${out.width || item.width}×${out.height || item.height}` + (out.edited ? ' · con los ajustes' : ''),
+      });
     } catch (err) {
       toast('No se pudo guardar: ' + (err?.message || err), { error: true });
     } finally {
       this.app.setBusy(false);
+    }
+  }
+
+  _fileName(item, out, index = null) {
+    const nombre = out.edited ? describeEdits(item.params) : item.filmName;
+    return timestampName(item.kind === 'video' ? 'video' : 'foto', out.ext, nombre, index);
+  }
+
+  /* ─────────────────────── Copiar y pegar ajustes ────────────────────── */
+
+  _copy(item) {
+    if (!item || !hasColorEdits(item.params)) return toast('Esta foto no tiene ajustes de color que copiar');
+    copySettings(item.params);
+    haptic();
+    toast(`Ajustes copiados · ${describeEdits(item.params)}`);
+  }
+
+  _pasteSelection() {
+    const items = [...this.selection].map((id) => this.items.find((i) => i.id === id)).filter(Boolean);
+    return this._paste(items, copiedSettings());
+  }
+
+  /**
+   * Pega los ajustes copiados en varias fotos. Sustituye el color que tuvieran
+   * y respeta el encuadre de cada una. No hay deshacer fuera del laboratorio,
+   * así que se pregunta antes si va a tocar más de una foto o a pisar una
+   * edición.
+   */
+  async _paste(items, copiado) {
+    if (!copiado) return toast('Copia antes los ajustes de una foto, aquí o en el laboratorio');
+    const fotos = items.filter((i) => i.kind === 'photo');
+    if (!fotos.length) return toast('Los ajustes sólo se pegan en fotos');
+    const pisa = fotos.filter((i) => hasColorEdits(i.params)).length;
+    const look = describeEdits(copiado.params) || 'sin ajustes';
+    if (fotos.length > 1 || pisa) {
+      const que = fotos.length === 1 ? 'esta foto' : `${fotos.length} fotos`;
+      const aviso = pisa === 0 ? ''
+        : fotos.length === 1 ? ' Sus ajustes de color se sustituyen.'
+          : pisa === 1 ? ' Una ya tiene ajustes de color: se sustituyen.'
+            : ` ${pisa} ya tienen ajustes de color: se sustituyen.`;
+      const videos = items.length - fotos.length;
+      const ok = await confirmDialog(
+        `¿Pegar los ajustes «${look}» en ${que}?${aviso} El encuadre de cada una se respeta.`
+          + (videos ? ` Los vídeos (${videos}) se saltan.` : ''),
+        { confirmLabel: 'Pegar' });
+      if (!ok) return;
+    }
+    this._lote = true;
+    this.app.setBusy(true, fotos.length > 1 ? `Pegando ajustes… 0 de ${fotos.length}` : 'Pegando ajustes…');
+    try {
+      const { hechas } = await pasteInto(fotos, copiado.params, (n, total) => {
+        if (total > 1) this.app.setBusy(true, `Pegando ajustes… ${n} de ${total}`);
+      });
+      toast(hechas === 1 ? `Ajustes pegados · ${look}` : `Ajustes pegados en ${hechas} fotos · ${look}`);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudieron pegar: ' + (err?.message || err), { error: true });
+    } finally {
+      this._lote = false;
+      this.app.setBusy(false);
+      await this.render();
     }
   }
 

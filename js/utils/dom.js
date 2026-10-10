@@ -33,6 +33,26 @@ export function setStyle(node, styles) {
   }
 }
 
+/**
+ * Pantalla de escritorio: ancha, apaisada y con altura suficiente (un Mac, un
+ * iPad en horizontal). Es la MISMA consulta que la del bloque «Escritorio» de
+ * styles/app.css; si se cambia una, hay que cambiar la otra.
+ */
+export const ESCRITORIO = '(min-width: 900px) and (min-height: 560px) and (orientation: landscape)';
+export const esEscritorio = () => !!globalThis.matchMedia?.(ESCRITORIO).matches;
+
+/**
+ * ¿Está escribiendo en un campo de texto? Entonces ⌘C, ⌘V y ⌘Z son suyos.
+ * Un deslizador no cuenta: se queda con el foco después de arrastrarlo, y si
+ * contara, ⌘Z dejaría de deshacer justo después de mover un ajuste.
+ */
+export function isTyping(target) {
+  if (!target?.closest) return false;
+  if (target.closest('textarea, select, [contenteditable=""], [contenteditable="true"]')) return true;
+  return target.tagName === 'INPUT'
+    && !['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color'].includes(target.type);
+}
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -58,10 +78,20 @@ export function rafThrottle(fn) {
 
 export function debounce(fn, ms) {
   let t;
-  return (...args) => {
+  let pendiente = null;
+  const run = () => { const args = pendiente; pendiente = null; return fn(...args); };
+  const d = (...args) => {
     clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
+    pendiente = args;
+    t = setTimeout(run, ms);
   };
+  /** Hace ya lo que estuviera esperando, si había algo. */
+  d.flush = () => {
+    if (!pendiente) return undefined;
+    clearTimeout(t);
+    return run();
+  };
+  return d;
 }
 
 /**

@@ -549,9 +549,13 @@ export class Renderer {
  * de memoria de vídeo de una exportación de 12 Mpx no se queda ocupado durante
  * el resto de la sesión, que es justo lo que tumba a Safari en iPhone.
  *
+ * Para revelados pequeños y seguidos —las miniaturas al pegar ajustes en cien
+ * fotos— se le puede pasar un `renderer` ya hecho: crear un contexto y
+ * compilar los shaders por cada miniatura costaría más que revelarla.
+ *
  * @param {ImageBitmap|HTMLImageElement|HTMLCanvasElement} source
  * @param {object} params
- * @param {object} [opts] { type, quality, maxSize }
+ * @param {object} [opts] { type, quality, maxSize, renderer }
  * @returns {Promise<{blob:Blob,width:number,height:number,scaled:boolean}>}
  */
 export async function renderToBlob(source, params, opts = {}) {
@@ -560,10 +564,10 @@ export async function renderToBlob(source, params, opts = {}) {
   const srcW = source.width || source.videoWidth || source.naturalWidth;
   const srcH = source.height || source.videoHeight || source.naturalHeight;
 
-  const canvas = document.createElement('canvas');
-  canvas.width = 1;
-  canvas.height = 1;
-  const renderer = new Renderer(canvas);
+  const prestado = opts.renderer || null;
+  const canvas = prestado ? prestado.canvas : document.createElement('canvas');
+  if (!prestado) { canvas.width = 1; canvas.height = 1; }
+  const renderer = prestado || new Renderer(canvas);
 
   try {
     // El límite de textura del dispositivo manda: por encima, se reduce.
@@ -601,8 +605,11 @@ export async function renderToBlob(source, params, opts = {}) {
     return { blob, width: size.width, height: size.height, scaled };
   } finally {
     // Este lienzo se descarta aquí mismo, así que conviene devolver el
-    // contexto: el navegador sólo admite unos pocos vivos a la vez.
-    renderer.dispose({ release: true });
-    canvas.width = canvas.height = 0;
+    // contexto: el navegador sólo admite unos pocos vivos a la vez. Uno
+    // prestado lo suelta quien lo prestó.
+    if (!prestado) {
+      renderer.dispose({ release: true });
+      canvas.width = canvas.height = 0;
+    }
   }
 }

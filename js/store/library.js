@@ -191,6 +191,9 @@ class Library extends EventTarget {
     } else {
       await tx(this.db, STORE_BLOBS, 'readwrite', (store) => store.put(blob, 'thumb:' + name));
     }
+    // Aparte de «change»: cambiar una miniatura no obliga a repintar la
+    // cuadrícula entera, sólo esa casilla.
+    this.dispatchEvent(new CustomEvent('thumb', { detail: { id } }));
   }
 
   /** Actualiza los metadatos de un elemento sin tocar los bytes. */

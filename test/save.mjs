@@ -156,7 +156,7 @@ await page.locator('.lib__baractions .btn', { hasText: 'Seleccionar' }).click();
 await page.waitForTimeout(400);
 check('la barra de selección aparece', await page.locator('.selbar:not([hidden])').count() === 1);
 check('las acciones empiezan desactivadas',
-  await page.locator('.selbar__actions .btn[disabled]').count() === 2);
+  await page.locator('.selbar__actions .btn:not([disabled])').count() === 0);
 
 const tiles = page.locator('.tile');
 await tiles.nth(0).click();
@@ -166,8 +166,11 @@ check('se marcan los elegidos', await page.locator('.tile.is-selected').count() 
 check('el contador refleja la selección',
   (await page.locator('.selbar__count').textContent()).includes('2'),
   await page.locator('.selbar__count').textContent());
+// «Pegar ajustes» sigue apagado mientras no se haya copiado nada.
 check('las acciones se habilitan',
-  await page.locator('.selbar__actions .btn[disabled]').count() === 0);
+  await page.locator('.selbar__actions .btn', { hasText: 'Guardar' }).isEnabled()
+    && await page.locator('.selbar__actions .btn', { hasText: 'Eliminar' }).isEnabled()
+    && await page.locator('.selbar__actions .btn', { hasText: 'Pegar ajustes' }).isDisabled());
 await page.screenshot({ path: SHOT + '/save-seleccion.png' });
 
 await page.locator('.linkbtn', { hasText: 'Todo' }).click();

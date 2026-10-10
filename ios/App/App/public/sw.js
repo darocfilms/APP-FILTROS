@@ -23,6 +23,7 @@ const SHELL = [
   './js/engine/shaders.js',
   './js/store/library.js',
   './js/store/raw.js',
+  './js/store/develop.js',
   // El decodificador de RAW: sin él en la caché, un ARW no abre sin conexión.
   './js/vendor/libraw/index.js',
   './js/vendor/libraw/worker.js',

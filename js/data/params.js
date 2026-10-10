@@ -293,3 +293,27 @@ export function applyFilmLook(params, filmDef) {
 export function cloneParams(p) {
   return JSON.parse(JSON.stringify(p));
 }
+
+/**
+ * Ajustes guardados sobre los valores por defecto.
+ *
+ * Un elemento guardado con una versión anterior de la app puede no tener las
+ * claves que se añadieron después (las bandas HSL de una emulsión, por
+ * ejemplo): partir siempre de los valores por defecto es lo que hace que
+ * abrirlo no falle ni deje un ajuste a `undefined`.
+ */
+export function mergeParams(saved) {
+  const merge = (dst, src) => {
+    for (const [k, v] of Object.entries(src || {})) {
+      if (Array.isArray(v)) {
+        dst[k] = v.map((x) => (x && typeof x === 'object' ? { ...x } : x));
+      } else if (v && typeof v === 'object') {
+        dst[k] = merge(dst[k] && typeof dst[k] === 'object' ? dst[k] : {}, v);
+      } else {
+        dst[k] = v;
+      }
+    }
+    return dst;
+  };
+  return merge(defaultParams(), saved);
+}

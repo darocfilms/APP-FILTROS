@@ -13,6 +13,7 @@
 import { el, clear, haptic } from '../utils/dom.js';
 import { library, decodeScaled } from '../store/library.js';
 import { isRawFile } from '../store/raw.js';
+import { hasEdits, describeEdits, develop } from '../store/develop.js';
 
 /**
  * La papelera va dibujada, no como carácter: el glifo de «borrar» de Unicode
@@ -132,13 +133,27 @@ export class Viewer {
     this._release();
     this.stage.append(el('div', { class: 'viewer__loading' }, el('span', { class: 'spinner' })));
 
+    // Los ajustes se leen del almacén, no de la lista con la que se abrió el
+    // visor: pueden haber cambiado en el laboratorio desde entonces.
+    const fresco = await library.get(item.id);
+    if (fresco) Object.assign(item, fresco);
     const file = await library.getFile(item.id);
-    // Un RAW no lo sabe pintar un <img>: se revela en neutro al tamaño de la
-    // pantalla, que es lo que se va a ver, y se enseña como JPEG.
+    const lado = Math.round(Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio || 1, 3));
+    const editada = item.kind === 'photo' && hasEdits(item.params);
     let vista = file;
-    if (file && (item.raw || isRawFile(file))) {
+    if (file && editada) {
+      // Con ajustes se enseña revelada, al tamaño de la pantalla: es la misma
+      // foto que sale al guardarla, no el original sin tocar.
       try {
-        const lado = Math.round(Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio || 1, 3));
+        ({ blob: vista } = await develop(file, item.params, lado));
+      } catch (err) {
+        console.error(err);
+        vista = null;
+      }
+    } else if (file && (item.raw || isRawFile(file))) {
+      // Un RAW no lo sabe pintar un <img>: se revela en neutro al tamaño de la
+      // pantalla, que es lo que se va a ver, y se enseña como JPEG.
+      try {
         const { bitmap } = await decodeScaled(file, lado);
         const lienzo = bitmap.toCanvas();
         bitmap.close();
@@ -156,7 +171,7 @@ export class Viewer {
     if (!file) {
       this.stage.append(el('p', { class: 'viewer__missing', text: 'El archivo ya no está en la carpeta local.' }));
     } else if (!vista) {
-      this.stage.append(el('p', { class: 'viewer__missing', text: 'No se ha podido revelar este RAW.' }));
+      this.stage.append(el('p', { class: 'viewer__missing', text: editada ? 'No se ha podido revelar esta foto.' : 'No se ha podido revelar este RAW.' }));
     } else {
       this.url = URL.createObjectURL(vista);
       this.stage.append(item.kind === 'video'
@@ -165,9 +180,10 @@ export class Viewer {
     }
 
     const fecha = new Date(item.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    const look = editada ? describeEdits(item.params) : item.filmName;
     clear(this.caption).append(
       el('span', { class: 'viewer__dims', text: `${item.width}×${item.height}` }),
-      el('span', { class: 'viewer__meta', text: (item.raw ? 'RAW · ' : '') + (item.filmName ? item.filmName + ' · ' : '') + fecha }));
+      el('span', { class: 'viewer__meta', text: (item.raw ? 'RAW · ' : '') + (look ? look + ' · ' : '') + fecha }));
     this.counter.textContent = this.items.length > 1 ? `${this.index + 1} / ${this.items.length}` : '';
   }
 

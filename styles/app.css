@@ -519,6 +519,8 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .lab__actions { display: flex; align-items: center; gap: 5px; }
 .lab__actions .iconbtn { width: 36px; height: 36px; flex-basis: 36px; font-size: 15px; }
 .lab__export { min-height: 36px; padding: 0 13px; font-size: 13.5px; }
+/* Copiar y pegar a la vista sólo en el Mac; en el teléfono están en Presets. */
+.lab__clip { display: none; }
 
 .lab__stage { position: absolute; inset: 0; }
 .lab__frame {
@@ -910,6 +912,9 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   background: rgba(0, 0, 0, 0.62); color: #fff;
 }
 .tile__badge--film { color: var(--accent); }
+/* Editada en el laboratorio: un punto delante la distingue de la emulsión con
+   la que se hizo la foto. */
+.tile__badge--edit::before { content: '◑ '; }
 .tile__info {
   position: absolute; left: 6px; bottom: 5px;
   font-size: 9.5px; color: rgba(255, 255, 255, 0.82);
@@ -925,6 +930,9 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 }
 .view--library.is-selecting .tile__check { opacity: 1; transform: none; }
 .view--library.is-selecting .tile__more { display: none; }
+/* La barra de selección flota sobre la cuadrícula: la última fila tiene que
+   poder subir por encima de ella. */
+.view--library.is-selecting { padding-bottom: calc(var(--tab-h) + 120px); }
 .tile.is-selected .tile__check {
   background: var(--accent); border-color: var(--accent);
 }
@@ -1048,6 +1056,15 @@ body.is-viewing { overflow: hidden; }
 .selbar__count { grid-column: 1 / -1; }
 .selbar__actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .selbar__actions .btn { min-height: 40px; padding: 0 14px; font-size: 13.5px; }
+/* En el teléfono no caben el recuento y tres botones en una fila: el recuento
+   arriba, y los botones debajo a lo ancho. */
+@media (max-width: 560px) {
+  .selbar { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
+  .selbar__info { grid-template-columns: auto auto auto; padding-left: 4px; }
+  .selbar__count { grid-column: auto; }
+  .selbar__actions { flex: 1 1 100%; }
+  .selbar__actions .btn { flex: 1; min-width: 0; padding: 0 8px; }
+}
 
 /* ── Hojas modales ──────────────────────────────────────────────────────── */
 
@@ -1064,7 +1081,9 @@ body.is-viewing { overflow: hidden; }
   border-radius: 18px 18px 0 0;
   border-top: 1px solid var(--line);
   padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
-  display: grid; gap: 10px;
+  /* Columna que no crece con el contenido: un campo de texto con su ancho
+     natural ensanchaba la hoja más allá de la pantalla. */
+  display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr);
   transform: translateY(100%); transition: transform 0.26s var(--ease);
 }
 .sheet-backdrop.is-open .sheet { transform: none; }
@@ -1086,12 +1105,14 @@ body.is-viewing { overflow: hidden; }
 .sheet__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
 .sheet__actions--stack { flex-direction: column; }
 .sheet__actions--stack .btn { width: 100%; }
+.sheet__actions--pair { margin-top: 0; }
+.sheet__actions--pair .btn { flex: 1; min-width: 0; }
 .sheet__row { display: flex; gap: 8px; align-items: center; }
 .sheet__field { display: grid; gap: 4px; }
 .sheet__field label { font-size: 12px; color: var(--text-dim); }
 
 .field {
-  flex: 1; min-height: 44px; padding: 0 12px;
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 12px;
   background: var(--bg-input); border: 1px solid var(--line);
   border-radius: var(--radius-sm); font-size: 16px; /* 16px evita el zoom de iOS */
 }
@@ -1144,6 +1165,9 @@ body.is-viewing { overflow: hidden; }
 }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 .toast.is-error { border-color: rgba(239, 68, 68, 0.5); color: #ffb4b4; }
+/* Con la barra de selección a la vista, el aviso sube por encima: si no, tapa
+   justo los botones con los que se acaba de hacer algo. */
+body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-h) + 104px); }
 
 /* ── Pantallas grandes ──────────────────────────────────────────────────── */
 
@@ -1152,6 +1176,38 @@ body.is-viewing { overflow: hidden; }
   .filmcard { width: 96px; }
   .filmcard__frame { width: 90px; height: 90px; }
   .gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; padding: 6px; }
+}
+
+/* ── Escritorio: los ajustes en una columna al lado de la foto ───────────
+   En un Mac la pantalla es ancha y baja, y el panel de debajo tapaba la mitad
+   inferior de la foto. Aquí va en una columna a la derecha, opaca —ya no está
+   encima de nada—, con las pestañas arriba en dos filas para verlas todas, y la
+   foto se queda con el resto. Misma consulta que ESCRITORIO en utils/dom.js. */
+@media (min-width: 900px) and (min-height: 560px) and (orientation: landscape) {
+  .view--lab { --side-w: clamp(320px, 26vw, 400px); }
+  .lab__frame { right: calc(var(--side-w) + 8px); }
+  .panels {
+    top: calc(48px + env(safe-area-inset-top)); bottom: var(--tab-h);
+    left: auto; right: 0; width: var(--side-w);
+    background: var(--bg-raised);
+    border-top: 0; border-left: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .panels__grab { display: none; }
+  .panelbar {
+    order: -1;
+    flex-wrap: wrap; overflow: visible;
+    padding: 6px;
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-top: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .panelbar__tab { flex: 1 0 18%; min-width: 0; }
+  .panelbody {
+    flex: 1; max-height: none;
+    padding: 8px 16px 16px;
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    text-shadow: none;
+  }
+  .lab__clip { display: inline-flex; min-height: 36px; padding: 0 12px; font-size: 13px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

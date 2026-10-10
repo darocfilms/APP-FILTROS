@@ -7,9 +7,9 @@
  * local en el momento de exportar, y se descarta en cuanto termina.
  */
 
-import { el, toast, haptic, debounce, rafThrottle } from '../utils/dom.js';
+import { el, toast, haptic, debounce, rafThrottle, ESCRITORIO, isTyping } from '../utils/dom.js';
 import { Renderer, renderToBlob } from '../engine/renderer.js';
-import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
+import { defaultParams, applyFilmLook, cloneParams, mergeParams } from '../data/params.js';
 import { getFilm } from '../data/films.js';
 import { library, decodeScaled, makeThumb, PROXY_SIZE, formatBytes } from '../store/library.js';
 import { PanelStack } from '../ui/panels.js';
@@ -17,6 +17,7 @@ import { CropOverlay } from '../ui/crop.js';
 import { Histogram } from '../ui/histogram.js';
 import { timestampName } from '../utils/share.js';
 import { isRawFile } from '../store/raw.js';
+import { copySettings, copiedSettings, describeEdits, colorPart, EVENTO_PORTAPAPELES } from '../store/develop.js';
 
 const PRESET_KEY = 'filtros.presets.v1';
 const HISTORY_MAX = 60;
@@ -58,6 +59,10 @@ export class LabView {
     this._requestRender = rafThrottle(() => this._render());
     this._pushHistoryDebounced = debounce(() => this._pushHistory(), 260);
     this._updateHistogram = debounce(() => this._computeHistogram(), 220);
+    this._persistParams = debounce(() => this._persistNow(), 700);
+    this._thumb = debounce(() => this._snapshotThumb(), 1200);
+    document.addEventListener('keydown', (e) => this._onKey(e));
+    globalThis.addEventListener?.(EVENTO_PORTAPAPELES, () => { this.pasteBtn.disabled = !copiedSettings(); });
   }
 
   /* ─────────────────────────────── Interfaz ──────────────────────────── */
@@ -108,6 +113,17 @@ export class LabView {
         el('div', { class: 'lab__actions' },
           this.undoBtn, this.redoBtn, this.compareBtn, this.histBtn,
           this._iconBtn('⤓', 'Presets', () => this._openPresets()),
+          // En el Mac sobra sitio en la barra: copiar y pegar a la vista. En el
+          // teléfono no caben, y están dentro de Presets.
+          el('button', {
+            type: 'button', class: 'btn btn--ghost lab__clip', text: 'Copiar',
+            title: 'Copiar los ajustes de color (⌘C)', onclick: () => this.copyAdjustments(),
+          }),
+          this.pasteBtn = el('button', {
+            type: 'button', class: 'btn btn--ghost lab__clip', text: 'Pegar',
+            title: 'Pegar los ajustes copiados (⌘V)', disabled: !copiedSettings(),
+            onclick: () => this.pasteAdjustments(),
+          }),
           el('button', {
             type: 'button', class: 'btn btn--primary lab__export',
             onclick: () => this._openExport(),
@@ -127,6 +143,11 @@ export class LabView {
     // teléfono o al abrir el recorte, así que se observa igual.
     this._frameRO = new ResizeObserver(() => this._layout());
     this._frameRO.observe(this.stage.querySelector('.lab__frame'));
+
+    // Al agrandar la ventana del Mac por encima del corte, una columna que se
+    // dejó plegada en el diseño de teléfono aparecería vacía: se despliega.
+    this._escritorio = globalThis.matchMedia?.(ESCRITORIO);
+    this._escritorio?.addEventListener?.('change', (e) => { if (e.matches) this.toggleCollapsed(false); });
     return root;
   }
 
@@ -192,10 +213,38 @@ export class LabView {
   async activate() {
     this._layout();
     if (this.proxy) this._requestRender();
+    await this._syncFromLibrary();
   }
 
   deactivate() {
     this.comparing = false;
+    // Lo que estuviera esperando se hace ya: al ir a la biblioteca, la foto
+    // tiene que aparecer allí con lo último que se tocó.
+    this._persistParams.flush();
+    this._thumb.flush();
+  }
+
+  /**
+   * Si los ajustes de la foto abierta cambiaron fuera —se pegaron otros desde
+   * la biblioteca, o se quitaron—, el laboratorio los recoge al volver. Sin
+   * esto, el siguiente toque en un deslizador guardaría encima los de antes.
+   */
+  async _syncFromLibrary() {
+    const item = this.item;
+    if (!item || !this.proxy) return;
+    const fresh = await library.get(item.id).catch(() => null);
+    if (!fresh || this.item !== item) return;
+    this.item = fresh;
+    const guardados = mergeParams(fresh.params);
+    if (JSON.stringify(guardados) === this._persisted) return;
+    for (const k of Object.keys(guardados)) this.params[k] = guardados[k];
+    this.crop.geometry = this.params.geometry;
+    this.panels.params = this.params;
+    this.panels.syncAll();
+    this.panels.filmPicker?.select(this.params.film.id);
+    this._persisted = JSON.stringify(guardados);
+    this._pushHistory();
+    this._render();
   }
 
   /**
@@ -205,8 +254,15 @@ export class LabView {
   async open(item) {
     if (item.kind === 'video') return this._openVideo(item);
 
+    // La foto que se deja se guarda tal como quedó, miniatura incluida, antes
+    // de que el lienzo pase a la siguiente.
+    this._persistParams.flush();
+    this._thumb.flush();
+
     this.app.setBusy(true, item.raw ? 'Revelando el RAW…' : 'Abriendo…');
     try {
+      // Del almacén: si se le pegaron ajustes en la biblioteca, son esos.
+      item = (await library.get(item.id)) || item;
       const file = await library.getFile(item.id);
       if (!file) throw new Error('El archivo ya no está en la carpeta local');
       if (!item.raw && isRawFile(file)) this.app.setBusy(true, 'Revelando el RAW…');
@@ -220,6 +276,7 @@ export class LabView {
 
       // Ajustes previos del elemento, si los tenía; si no, se parte de cero.
       this.params = item.params ? this._mergeParams(item.params) : defaultParams();
+      this._persisted = JSON.stringify(mergeParams(item.params));
       this.crop.geometry = this.params.geometry;
       this.crop.sourceAspect = sourceWidth / sourceHeight;
       this.panels.params = this.params;
@@ -260,21 +317,7 @@ export class LabView {
    * defecto y encima se aplica lo guardado. La copia es profunda: si no lo
    * fuera, editar una curva mutaría el preset del que salió.
    */
-  _mergeParams(saved) {
-    const merge = (dst, src) => {
-      for (const [k, v] of Object.entries(src || {})) {
-        if (Array.isArray(v)) {
-          dst[k] = v.map((x) => (x && typeof x === 'object' ? { ...x } : x));
-        } else if (v && typeof v === 'object') {
-          dst[k] = merge(dst[k] && typeof dst[k] === 'object' ? dst[k] : {}, v);
-        } else {
-          dst[k] = v;
-        }
-      }
-      return dst;
-    };
-    return merge(defaultParams(), saved);
-  }
+  _mergeParams(saved) { return mergeParams(saved); }
 
   async _openVideo(item) {
     this.app.go('lab');
@@ -315,6 +358,7 @@ export class LabView {
     if (committed) {
       this._pushHistoryDebounced();
       this._persistParams();
+      this._thumb();
     }
     this._updateHistogram();
   }
@@ -438,6 +482,7 @@ export class LabView {
     this._refreshHistoryButtons();
     this._render();
     this._persistParams();
+    this._thumb();
   }
 
   undo() { this._restore(this.historyAt - 1); }
@@ -449,9 +494,68 @@ export class LabView {
   }
 
   /** Los ajustes viven con el archivo: al reabrirlo sigue como se dejó. */
-  _persistParams = debounce(() => {
-    if (this.item) library.update(this.item.id, { params: cloneParams(this.params) }).catch(() => {});
-  }, 700);
+  _persistNow() {
+    if (!this.item) return;
+    const params = cloneParams(this.params);
+    this._persisted = JSON.stringify(mergeParams(params));
+    library.update(this.item.id, { params }).catch(() => {});
+  }
+
+  /**
+   * La miniatura de la biblioteca sale del propio lienzo, que ya tiene la foto
+   * revelada con los ajustes: descodificar otra vez el original para eso sería
+   * trabajo repetido. Si en ese momento se mira el antes o el recorte está
+   * abierto, se dibuja un instante el resultado final y se vuelve a lo de antes.
+   */
+  _snapshotThumb() {
+    if (!this.item || !this.proxy || !this.renderer || this.renderer.lost) return;
+    const id = this.item.id;
+    try {
+      this.renderer.render(this.params, { seed: 1, histogram: this._wantsHistogram() });
+      // makeThumb copia el lienzo antes de su primera espera, así que ya se
+      // puede volver a dibujar lo que se estaba viendo.
+      const thumb = makeThumb(this.canvas);
+      if (this.comparing || this.crop.active) this._render();
+      // Si la foto se borró de la biblioteca mientras seguía abierta aquí, su
+      // miniatura no tiene a quién pertenecer.
+      thumb.then(async (blob) => { if (blob && await library.get(id)) await library.putThumb(id, blob); })
+        .catch(() => {});
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  /* ─────────────────────────── Copiar y pegar ────────────────────────── */
+
+  /** Copia el color de esta foto (no el encuadre) para pegarlo en otras. */
+  copyAdjustments() {
+    if (!this.proxy) return toast('Abre una foto primero');
+    copySettings(this.params);
+    haptic();
+    const look = describeEdits(colorPart(this.params));
+    toast(look ? `Ajustes copiados · ${look}` : 'Ajustes copiados · sin color: el original');
+  }
+
+  pasteAdjustments() {
+    if (!this.proxy) return toast('Abre una foto primero');
+    const copiado = copiedSettings();
+    if (!copiado) return toast('Todavía no has copiado ningún ajuste');
+    // Igual que un preset: se queda el encuadre de esta foto y se puede deshacer.
+    this._applyPreset({ params: copiado.params }, 'Ajustes pegados');
+  }
+
+  /** ⌘Z, ⇧⌘Z, ⌘C y ⌘V, como en cualquier editor del Mac. */
+  _onKey(e) {
+    if (this.app.current !== 'lab' || !this.proxy) return;
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (isTyping(e.target) || document.querySelector('.sheet-backdrop')) return;
+    if (String(globalThis.getSelection?.() || '')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z') { e.preventDefault(); if (e.shiftKey) this.redo(); else this.undo(); }
+    else if (k === 'y') { e.preventDefault(); this.redo(); }
+    else if (k === 'c') { e.preventDefault(); this.copyAdjustments(); }
+    else if (k === 'v') { e.preventDefault(); this.pasteAdjustments(); }
+  }
 
   /* ───────────────────────────── Presets ─────────────────────────────── */
 
@@ -484,7 +588,24 @@ export class LabView {
       : [el('p', { class: 'sheet__message', text: 'Todavía no has guardado ningún preset.' })];
 
     const nameInput = el('input', { type: 'text', class: 'field', placeholder: 'Nombre del preset', maxlength: 40 });
+    const copiado = copiedSettings();
     const sheet = this.app.sheet('Presets', [
+      el('h4', { class: 'sheet__subtitle', text: 'Copiar y pegar' }),
+      el('div', { class: 'sheet__actions sheet__actions--pair' },
+        el('button', {
+          type: 'button', class: 'btn', text: 'Copiar ajustes',
+          onclick: () => { sheet.close(); this.copyAdjustments(); },
+        }),
+        el('button', {
+          type: 'button', class: 'btn', text: 'Pegar ajustes', disabled: !copiado,
+          onclick: () => { sheet.close(); this.pasteAdjustments(); },
+        })),
+      el('p', {
+        class: 'sheet__hint',
+        text: (copiado ? `Copiado: ${describeEdits(copiado.params) || 'sin ajustes de color'}. ` : 'Copia el color de esta foto para llevarlo a otras. ')
+          + 'Para pegarlo en muchas a la vez: Biblioteca → Seleccionar.',
+      }),
+      el('h4', { class: 'sheet__subtitle', text: 'Presets' }),
       el('div', { class: 'presetlist' }, rows),
       el('div', { class: 'sheet__row' },
         nameInput,
@@ -500,7 +621,7 @@ export class LabView {
     ]);
   }
 
-  _applyPreset(preset) {
+  _applyPreset(preset, aviso = 'Preset aplicado') {
     const geometry = this.params.geometry;      // el encuadre es de la foto, no del look
     const merged = this._mergeParams(preset.params);
     merged.geometry = geometry;
@@ -509,7 +630,7 @@ export class LabView {
     this.panels.syncAll();
     this.panels.filmPicker?.select(this.params.film.id);
     this._changed(true);
-    toast('Preset aplicado');
+    toast(aviso);
   }
 
   /* ───────────────────────────── Exportación ─────────────────────────── */
