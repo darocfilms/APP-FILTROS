@@ -969,13 +969,16 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 
 .imp {
   position: fixed; inset: 0; z-index: 95;
-  display: grid; place-items: center;
   background: rgba(0, 0, 0, 0.6);
 }
 .imp[hidden] { display: none; }
+/* El panel se coloca con inset, no con un alto en porcentaje dentro de una
+   rejilla centrada: ahí el alto no limitaba a su contenido, y con muchas fotos
+   la cuadrícula crecía y empujaba el botón Importar fuera de la pantalla del
+   iPhone. Así la cuadrícula es la que se desplaza y el pie queda siempre a la
+   vista. */
 .imp__panel {
-  position: relative;
-  width: 100%; height: 100%;
+  position: absolute; inset: 0;
   display: flex; flex-direction: column;
   background: var(--bg);
   padding-top: env(safe-area-inset-top);
@@ -990,6 +993,12 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .imp__fuentes[hidden] { display: none; }
 .imp__fuentes .btn { min-height: 38px; padding: 0 14px; font-size: 13.5px; }
 .imp__cerrar { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  /* En el teléfono, los botones de origen en su propia fila, a lo ancho. */
+  .imp__bar { flex-wrap: wrap; }
+  .imp__bar .imp__fuentes { order: 3; flex: 1 1 100%; }
+  .imp__bar .imp__fuentes .btn { flex: 1; }
+}
 .imp__tools {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   padding: 8px 14px; border-bottom: 1px solid var(--line);
@@ -1001,6 +1010,10 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .imp__grid {
   flex: 1; min-height: 0; overflow-y: auto;
   display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  /* Filas a la altura de su casilla: con alto limitado y casillas que
+     recortan su contenido, las filas automáticas se encogían para caber y las
+     miniaturas quedaban en tiras. Así la cuadrícula se desplaza. */
+  grid-auto-rows: max-content;
   align-content: start; gap: 6px; padding: 8px 10px 16px;
 }
 .imp__grid[hidden] { display: none; }
@@ -1072,6 +1085,7 @@ body.is-dropping .imp__vacio { border-color: var(--accent); background: rgba(232
 .imp.is-busy .imp__grid, .imp.is-busy .imp__tools { pointer-events: none; opacity: 0.6; }
 @media (min-width: 820px) {
   .imp__panel {
+    margin: auto;
     width: min(1180px, calc(100% - 64px)); height: min(860px, calc(100% - 64px));
     border-radius: 18px; border: 1px solid var(--line); overflow: hidden;
     box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);

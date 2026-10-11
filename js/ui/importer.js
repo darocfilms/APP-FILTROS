@@ -18,7 +18,10 @@ import { clasificar, miniaturaRapida } from '../store/preview.js';
 import { importarArchivo, firmasImportadas, firma } from '../store/importar.js';
 import { isIOS } from '../utils/share.js';
 
-export const ACEPTA = 'image/*,video/*,.arw,.ARW,.sr2,.SR2,.srf,.SRF,image/x-sony-arw,.heic,.HEIC,.heif';
+// Sin .heic a propósito: con «image/*» a secas, el iPhone convierte sus HEIC a
+// JPEG al elegirlos, que se abren en cualquier navegador; pedir HEIC
+// explícitamente hace que los entregue tal cual.
+export const ACEPTA = 'image/*,video/*,.arw,.ARW,.sr2,.SR2,.srf,.SRF,image/x-sony-arw';
 const A_LA_VEZ = 3;
 
 const comparar = new Intl.Collator('es', { numeric: true, sensitivity: 'base' }).compare;
@@ -348,6 +351,7 @@ export class Importer {
     this._pintarResumen();
     let hechas = 0;
     let fallos = 0;
+    let heic = 0;
     let primero = null;
     try {
       await library.enLote(async () => {
@@ -361,6 +365,7 @@ export class Importer {
           } catch (err) {
             console.error(err);
             fallos++;
+            if (/\.hei[cf]$/i.test(c.file.name)) heic++;
           }
           this.relleno.style.width = `${((n + 1) / elegidos.length) * 100}%`;
         }
@@ -371,7 +376,11 @@ export class Importer {
       this.relleno.style.width = '0';
       this.root.classList.remove('is-busy');
     }
-    if (fallos) toast(`${fallos} archivo${fallos === 1 ? '' : 's'} no se pudo importar`, { error: true });
+    if (heic) {
+      // Chrome no lee HEIC (el formato de las fotos del iPhone); Safari, sí.
+      toast(`${heic} foto${heic === 1 ? '' : 's'} HEIC no se pudo abrir: este navegador no lee HEIC. En Safari sí, o expórtalas como JPEG.`
+        + (fallos > heic ? ` Y ${fallos - heic} archivo${fallos - heic === 1 ? '' : 's'} más no se pudo importar.` : ''), { error: true, ms: 7000 });
+    } else if (fallos) toast(`${fallos} archivo${fallos === 1 ? '' : 's'} no se pudo importar`, { error: true });
     else if (this.cancelar && hechas < elegidos.length) toast(`Detenido: ${hechas} de ${elegidos.length} importadas`);
     else toast(hechas === 1 ? 'Importada' : `${hechas} archivos en la biblioteca`);
     this.cerrar();

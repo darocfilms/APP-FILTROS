@@ -47,6 +47,24 @@ export async function importarArchivo(file, { carpeta = null, ruta = '' } = {}) 
         provisional = true;
       }
     }
+    if (!thumbBlob && tipo === 'foto') {
+      // Una sola descodificación: de ella salen el tamaño y la miniatura. (En
+      // un lote de doscientas fotos, descodificar dos veces se nota.)
+      let bmp;
+      try {
+        bmp = await createImageBitmap(file);
+      } catch {
+        throw new Error(/\.hei[cf]$/i.test(file.name)
+          ? 'este navegador no sabe abrir HEIC'
+          : 'no se pudo leer la imagen');
+      }
+      try {
+        width = bmp.width; height = bmp.height;
+        thumbBlob = await makeThumb(bmp);
+      } finally {
+        bmp.close?.();
+      }
+    }
     if (!thumbBlob) {
       const { bitmap, sourceWidth, sourceHeight } = await decodeScaled(file, THUMB_SIZE);
       width = sourceWidth; height = sourceHeight;

@@ -333,6 +333,36 @@ try {
   check('en el iPhone el menú no ofrece carpetas si el sistema no deja',
     await p2.locator('.imp__vacio .btn', { hasText: 'Fotos y vídeos' }).count() === 1);
   await p2.screenshot({ path: SHOT + '/import-movil.png' });
+  await p2.locator('.imp__cerrar').click();
+
+  // Muchas a la vez en el teléfono: la cuadrícula se desplaza y el botón
+  // Importar sigue en la pantalla. (Antes la cuadrícula crecía sin límite y lo
+  // empujaba fuera, y con muchas fotos no había forma de importar.)
+  const muchas = [];
+  const b64s = await p2.evaluate(() => Array.from({ length: 45 }, (_, i) => {
+    const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+    const g = c.getContext('2d'); g.fillStyle = `hsl(${i * 8}, 60%, 50%)`; g.fillRect(0, 0, 400, 300);
+    return c.toDataURL('image/jpeg', 0.8).split(',')[1];
+  }));
+  fs.mkdirSync(path.join(SHOT, 'muchas'), { recursive: true });
+  b64s.forEach((b, i) => { const f = path.join(SHOT, 'muchas', `IMG_${2000 + i}.jpg`); fs.writeFileSync(f, Buffer.from(b, 'base64')); muchas.push(f); });
+  await p2.setInputFiles('input[type=file]', muchas);
+  await p2.waitForSelector('.imp:not([hidden]) .imp__item');
+  const pie = await p2.evaluate(() => {
+    const b = document.querySelector('.imp__acciones .btn--primary').getBoundingClientRect();
+    const t = document.querySelector('.imp__item').getBoundingClientRect();
+    const g = document.querySelector('.imp__grid');
+    return { abajo: b.bottom, alto: innerHeight, casilla: [Math.round(t.width), Math.round(t.height)], desplaza: g.scrollHeight > g.clientHeight };
+  });
+  check('con 45 fotos el botón Importar sigue en la pantalla del teléfono',
+    pie.abajo <= pie.alto && pie.desplaza, `botón hasta y=${Math.round(pie.abajo)} de ${pie.alto}`);
+  check('y las miniaturas no se aplastan', pie.casilla[1] >= pie.casilla[0], pie.casilla.join('×'));
+  await p2.locator('.imp__acciones .btn--primary').click();
+  await p2.waitForSelector('.imp', { state: 'hidden', timeout: 120_000 });
+  check('y entran las 45', await p2.evaluate(async () => {
+    const { library } = await import('./js/store/library.js');
+    return (await library.list()).length;
+  }) === 46);
   await movil.close();
 } catch (err) {
   console.error(err);
