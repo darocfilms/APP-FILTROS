@@ -23,6 +23,7 @@ const SUITES = [
   ['layout', 'reparto de pantalla: la imagen manda'],
   ['save', 'guardar fuera de la app y selección múltiple'],
   ['desktop', 'Mac: ajustes al lado; lo editado llega a la biblioteca; copiar y pegar'],
+  ['import', 'menú de importación, carpetas y discos, carpeta de Imágenes, tira y lupa'],
   ['raw', 'RAW de Sony: importar, revelar como luz, exportar a tamaño de sensor'],
   ['ios', 'el proyecto de Xcode lleva la última versión y sus permisos'],
 ];

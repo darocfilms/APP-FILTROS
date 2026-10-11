@@ -7,7 +7,7 @@
  * local en el momento de exportar, y se descarta en cuanto termina.
  */
 
-import { el, toast, haptic, debounce, rafThrottle, ESCRITORIO, isTyping } from '../utils/dom.js';
+import { el, toast, haptic, debounce, rafThrottle, ESCRITORIO, isTyping, esEscritorio } from '../utils/dom.js';
 import { Renderer, renderToBlob } from '../engine/renderer.js';
 import { defaultParams, applyFilmLook, cloneParams, mergeParams } from '../data/params.js';
 import { getFilm } from '../data/films.js';
@@ -15,11 +15,19 @@ import { library, decodeScaled, makeThumb, PROXY_SIZE, formatBytes } from '../st
 import { PanelStack } from '../ui/panels.js';
 import { CropOverlay } from '../ui/crop.js';
 import { Histogram } from '../ui/histogram.js';
-import { timestampName } from '../utils/share.js';
+import { Filmstrip } from '../ui/filmstrip.js';
+import { timestampName, isIOS } from '../utils/share.js';
 import { isRawFile } from '../store/raw.js';
 import { copySettings, copiedSettings, describeEdits, colorPart, EVENTO_PORTAPAPELES } from '../store/develop.js';
 
 const PRESET_KEY = 'filtros.presets.v1';
+const TIRA_KEY = 'lab.tira.v1';
+
+/** Icono de la tira: tres fotogramas en fila, como un trozo de película. */
+const TIRA_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" '
+  + 'stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+  + '<rect x="2.5" y="6" width="5.5" height="12" rx="1"/><rect x="9.25" y="6" width="5.5" height="12" rx="1"/>'
+  + '<rect x="16" y="6" width="5.5" height="12" rx="1"/></svg>';
 const HISTORY_MAX = 60;
 
 const EXPORT_SIZES = [
@@ -85,12 +93,16 @@ export class LabView {
       el('div', { class: 'lab__frame' },
         this.canvas,
         this.compareTag = el('span', { class: 'lab__comparetag', text: 'ANTES', hidden: true }),
+        this.zoomTag = el('div', { class: 'lab__zoomtag', hidden: true }),
         this.crop.root, this.histogram.root),
       el('div', { class: 'lab__empty' },
         el('p', { text: 'Abre una foto de la biblioteca o importa una del dispositivo.' }),
         el('div', { class: 'lab__emptyactions' },
           el('button', { type: 'button', class: 'btn btn--primary', text: 'Importar archivo', onclick: () => this.app.pickFile() }),
           el('button', { type: 'button', class: 'btn', text: 'Ir a la biblioteca', onclick: () => this.app.go('library') }))));
+
+    this.strip = new Filmstrip({ onPick: (item) => { if (item.id !== this.item?.id) this.open(item); } });
+    this.stage.append(this.strip.root);
 
     this.panels = new PanelStack(this.params, (committed) => this._changed(committed), {
       onPickFilm: (id) => this._pickFilm(id),
@@ -104,7 +116,7 @@ export class LabView {
       onToggleCollapse: () => this.toggleCollapsed(),
     });
 
-    this._bindCompare();
+    this._bindPointer();
 
     const root = el('section', { class: 'view view--lab', id: 'view-lab' },
       this.stage,
@@ -112,6 +124,7 @@ export class LabView {
         el('div', { class: 'lab__id' }, this.title, this.subtitle),
         el('div', { class: 'lab__actions' },
           this.undoBtn, this.redoBtn, this.compareBtn, this.histBtn,
+          this.stripBtn = this._iconBtn(el('span', { class: 'iconbtn__svg', html: TIRA_SVG }), 'Tira de fotos', () => this.toggleStrip()),
           this._iconBtn('⤓', 'Presets', () => this._openPresets()),
           // En el Mac sobra sitio en la barra: copiar y pegar a la vista. En el
           // teléfono no caben, y están dentro de Presets.
@@ -146,6 +159,12 @@ export class LabView {
 
     // Al agrandar la ventana del Mac por encima del corte, una columna que se
     // dejó plegada en el diseño de teléfono aparecería vacía: se despliega.
+    // La tira, como se dejó la última vez; la primera, abierta en el Mac (sobra
+    // sitio) y cerrada en el teléfono.
+    let tira = null;
+    try { tira = localStorage.getItem(TIRA_KEY); } catch { /* sin almacenamiento */ }
+    queueMicrotask(() => this.toggleStrip(tira === null ? esEscritorio() : tira === '1', false));
+
     this._escritorio = globalThis.matchMedia?.(ESCRITORIO);
     this._escritorio?.addEventListener?.('change', (e) => { if (e.matches) this.toggleCollapsed(false); });
     return root;
@@ -178,18 +197,249 @@ export class LabView {
   }
 
   /**
-   * Antes/después.
+   * Gestos sobre la foto.
    *
-   * Dos gestos para lo mismo, porque sirven para cosas distintas: mantener
-   * pulsada la imagen da un vistazo rápido mientras se mueve un deslizador, y
-   * el botón lo deja fijo para compararlo con calma. La etiqueta evita la duda
-   * de cuál de las dos se está mirando.
+   * Antes/después: dos gestos para lo mismo, porque sirven para cosas
+   * distintas. Mantener pulsada la imagen da un vistazo rápido mientras se
+   * mueve un deslizador, y el botón lo deja fijo para compararlo con calma.
+   * Mantener pulsado espera un instante antes de enseñar el original: un clic
+   * o el doble clic que amplía no deben hacerlo parpadear.
+   *
+   * Lupa: doble clic (o doble toque) amplía al 100 % justo donde se pulsó y
+   * otro vuelve a encajar. Ampliada, arrastrar o deslizar con dos dedos en el
+   * trackpad mueve la foto.
    */
-  _bindCompare() {
-    const on = () => { if (this.proxy && !this.crop.active) this._setComparing(true); };
-    const off = () => { if (!this.compareLocked) this._setComparing(false); };
-    this.canvas.addEventListener('pointerdown', on);
-    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) this.canvas.addEventListener(ev, off);
+  _bindPointer() {
+    const c = this.canvas;
+    let drag = null;
+    let hold = 0;
+    let toque = { t: 0, x: 0, y: 0 };
+
+    c.addEventListener('pointerdown', (e) => {
+      this._ultimoPuntero = e.pointerType;
+      if (!this.proxy || this.crop.active || drag) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, movido: false };
+      if (this.zoom) {
+        drag.panX = this.zoom.x;
+        drag.panY = this.zoom.y;
+        c.setPointerCapture?.(e.pointerId);
+        c.classList.add('is-grabbing');
+        return;
+      }
+      clearTimeout(hold);
+      hold = setTimeout(() => { if (drag && !drag.movido && !this.zoom) this._setComparing(true); }, 180);
+    });
+
+    c.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x;
+      const dy = e.clientY - drag.y;
+      if (Math.hypot(dx, dy) > 6) drag.movido = true;
+      if (this.zoom && drag.panX !== undefined) {
+        this.zoom.x = drag.panX + dx;
+        this.zoom.y = drag.panY + dy;
+        this._placeZoom();
+      }
+    });
+
+    const soltar = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const movido = drag.movido;
+      drag = null;
+      clearTimeout(hold);
+      c.classList.remove('is-grabbing');
+      if (!this.compareLocked) this._setComparing(false);
+      // Doble toque: en el móvil no hay doble clic fiable, se cuenta a mano.
+      if (e.type === 'pointerup' && e.pointerType === 'touch' && !movido) {
+        if (e.timeStamp - toque.t < 320 && Math.hypot(e.clientX - toque.x, e.clientY - toque.y) < 32) {
+          toque.t = 0;
+          this.toggleZoom(e.clientX, e.clientY);
+        } else {
+          toque = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+        }
+      }
+    };
+    c.addEventListener('pointerup', soltar);
+    c.addEventListener('pointercancel', soltar);
+    c.addEventListener('pointerleave', (e) => { if (!this.zoom) soltar(e); });
+
+    c.addEventListener('dblclick', (e) => {
+      if (this._ultimoPuntero === 'touch') return;   // ya lo cuenta el doble toque
+      e.preventDefault();
+      this.toggleZoom(e.clientX, e.clientY);
+    });
+
+    // Dos dedos en el trackpad (o la rueda) mueven la foto ampliada.
+    this.stage.querySelector('.lab__frame').addEventListener('wheel', (e) => {
+      if (!this.zoom) return;
+      e.preventDefault();
+      this.zoom.x -= e.deltaX;
+      this.zoom.y -= e.deltaY;
+      this._placeZoom();
+    }, { passive: false });
+  }
+
+  /* ─────────────────────────────── Lupa ──────────────────────────────── */
+
+  /**
+   * ¿Se puede cargar la foto entera para ampliarla? En el ordenador sí: es lo
+   * que deja ver el detalle de verdad, píxel a píxel. En el teléfono una foto
+   * de 24 Mpx entera es la forma más rápida de que Safari cierre la pestaña, así
+   * que allí la lupa amplía el proxy, que ya tiene la resolución de la pantalla.
+   */
+  _lupaCompleta() {
+    if (isIOS || /Android/i.test(navigator.userAgent)) return false;
+    return !navigator.deviceMemory || navigator.deviceMemory >= 4;
+  }
+
+  /** Lado mayor con el que se carga la foto entera: hasta 36 Mpx y lo que admita la GPU. */
+  _ladoCompleto() {
+    const w = this.sourceWidth || this.proxy.width;
+    const h = this.sourceHeight || this.proxy.height;
+    const k = Math.min(1, Math.sqrt(36e6 / (w * h)));
+    return Math.min(this.renderer.maxTexture, Math.floor(Math.max(w, h) * k));
+  }
+
+  /**
+   * Tamaño en pantalla de la foto ampliada. Al 100 % un píxel de la foto es un
+   * píxel de la pantalla (no un punto CSS: en una pantalla Retina son dos).
+   * Si la foto es tan pequeña que eso apenas amplía, se dobla lo encajado.
+   */
+  _zoomSize() {
+    const dpr = globalThis.devicePixelRatio || 1;
+    const fuente = this._fuente || this.proxy;
+    const ladoActual = Math.max(fuente.width, fuente.height);
+    const ladoMeta = this.zoom?.lado || ladoActual;
+    const k = ladoMeta / ladoActual;
+    let w = (this.canvas.width * k) / dpr;
+    let h = (this.canvas.height * k) / dpr;
+    const encajada = this.zoom?.encajada;
+    if (encajada && w < encajada.w * 1.6) {
+      w = encajada.w * 2;
+      h = encajada.h * 2;
+    }
+    return { w, h };
+  }
+
+  /** Dobla o deshace la lupa. `x, y` es el punto de la pantalla que se quiere mirar. */
+  async toggleZoom(x, y) {
+    if (this.zoom) { this._exitZoom(); return; }
+    if (!this.proxy || this.crop.active) return;
+    const frame = this.stage.querySelector('.lab__frame').getBoundingClientRect();
+    const rect = this.canvas.getBoundingClientRect();
+    if (x === undefined) { x = rect.left + rect.width / 2; y = rect.top + rect.height / 2; }
+    const completa = this._lupaCompleta();
+    this.zoom = {
+      // Punto de la foto (0–1) bajo el puntero, y dónde está en el hueco.
+      u: Math.min(1, Math.max(0, (x - rect.left) / rect.width)),
+      v: Math.min(1, Math.max(0, (y - rect.top) / rect.height)),
+      px: x - frame.left,
+      py: y - frame.top,
+      x: 0, y: 0,
+      encajada: { w: rect.width, h: rect.height },
+      lado: completa ? this._ladoCompleto() : null,
+      cargando: completa && this._fuente !== this._full?.bitmap,
+    };
+    this.root.classList.add('is-zoomed');
+    haptic();
+    this._placeZoom(true);
+    this._pintarZoomTag();
+    if (completa) await this._cargarCompleta();
+  }
+
+  /** Carga la foto entera (una vez por foto) y la pone en el motor. */
+  async _cargarCompleta() {
+    const item = this.item;
+    try {
+      if (this._full?.id !== item.id) {
+        this._soltarCompleta();
+        const file = await library.getFile(item.id);
+        if (!file) throw new Error('El archivo ya no está en la biblioteca');
+        const { bitmap } = await decodeScaled(file, this._ladoCompleto());
+        if (this.item !== item) { bitmap.close?.(); return; }
+        this._full = { id: item.id, bitmap };
+      }
+      if (!this.zoom || this.item !== item) return;
+      // El centro de lo que se está mirando se conserva al cambiar de fuente.
+      const frame = this.stage.querySelector('.lab__frame').getBoundingClientRect();
+      const antes = this._zoomSize();
+      const cu = (frame.width / 2 - this.zoom.x) / antes.w;
+      const cv = (frame.height / 2 - this.zoom.y) / antes.h;
+      this._usarFuente(this._full.bitmap);
+      this.zoom.lado = Math.max(this._full.bitmap.width, this._full.bitmap.height);
+      this._render();
+      const ahora = this._zoomSize();
+      this.zoom.x = frame.width / 2 - cu * ahora.w;
+      this.zoom.y = frame.height / 2 - cv * ahora.h;
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo cargar a resolución completa: se amplía la vista previa', { error: true });
+      if (this.zoom) this.zoom.lado = null;
+    } finally {
+      if (this.zoom && this.item === item) {
+        this.zoom.cargando = false;
+        this._placeZoom();
+        this._pintarZoomTag();
+      }
+    }
+  }
+
+  _usarFuente(bitmap) {
+    if (this._fuente === bitmap) return;
+    this._fuente = bitmap;
+    this.renderer.setSource(bitmap, bitmap.width, bitmap.height);
+  }
+
+  /** Coloca la foto ampliada, sin dejar hueco vacío por ningún lado. */
+  _placeZoom(inicial = false) {
+    const z = this.zoom;
+    if (!z) return;
+    const box = this.stage.querySelector('.lab__frame').getBoundingClientRect();
+    const { w, h } = this._zoomSize();
+    if (inicial) {
+      z.x = z.px - z.u * w;
+      z.y = z.py - z.v * h;
+    }
+    z.x = w > box.width ? Math.min(0, Math.max(box.width - w, z.x)) : (box.width - w) / 2;
+    z.y = h > box.height ? Math.min(0, Math.max(box.height - h, z.y)) : (box.height - h) / 2;
+    Object.assign(this.canvas.style, { width: w + 'px', height: h + 'px', left: z.x + 'px', top: z.y + 'px' });
+  }
+
+  _pintarZoomTag() {
+    const z = this.zoom;
+    this.zoomTag.hidden = !z;
+    if (!z) return;
+    const dpr = globalThis.devicePixelRatio || 1;
+    const fuente = this._fuente || this.proxy;
+    // Porcentaje respecto del original: lo que un fotógrafo entiende por 100 %.
+    const pct = Math.round(((this._zoomSize().w * dpr) / this.canvas.width)
+      * (Math.max(fuente.width, fuente.height) / Math.max(this.sourceWidth || fuente.width, this.sourceHeight || fuente.height)) * 100);
+    const tocar = this._ultimoPuntero === 'touch' ? 'Doble toque' : 'Doble clic';
+    this.zoomTag.replaceChildren(...[
+      z.cargando ? el('span', { class: 'spinner', 'aria-hidden': 'true' }) : null,
+      el('b', { text: z.cargando ? 'Cargando el original…' : `${pct} %` }),
+      el('span', { text: `${tocar} para encajar` }),
+    ].filter(Boolean));
+  }
+
+  _exitZoom() {
+    if (!this.zoom) return;
+    this.zoom = null;
+    this.root.classList.remove('is-zoomed');
+    this.canvas.classList.remove('is-grabbing');
+    this._pintarZoomTag();
+    // Fuera de la lupa se vuelve al proxy: mover un deslizador sobre la foto
+    // entera iría a tirones. La entera se guarda por si se vuelve a ampliar.
+    if (this.proxy) this._usarFuente(this.proxy);
+    this._lastCanvasSize = null;
+    this._render();
+    this._layout();
+  }
+
+  _soltarCompleta() {
+    if (this._full && this._fuente === this._full.bitmap && this.proxy) this._usarFuente(this.proxy);
+    this._full?.bitmap.close?.();
+    this._full = null;
   }
 
   toggleCompare() {
@@ -218,6 +468,8 @@ export class LabView {
 
   deactivate() {
     this.comparing = false;
+    this._exitZoom();
+    this._soltarCompleta();
     // Lo que estuviera esperando se hace ya: al ir a la biblioteca, la foto
     // tiene que aparecer allí con lo último que se tocó.
     this._persistParams.flush();
@@ -258,6 +510,8 @@ export class LabView {
     // de que el lienzo pase a la siguiente.
     this._persistParams.flush();
     this._thumb.flush();
+    this._exitZoom();
+    this._soltarCompleta();
 
     this.app.setBusy(true, item.raw ? 'Revelando el RAW…' : 'Abriendo…');
     try {
@@ -268,6 +522,12 @@ export class LabView {
       if (!item.raw && isRawFile(file)) this.app.setBusy(true, 'Revelando el RAW…');
 
       const { bitmap, sourceWidth, sourceHeight, scaled } = await decodeScaled(file, PROXY_SIZE);
+      // De un RAW recién importado sólo se sabía el tamaño de su vista previa:
+      // al revelarlo se sabe el del sensor, y se apunta.
+      if (item.dimsAprox || item.width !== sourceWidth || item.height !== sourceHeight) {
+        library.update(item.id, { width: sourceWidth, height: sourceHeight, dimsAprox: false }, { silencioso: true }).catch(() => {});
+        item = { ...item, width: sourceWidth, height: sourceHeight, dimsAprox: false };
+      }
       this.proxy?.close?.();
       this.proxy = bitmap;
       this.item = item;
@@ -296,17 +556,40 @@ export class LabView {
         + (scaled ? ` · proxy ${bitmap.width}×${bitmap.height}` : '');
 
       this._ensureRenderer();
-      this.renderer.setSource(bitmap, bitmap.width, bitmap.height);
+      this._fuente = null;
+      this._usarFuente(bitmap);
       this.root.classList.add('has-image');
       this._layout();
       this._render();
       this._computeHistogram();
+      this.strip.setCurrent(item.id);
     } catch (err) {
       console.error(err);
       toast('No se pudo abrir: ' + (err?.message || err), { error: true });
     } finally {
       this.app.setBusy(false);
     }
+  }
+
+  /** Enseña o esconde la tira de fotos. */
+  async toggleStrip(force, recordar = true) {
+    const on = force ?? !this.strip.visible;
+    this.root.classList.toggle('has-strip', on);
+    this.stripBtn.classList.toggle('is-active', on);
+    this.stripBtn.setAttribute('aria-pressed', String(on));
+    if (recordar) { try { localStorage.setItem(TIRA_KEY, on ? '1' : '0'); } catch { /* sin almacenamiento */ } }
+    if (this.item) this.strip.current = this.item.id;
+    await this.strip.show(on);
+  }
+
+  /** La foto anterior o siguiente de la biblioteca (← →). */
+  async openNeighbor(delta) {
+    if (!this.item) return;
+    // Con la tira escondida su lista puede estar vieja: se vuelve a leer.
+    if (!this.strip.visible) this.strip.items = (await library.list()).filter((i) => i.kind === 'photo');
+    this.strip.current = this.item.id;
+    const next = this.strip.neighbor(delta);
+    if (next) await this.open(next);
   }
 
   /**
@@ -339,9 +622,10 @@ export class LabView {
     try {
       this.renderer = new Renderer(this.canvas, {
         onRestored: () => {
-          // El proxy sigue en memoria, así que basta con volver a subirlo.
-          if (!this.proxy) return;
-          this.renderer.setSource(this.proxy, this.proxy.width, this.proxy.height);
+          // La fuente sigue en memoria, así que basta con volver a subirla.
+          const fuente = this._fuente || this.proxy;
+          if (!fuente) return;
+          this.renderer.setSource(fuente, fuente.width, fuente.height);
           this._render();
         },
       });
@@ -404,6 +688,7 @@ export class LabView {
     if (!frame || !this.canvas.width) return;
     const box = frame.getBoundingClientRect();
     if (!box.width || !box.height) return;
+    if (this.zoom) { this._placeZoom(); return; }
 
     const aspect = this.canvas.width / this.canvas.height;
     const k = Math.min(box.width / aspect, box.height);
@@ -544,11 +829,27 @@ export class LabView {
     this._applyPreset({ params: copiado.params }, 'Ajustes pegados');
   }
 
-  /** ⌘Z, ⇧⌘Z, ⌘C y ⌘V, como en cualquier editor del Mac. */
+  /**
+   * Teclado del Mac: ⌘Z, ⇧⌘Z, ⌘C y ⌘V como en cualquier editor; Z amplía o
+   * encaja (como en Lightroom), Esc sale de la lupa, y ← → pasan de foto.
+   */
   _onKey(e) {
     if (this.app.current !== 'lab' || !this.proxy) return;
-    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-    if (isTyping(e.target) || document.querySelector('.sheet-backdrop')) return;
+    if (document.querySelector('.sheet-backdrop')) return;
+    if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Las flechas también mueven un deslizador con el foco: ahí son suyas.
+      if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+      const tecla = e.key.toLowerCase();
+      if (tecla === 'z' && !e.shiftKey) { e.preventDefault(); this.toggleZoom(); }
+      else if (tecla === 'escape' && this.zoom) { e.preventDefault(); this._exitZoom(); }
+      else if (tecla === 'arrowright' || tecla === 'arrowleft') {
+        e.preventDefault();
+        this.openNeighbor(tecla === 'arrowright' ? 1 : -1);
+      }
+      return;
+    }
+    if (e.altKey) return;
+    if (isTyping(e.target)) return;
     if (String(globalThis.getSelection?.() || '')) return;
     const k = e.key.toLowerCase();
     if (k === 'z') { e.preventDefault(); if (e.shiftKey) this.redo(); else this.undo(); }
@@ -850,6 +1151,7 @@ export class LabView {
   /* ───────────────────────────── Encuadre ────────────────────────────── */
 
   setCropActive(on) {
+    if (on) this._exitZoom();
     this.crop.setActive(on && !!this.proxy);
     this._layout();
   }

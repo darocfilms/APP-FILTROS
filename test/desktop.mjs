@@ -102,7 +102,10 @@ try {
     files.push(p);
   }
   await page.setInputFiles('input[type=file]', files);
-  await page.waitForFunction(() => document.querySelector('.busy').hidden, null, { timeout: 30_000 });
+  // Varios a la vez van al menú de importación, todos marcados.
+  await page.waitForSelector('.imp:not([hidden]) .imp__item');
+  await page.locator('.imp__acciones .btn--primary').click();
+  await page.waitForSelector('.imp', { state: 'hidden', timeout: 30_000 });
   await page.locator('.tabbar__tab[data-tab="library"]').click();
   await page.waitForFunction(() => document.querySelectorAll('.tile .tile__img[src]').length === 3, null, { timeout: 20_000 });
   const original = await page.evaluate(() => Promise.all([0, 1, 2].map((i) => window.__miniatura(i))));
@@ -151,8 +154,12 @@ try {
   await page.waitForTimeout(400);
   await page.locator('.tabbar__tab[data-tab="library"]').click();
   // La miniatura sale del lienzo del laboratorio al salir, sin esperar.
-  await page.waitForFunction(async () => { const m = await window.__miniatura(0); return m.w > m.h; },
-    null, { timeout: 15_000 }).catch(() => {});
+  // (waitForFunction no espera a una condición asíncrona: se sondea a mano.)
+  for (let t = 0; t < 30; t++) {
+    const m = await page.evaluate(() => window.__miniatura(0));
+    if (m.w > m.h) break;
+    await page.waitForTimeout(500);
+  }
   const editada = await page.evaluate(() => window.__miniatura(0));
   check('la miniatura enseña la foto editada', editada.brillo > original[0].brillo + 15,
     `brillo ${original[0].brillo.toFixed(0)} → ${editada.brillo.toFixed(0)}`);
@@ -325,7 +332,9 @@ try {
   await p2.goto(BASE, { waitUntil: 'networkidle' });
   await p2.waitForTimeout(1500);
   await p2.setInputFiles('input[type=file]', files.slice(0, 2));
-  await p2.waitForFunction(() => document.querySelector('.busy').hidden, null, { timeout: 30_000 });
+  await p2.waitForSelector('.imp:not([hidden]) .imp__item');
+  await p2.locator('.imp__acciones .btn--primary').click();
+  await p2.waitForSelector('.imp', { state: 'hidden', timeout: 30_000 });
   await p2.locator('.tabbar__tab[data-tab="library"]').click();
   await p2.waitForTimeout(800);
   await p2.locator('.lib__baractions .btn', { hasText: 'Seleccionar' }).click();

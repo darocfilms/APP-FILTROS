@@ -19,6 +19,12 @@
  *
  * Si OPFS no está disponible se guardan los blobs en IndexedDB. Funciona igual,
  * sólo que el navegador es menos generoso con la cuota.
+ *
+ * Y en el ordenador, si el navegador lo permite (Chrome o Edge: la API de
+ * acceso a archivos), los originales pueden ir a una carpeta de verdad que el
+ * usuario elige —Imágenes › Laboratorio—, con una subcarpeta por importación,
+ * visible en el Finder. Las miniaturas y los ajustes siguen en el navegador:
+ * son caché y metadatos, no fotos.
  */
 
 import { isRawFile, rawExtension, decodeRaw, RAW_MIME } from './raw.js';
@@ -29,6 +35,21 @@ const STORE_ITEMS = 'items';
 const STORE_BLOBS = 'blobs';
 const MEDIA_DIR = 'media';
 const THUMB_DIR = 'thumbs';
+const CLAVE_CARPETA = 'ajuste:carpeta';
+
+/** Fecha local como 2026-10-11, para nombrar carpetas. */
+function fechaCarpeta(t = Date.now()) {
+  const d = new Date(t);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Un nombre de archivo o carpeta que ningún sistema rechace. */
+function nombreSeguro(s) {
+  return String(s).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/^\.+/, '').trim().slice(0, 120) || 'Laboratorio';
+}
+
+const ORIGEN_CARPETA = { camara: 'Cámara', laboratorio: 'Revelados', importado: 'Importadas' };
 
 /** Tamaño del lado mayor de las miniaturas de la galería. */
 export const THUMB_SIZE = 480;
@@ -95,6 +116,10 @@ class Library extends EventTarget {
     this.thumbDir = null;
     this.mode = 'idb';
     this._ready = null;
+    /** Carpeta del usuario: { handle, padre }, o null si los originales van al navegador. */
+    this.carpeta = null;
+    this._silencio = 0;
+    this._pendiente = false;
   }
 
   init() {
@@ -125,7 +150,190 @@ class Library extends EventTarget {
     // Pide persistencia para que el sistema no borre la carpeta al necesitar
     // espacio. En iOS sólo se concede si la web está en la pantalla de inicio.
     try { await navigator.storage?.persist?.(); } catch { /* opcional */ }
+    // La carpeta elegida en otra sesión: el «handle» se guarda en IndexedDB y
+    // sobrevive; el permiso, según el navegador, hay que volver a darlo.
+    try {
+      const guardada = await this._leerAjuste(CLAVE_CARPETA);
+      if (guardada?.handle) this.carpeta = guardada;
+    } catch { /* sin carpeta */ }
     return this;
+  }
+
+  _leerAjuste(clave) {
+    return new Promise((resolve) => {
+      const req = this.db.transaction(STORE_BLOBS).objectStore(STORE_BLOBS).get(clave);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  /* ──────────────────────── Carpeta del usuario ──────────────────────── */
+
+  /** ¿Deja este navegador guardar en una carpeta elegida? (Chrome y Edge, sí; Safari, no.) */
+  get carpetaPosible() {
+    return typeof globalThis.showDirectoryPicker === 'function';
+  }
+
+  /** 'sin-soporte' | 'ninguna' | 'lista' | 'permiso' (elegida, pero hay que volver a dar acceso) */
+  async estadoCarpeta() {
+    await this.init();
+    if (!this.carpeta) return this.carpetaPosible ? 'ninguna' : 'sin-soporte';
+    try {
+      return (await this.carpeta.handle.queryPermission({ mode: 'readwrite' })) === 'granted' ? 'lista' : 'permiso';
+    } catch {
+      return 'permiso';
+    }
+  }
+
+  /** «Pictures › Laboratorio», o null. */
+  nombreCarpeta() {
+    if (!this.carpeta) return null;
+    return [this.carpeta.padre, this.carpeta.handle.name].filter(Boolean).join(' › ');
+  }
+
+  /**
+   * Elige la carpeta (hay que llamarlo desde un toque). Se abre en Imágenes; si
+   * lo elegido no se llama ya «Laboratorio», se crea dentro una con ese nombre.
+   */
+  async elegirCarpeta() {
+    await this.init();
+    const elegida = await globalThis.showDirectoryPicker({ id: 'laboratorio-biblioteca', mode: 'readwrite', startIn: 'pictures' });
+    let raiz = elegida;
+    let padre = null;
+    if (!/^laboratorio$/i.test(elegida.name)) {
+      raiz = await elegida.getDirectoryHandle('Laboratorio', { create: true });
+      padre = elegida.name;
+    }
+    // Las fotos ya guardadas en la carpeta se buscan por su ruta dentro de
+    // ella: cambiar a otra las dejaría huérfanas.
+    if (this.carpeta && !(await raiz.isSameEntry(this.carpeta.handle))) {
+      const enCarpeta = (await this.list()).filter((i) => i.storage === 'carpeta').length;
+      if (enCarpeta) {
+        throw new Error(`Ya hay ${enCarpeta} foto(s) en «${this.nombreCarpeta()}». Vuelve a elegir esa misma carpeta.`);
+      }
+    }
+    this.carpeta = { handle: raiz, padre };
+    await tx(this.db, STORE_BLOBS, 'readwrite', (store) => store.put(this.carpeta, CLAVE_CARPETA));
+    this._emit('carpeta');
+    return this.nombreCarpeta();
+  }
+
+  /** Vuelve a pedir acceso a la carpeta (desde un toque). */
+  async pedirPermisoCarpeta() {
+    if (!this.carpeta) return false;
+    let ok = false;
+    try { ok = (await this.carpeta.handle.requestPermission({ mode: 'readwrite' })) === 'granted'; } catch { ok = false; }
+    this._emit('carpeta');
+    return ok;
+  }
+
+  /** Permiso para leer y escribir en la carpeta; lo pide si aún hay un toque reciente. */
+  async _accesoCarpeta() {
+    if (!this.carpeta) return false;
+    const h = this.carpeta.handle;
+    if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') return true;
+    try {
+      if ((await h.requestPermission({ mode: 'readwrite' })) === 'granted') { this._emit('carpeta'); return true; }
+    } catch { /* sin un toque reciente no se puede pedir */ }
+    return false;
+  }
+
+  _errorPermiso() {
+    const err = new Error(`Hace falta dar acceso otra vez a la carpeta «${this.nombreCarpeta()}» (en la biblioteca, «Dar acceso»).`);
+    err.code = 'permiso';
+    return err;
+  }
+
+  async _resolver(ruta, { crear = false } = {}) {
+    const partes = ruta.split('/');
+    const archivo = partes.pop();
+    let dir = this.carpeta.handle;
+    for (const p of partes) dir = await dir.getDirectoryHandle(p, { create: crear });
+    return { dir, archivo };
+  }
+
+  /** «Foto (2).jpg» si «Foto.jpg» ya existe en esa carpeta. */
+  async _nombreLibre(dir, nombre) {
+    const punto = nombre.lastIndexOf('.');
+    const base = punto > 0 ? nombre.slice(0, punto) : nombre;
+    const ext = punto > 0 ? nombre.slice(punto) : '';
+    for (let n = 1; n < 10000; n++) {
+      const prueba = n === 1 ? nombre : `${base} (${n})${ext}`;
+      try { await dir.getFileHandle(prueba); } catch (e) {
+        if (e.name === 'NotFoundError') return prueba;
+        throw e;
+      }
+    }
+    throw new Error('Demasiados archivos con el mismo nombre');
+  }
+
+  /**
+   * Escribe un archivo en la carpeta del usuario. `subcarpeta` por defecto es
+   * la fecha y el origen («2026-10-11 Importadas»), y el nombre, el original
+   * del archivo si lo tenía (DSC01234.ARW) o uno con fecha y hora.
+   * @returns {Promise<string>} la ruta dentro de la carpeta
+   */
+  async _escribirEnCarpeta(blob, { subcarpeta, nombre }) {
+    const dir = await this.carpeta.handle.getDirectoryHandle(nombreSeguro(subcarpeta), { create: true });
+    const libre = await this._nombreLibre(dir, nombreSeguro(nombre));
+    const fh = await dir.getFileHandle(libre, { create: true });
+    const w = await fh.createWritable();
+    await w.write(blob);
+    await w.close();
+    return `${nombreSeguro(subcarpeta)}/${libre}`;
+  }
+
+  /** Nombre con fecha y hora para lo que no trae nombre propio (cámara, revelados). */
+  _nombrePorFecha(t, ext) {
+    const d = new Date(t);
+    const p = (n) => String(n).padStart(2, '0');
+    return `Laboratorio ${fechaCarpeta(t)} ${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}.${ext}`;
+  }
+
+  /**
+   * Lleva a la carpeta las fotos que estaban guardadas en el navegador, cada una
+   * a la subcarpeta de su fecha. Se borra la copia del navegador sólo cuando la
+   * de la carpeta está escrita.
+   */
+  async moverACarpeta(alAvanzar) {
+    if (!(await this._accesoCarpeta())) throw this._errorPermiso();
+    const items = (await this.list()).filter((i) => i.storage !== 'carpeta');
+    let hechas = 0;
+    await this.enLote(async () => {
+      for (const item of items) {
+        const file = await this.getFile(item.id);
+        if (file) {
+          const ext = item.name.split('.').pop();
+          const ruta = await this._escribirEnCarpeta(file, {
+            subcarpeta: `${fechaCarpeta(item.createdAt)} ${ORIGEN_CARPETA[item.origin] || 'Importadas'}`,
+            nombre: item.fuente?.nombre || this._nombrePorFecha(item.createdAt, ext),
+          });
+          await this._borrarBytes(item);
+          await this.update(item.id, { storage: 'carpeta', ruta });
+        }
+        hechas++;
+        alAvanzar?.(hechas, items.length);
+      }
+    });
+    return hechas;
+  }
+
+  /* ─────────────────────────── Lotes ───────────────────────────────── */
+
+  /**
+   * Agrupa muchas escrituras en un solo aviso de «cambio»: importar doscientas
+   * fotos no debe repintar la biblioteca doscientas veces.
+   */
+  async enLote(fn) {
+    this._silencio++;
+    try {
+      return await fn();
+    } finally {
+      if (--this._silencio === 0 && this._pendiente) {
+        this._pendiente = false;
+        this._emit('change');
+      }
+    }
   }
 
   /* ─────────────────────────── Escritura ───────────────────────────── */
@@ -142,8 +350,9 @@ class Library extends EventTarget {
     // Un ARW suele llegar sin tipo MIME: por el tipo se guardaría como `.bin`
     // y al volver a abrirlo nada sabría que es un RAW. Se mira el nombre.
     const raw = isRawFile(blob);
-    const ext = raw ? rawExtension(blob) : extensionFor(blob.type);
+    const ext = raw ? rawExtension(blob) : (meta.fuente?.nombre?.split('.').pop()?.toLowerCase() || extensionFor(blob.type));
     const name = `${id}.${ext}`;
+    const createdAt = Date.now();
     const item = {
       id,
       name,
@@ -162,11 +371,22 @@ class Library extends EventTarget {
       params: meta.params || null,
       appliedParams: meta.appliedParams || null,
       origin: meta.origin || 'camara',
-      createdAt: Date.now(),
+      createdAt,
       storage: this.mode,
+      // De dónde vino (nombre, tamaño y ruta originales): sirve para avisar de
+      // duplicados al volver a importar la misma tarjeta.
+      fuente: meta.fuente || null,
+      thumbProvisional: !!meta.thumbProvisional,
+      dimsAprox: !!meta.dimsAprox,
     };
 
-    if (this.mode === 'opfs') {
+    if (this.carpeta && await this._accesoCarpeta()) {
+      item.storage = 'carpeta';
+      item.ruta = await this._escribirEnCarpeta(blob, {
+        subcarpeta: meta.carpeta || `${fechaCarpeta(createdAt)} ${ORIGEN_CARPETA[item.origin] || 'Importadas'}`,
+        nombre: meta.fuente?.nombre || this._nombrePorFecha(createdAt, ext),
+      });
+    } else if (this.mode === 'opfs') {
       const handle = await this.mediaDir.getFileHandle(name, { create: true });
       const writable = await handle.createWritable();
       await writable.write(blob);
@@ -183,7 +403,7 @@ class Library extends EventTarget {
   async putThumb(id, blob) {
     await this.init();
     const name = `${id}.jpg`;
-    if (this.mode === 'opfs') {
+    if (this.thumbDir) {
       const handle = await this.thumbDir.getFileHandle(name, { create: true });
       const w = await handle.createWritable();
       await w.write(blob);
@@ -197,13 +417,13 @@ class Library extends EventTarget {
   }
 
   /** Actualiza los metadatos de un elemento sin tocar los bytes. */
-  async update(id, patch) {
+  async update(id, patch, { silencioso = false } = {}) {
     await this.init();
     const item = await this.get(id);
     if (!item) return null;
     const next = { ...item, ...patch, id };
     await tx(this.db, STORE_ITEMS, 'readwrite', (store) => store.put(next));
-    this._emit('change');
+    if (!silencioso) this._emit('change');
     return next;
   }
 
@@ -237,6 +457,16 @@ class Library extends EventTarget {
     await this.init();
     const item = await this.get(id);
     if (!item) return null;
+    if (item.storage === 'carpeta') {
+      if (!this.carpeta) return null;
+      if (!(await this._accesoCarpeta())) throw this._errorPermiso();
+      try {
+        const { dir, archivo } = await this._resolver(item.ruta);
+        return await (await dir.getFileHandle(archivo)).getFile();
+      } catch {
+        return null;   // movido o borrado desde el Finder
+      }
+    }
     if (item.storage === 'opfs' && this.mediaDir) {
       try {
         const handle = await this.mediaDir.getFileHandle(item.name);
@@ -277,17 +507,30 @@ class Library extends EventTarget {
     await this.init();
     const item = await this.get(id);
     if (!item) return;
-    if (item.storage === 'opfs' && this.mediaDir) {
-      await this.mediaDir.removeEntry(item.name).catch(() => {});
-      await this.thumbDir.removeEntry(`${id}.jpg`).catch(() => {});
-    } else {
-      await tx(this.db, STORE_BLOBS, 'readwrite', (store) => {
-        store.delete(item.name);
-        store.delete('thumb:' + `${id}.jpg`);
-      });
-    }
+    await this._borrarBytes(item);
+    if (this.thumbDir) await this.thumbDir.removeEntry(`${id}.jpg`).catch(() => {});
+    await tx(this.db, STORE_BLOBS, 'readwrite', (store) => store.delete('thumb:' + `${id}.jpg`));
     await tx(this.db, STORE_ITEMS, 'readwrite', (store) => store.delete(id));
     this._emit('change');
+  }
+
+  /**
+   * Borra el original, esté donde esté. En la carpeta del usuario se borra sólo
+   * ese archivo (la copia que hizo la app al importar), nunca nada más; y si no
+   * hay permiso, se queda allí antes que fallar.
+   */
+  async _borrarBytes(item) {
+    if (item.storage === 'carpeta') {
+      if (!this.carpeta || !(await this._accesoCarpeta())) return;
+      try {
+        const { dir, archivo } = await this._resolver(item.ruta);
+        await dir.removeEntry(archivo);
+      } catch { /* ya no estaba */ }
+    } else if (item.storage === 'opfs' && this.mediaDir) {
+      await this.mediaDir.removeEntry(item.name).catch(() => {});
+    } else {
+      await tx(this.db, STORE_BLOBS, 'readwrite', (store) => store.delete(item.name));
+    }
   }
 
   async clear() {
@@ -309,10 +552,13 @@ class Library extends EventTarget {
     } catch { /* la estimación no siempre está disponible */ }
     const items = await this.list();
     const own = items.reduce((n, i) => n + (i.size || 0), 0);
-    return { used, quota, own, count: items.length, mode: this.mode };
+    return { used, quota, own, count: items.length, mode: this.mode, carpeta: this.nombreCarpeta() };
   }
 
-  _emit(type) { this.dispatchEvent(new Event(type)); }
+  _emit(type) {
+    if (type === 'change' && this._silencio) { this._pendiente = true; return; }
+    this.dispatchEvent(new Event(type));
+  }
 }
 
 export const library = new Library();

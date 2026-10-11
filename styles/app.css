@@ -538,6 +538,24 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
   box-shadow: 0 6px 34px rgba(0, 0, 0, 0.55);
   touch-action: none;
 }
+/* Ampliada, la foto es más grande que su hueco y se mueve por dentro: lo que
+   sobra se recorta para que nunca tape los ajustes. (Sin ampliar no se recorta:
+   los tiradores del encuadre asoman un poco por fuera de la foto.) */
+.view--lab.is-zoomed .lab__frame { overflow: hidden; }
+.view--lab.is-zoomed .lab__canvas { cursor: grab; box-shadow: none; }
+.view--lab.is-zoomed .lab__canvas.is-grabbing { cursor: grabbing; }
+@media (hover: hover) and (pointer: fine) {
+  .view--lab.has-image:not(.is-zoomed) .lab__canvas { cursor: zoom-in; }
+}
+.lab__zoomtag {
+  position: absolute; left: 10px; top: 10px; z-index: 3;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 11.5px; color: #fff; pointer-events: none;
+}
+.lab__zoomtag b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.lab__zoomtag .spinner { width: 12px; height: 12px; border-width: 2px; }
 /* Sin esto no se sabe cuál de las dos versiones se está mirando. */
 .lab__comparetag {
   position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
@@ -553,6 +571,45 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .lab__empty p { color: var(--text-dim); max-width: 30ch; }
 .lab__emptyactions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 .view--lab.has-image .lab__empty { display: none; }
+
+/* ── Tira de fotos del laboratorio ──────────────────────────────────────── */
+/* En el teléfono va arriba, bajo la barra: abajo flotan los ajustes. En el Mac
+   va abajo, debajo de la foto y a la izquierda de la columna de ajustes. */
+.view--lab { --tira-h: 70px; }
+.iconbtn__svg { display: grid; place-items: center; }
+.tira {
+  position: absolute; z-index: 4;
+  top: calc(48px + env(safe-area-inset-top)); left: 0; right: 0;
+  height: var(--tira-h);
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  overflow-x: auto; overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  background: rgba(11, 12, 14, 0.86);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.tira[hidden] { display: none; }
+.tira__item {
+  position: relative; flex: 0 0 auto;
+  height: 100%; aspect-ratio: 1;
+  border-radius: 5px; overflow: hidden;
+  background: var(--bg-raised);
+  border: 2px solid transparent;
+  opacity: 0.72; transition: opacity 0.15s, border-color 0.15s;
+}
+.tira__item:hover { opacity: 1; }
+.tira__item.is-current { border-color: var(--accent); opacity: 1; }
+.tira__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tira__marca {
+  position: absolute; right: 3px; bottom: 3px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.6);
+  display: none;
+}
+.tira__item.is-edited .tira__marca { display: block; }
+.tira__vacia { color: var(--text-dim); font-size: 12px; padding: 0 6px; }
+.view--lab.has-strip .lab__frame { top: calc(52px + env(safe-area-inset-top) + var(--tira-h)); }
 
 .histogram {
   position: absolute; right: 8px; top: 8px; width: 132px; height: 50px;
@@ -895,7 +952,132 @@ h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
 .usage__fill { height: 100%; background: var(--accent); transition: width 0.4s var(--ease); }
 .usage__row { display: flex; justify-content: space-between; gap: 10px; }
 .usage__text, .usage__mode { font-size: 10.5px; color: var(--text-faint); }
-.usage__mode { color: var(--text-dim); }
+.usage__mode { color: var(--text-dim); display: flex; align-items: baseline; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.usage__mode .linkbtn { min-height: 0; padding: 0; font-size: 10.5px; color: var(--accent); }
+
+.lib__aviso {
+  margin: 4px 14px 8px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 12px;
+  border-radius: 12px; background: rgba(232, 177, 74, 0.1);
+  border: 1px solid rgba(232, 177, 74, 0.35);
+  font-size: 12.5px; line-height: 1.35;
+}
+.lib__aviso[hidden] { display: none; }
+.lib__aviso .btn { flex: 0 0 auto; min-height: 36px; padding: 0 14px; font-size: 13px; }
+
+/* ── Menú de importación ────────────────────────────────────────────────── */
+
+.imp {
+  position: fixed; inset: 0; z-index: 95;
+  display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+.imp[hidden] { display: none; }
+.imp__panel {
+  position: relative;
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.imp__bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+.imp__titulo { font-size: 19px; font-weight: 700; margin-right: auto; }
+.imp__fuentes { display: flex; gap: 8px; flex-wrap: wrap; }
+.imp__fuentes[hidden] { display: none; }
+.imp__fuentes .btn { min-height: 38px; padding: 0 14px; font-size: 13.5px; }
+.imp__cerrar { flex: 0 0 auto; }
+.imp__tools {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-bottom: 1px solid var(--line);
+}
+.imp__tools[hidden] { display: none; }
+.imp__resumen { font-size: 12.5px; color: var(--text-dim); }
+.imp__selbtns { display: flex; gap: 6px; }
+.imp__selbtns .btn { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.imp__grid {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  align-content: start; gap: 6px; padding: 8px 10px 16px;
+}
+.imp__grid[hidden] { display: none; }
+.imp__grupo {
+  grid-column: 1 / -1;
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 2px 2px; font-size: 12px; color: var(--text-dim);
+}
+.imp__grupotit { font-weight: 600; color: var(--text); word-break: break-all; }
+.imp__grupo .linkbtn { min-height: 0; font-size: 11.5px; }
+.imp__item {
+  position: relative; display: block; text-align: left;
+  border-radius: 8px; overflow: hidden;
+  background: var(--bg-raised);
+  border: 2px solid transparent;
+  opacity: 0.55; transition: opacity 0.12s, border-color 0.12s;
+}
+.imp__item.is-selected { opacity: 1; border-color: var(--accent); }
+.imp__mini { display: grid; place-items: center; aspect-ratio: 1; background: #000; }
+.imp__mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.imp__mini img:not([src]) { visibility: hidden; }
+.imp__icono { font-size: 13px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.04em; }
+.imp__check {
+  position: absolute; right: 6px; top: 6px;
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85); background: rgba(0, 0, 0, 0.35);
+}
+.imp__item.is-selected .imp__check {
+  background: var(--accent); border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23111' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 16px; background-position: center; background-repeat: no-repeat;
+}
+.imp__badges { position: absolute; left: 5px; top: 6px; display: grid; gap: 3px; justify-items: start; }
+.imp__badge { padding: 2px 6px; border-radius: 4px; font-size: 9.5px; background: rgba(0, 0, 0, 0.7); color: #fff; }
+.imp__badge--dup { color: var(--accent); }
+.imp__nombre {
+  display: block; padding: 4px 6px 5px;
+  font-size: 10.5px; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.imp__vacio {
+  flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px;
+  padding: 24px; text-align: center;
+  margin: 14px; border: 2px dashed var(--line); border-radius: 18px;
+}
+.imp__vacio[hidden] { display: none; }
+.imp__vaciotit { font-size: 16px; font-weight: 600; }
+.imp__vacio .muted { max-width: 440px; font-size: 13px; }
+body.is-dropping .imp__vacio { border-color: var(--accent); background: rgba(232, 177, 74, 0.06); }
+.imp__pie {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--line);
+}
+.imp__destino { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: 12.5px; color: var(--text-dim); }
+.imp__destino .linkbtn { min-height: 0; font-size: 12.5px; color: var(--accent); }
+.imp__sub { flex: 1 1 220px; min-height: 36px; font-size: 14px; max-width: 360px; }
+.imp__acciones { display: flex; gap: 8px; margin-left: auto; }
+.imp__acciones .btn { min-height: 40px; }
+.imp__progreso {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-raised); border-top: 1px solid var(--line);
+}
+.imp__progreso[hidden] { display: none; }
+.imp__barra { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
+.imp__relleno { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.imp__progtexto { font-size: 12.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imp.is-busy .imp__grid, .imp.is-busy .imp__tools { pointer-events: none; opacity: 0.6; }
+@media (min-width: 820px) {
+  .imp__panel {
+    width: min(1180px, calc(100% - 64px)); height: min(860px, calc(100% - 64px));
+    border-radius: 18px; border: 1px solid var(--line); overflow: hidden;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  }
+  .imp__grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 10px 16px 18px; }
+}
 
 .gallery {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
@@ -973,7 +1155,13 @@ body.is-viewing { overflow: hidden; }
   touch-action: pan-y;
 }
 .viewer__media {
-  max-width: 100%; max-height: 100%;
+  /* Ocupa la escena entera y la foto se encaja dentro con object-fit. Antes
+     era max-width/max-height al 100 % dentro de una rejilla centrada, y el alto
+     de una fila automática no limita a su contenido: en una pantalla ancha la
+     foto se ajustaba al ancho y se salía por arriba y por abajo, como ampliada.
+     En el teléfono no se notaba porque manda el ancho. */
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
   display: block; object-fit: contain;
   -webkit-touch-callout: default;
 }
@@ -1185,7 +1373,23 @@ body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-
    foto se queda con el resto. Misma consulta que ESCRITORIO en utils/dom.js. */
 @media (min-width: 900px) and (min-height: 560px) and (orientation: landscape) {
   .view--lab { --side-w: clamp(320px, 26vw, 400px); }
-  .lab__frame { right: calc(var(--side-w) + 8px); }
+  /* Con aire alrededor, como en cualquier revelador de escritorio: la foto
+     encajada no llega a tocar los bordes ni la columna de ajustes. */
+  .lab__frame {
+    top: calc(60px + env(safe-area-inset-top));
+    left: 24px; right: calc(var(--side-w) + 24px);
+    bottom: calc(var(--tab-h) + 20px);
+  }
+  .view--lab { --tira-h: 84px; }
+  .tira {
+    top: auto; bottom: var(--tab-h); right: var(--side-w);
+    border-bottom: 0; border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 8px 14px;
+  }
+  .view--lab.has-strip .lab__frame {
+    top: calc(60px + env(safe-area-inset-top));
+    bottom: calc(var(--tab-h) + var(--tira-h) + 16px);
+  }
   .panels {
     top: calc(48px + env(safe-area-inset-top)); bottom: var(--tab-h);
     left: auto; right: 0; width: var(--side-w);

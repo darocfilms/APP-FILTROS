@@ -32,7 +32,7 @@ export class LibraryView {
       el('p', { class: 'muted', text: 'Lo que captures con la cámara o importes desde el dispositivo se guardará aquí, en una carpeta local que sobrevive al cierre del navegador.' }),
       el('div', { class: 'gallery__emptyactions' },
         el('button', { type: 'button', class: 'btn btn--primary', text: 'Abrir la cámara', onclick: () => this.app.go('camera') }),
-        el('button', { type: 'button', class: 'btn', text: 'Importar archivos', onclick: () => this.app.pickFile() })));
+        el('button', { type: 'button', class: 'btn', text: 'Importar fotos o carpetas', onclick: () => this.app.openImporter() })));
 
     this.usageBar = el('div', { class: 'usage__fill' });
     this.usageText = el('span', { class: 'usage__text' });
@@ -54,7 +54,15 @@ export class LibraryView {
             type: 'button', class: 'btn btn--ghost', text: 'Seleccionar',
             onclick: () => this.setSelecting(!this.selecting),
           }),
-          el('button', { type: 'button', class: 'btn btn--ghost', text: 'Importar', onclick: () => this.app.pickFile() }))),
+          el('button', { type: 'button', class: 'btn btn--ghost', text: 'Importar', onclick: () => this.app.openImporter() }))),
+      // Fotos guardadas en una carpeta de Imágenes cuyo permiso caducó: sin
+      // él no se pueden abrir, y el navegador sólo lo vuelve a dar tras un toque.
+      this.avisoCarpeta = el('div', { class: 'lib__aviso', hidden: true },
+        this.avisoTexto = el('span'),
+        el('button', {
+          type: 'button', class: 'btn btn--primary', text: 'Dar acceso',
+          onclick: async () => { if (await library.pedirPermisoCarpeta()) { toast('Acceso concedido'); this.render(); } },
+        })),
       el('div', { class: 'usage' },
         el('div', { class: 'usage__track' }, this.usageBar),
         el('div', { class: 'usage__row' }, this.usageText, this.storageNote)),
@@ -85,6 +93,7 @@ export class LibraryView {
       if (this.app.current === 'library' && !this._lote) this.render();
     });
     library.addEventListener('thumb', (e) => this._refreshThumb(e.detail.id));
+    library.addEventListener('carpeta', () => { if (this.app.current === 'library') this.render(); });
     globalThis.addEventListener?.(EVENTO_PORTAPAPELES, () => this._paintSelection());
     document.addEventListener('keydown', (e) => this._onKey(e));
   }
@@ -315,15 +324,90 @@ export class LibraryView {
     this.usageText.textContent = u.quota
       ? `${u.count} archivo${u.count === 1 ? '' : 's'} · ${formatBytes(u.own)} de ${formatBytes(u.quota)} disponibles`
       : `${u.count} archivo${u.count === 1 ? '' : 's'} · ${formatBytes(u.own)}`;
-    this.storageNote.textContent = u.mode === 'opfs'
-      ? 'Carpeta local del dispositivo'
-      : 'Almacenamiento del navegador';
+    await this._pintarAlmacen(u);
 
     // La selección puede haber quedado con elementos ya borrados.
     for (const id of [...this.selection]) {
       if (!this.items.some((i) => i.id === id)) this.selection.delete(id);
     }
     this._paintSelection();
+  }
+
+  /**
+   * Dónde se guardan los originales. En el ordenador, con Chrome o Edge, se
+   * ofrece llevarlos a una carpeta de Imágenes; si ya están allí, se dice cuál,
+   * y si el permiso caducó, se pide de nuevo.
+   */
+  async _pintarAlmacen(u) {
+    const estado = await library.estadoCarpeta();
+    const nombre = library.nombreCarpeta();
+    this.avisoCarpeta.hidden = estado !== 'permiso';
+    if (estado === 'permiso') {
+      this.avisoTexto.textContent = `Las fotos están en «${nombre}». Para abrirlas en esta sesión, da acceso otra vez a esa carpeta.`;
+    }
+    if (estado === 'lista' || estado === 'permiso') {
+      clear(this.storageNote).append(el('span', { text: `En ${nombre}` }));
+    } else if (estado === 'ninguna') {
+      clear(this.storageNote).append(
+        el('span', { text: u.mode === 'opfs' ? 'Carpeta local del navegador · ' : 'Almacenamiento del navegador · ' }),
+        el('button', { type: 'button', class: 'linkbtn', onclick: () => this.elegirCarpeta() }, 'Guardar en Imágenes…'));
+    } else {
+      this.storageNote.textContent = u.mode === 'opfs' ? 'Carpeta local del dispositivo' : 'Almacenamiento del navegador';
+    }
+  }
+
+  /**
+   * Lleva la biblioteca a una carpeta de verdad: se elige Imágenes (o la que
+   * se quiera), dentro se crea «Laboratorio» y cada importación va a su
+   * subcarpeta. Resuelve cuando la hoja se cierra.
+   */
+  elegirCarpeta() {
+    return new Promise((resolve) => {
+      const sheet = this.app.sheet('Guardar en una carpeta', [
+        el('p', { class: 'sheet__message' },
+          'Las fotos que importes, captures o reveles se guardarán como archivos normales en una carpeta de tu ordenador, ',
+          'visible en el Finder. Elige ', el('strong', { text: 'Imágenes' }), ' (o la que prefieras): dentro se crea ',
+          el('strong', { text: 'Laboratorio' }), ', con una carpeta por cada importación.'),
+        el('p', { class: 'sheet__hint', text: 'Las miniaturas y los ajustes siguen guardados en la app. El navegador te pedirá permiso para usar esa carpeta.' }),
+        el('div', { class: 'sheet__actions' },
+          el('button', { type: 'button', class: 'btn', text: 'Ahora no', onclick: () => { sheet.close(); resolve(false); } }),
+          el('button', {
+            type: 'button', class: 'btn btn--primary', text: 'Elegir carpeta…',
+            onclick: async () => {
+              try {
+                const nombre = await library.elegirCarpeta();
+                sheet.close();
+                toast(`Se guardarán en ${nombre}`);
+                await this._ofrecerMover();
+                this.render();
+                resolve(true);
+              } catch (err) {
+                if (err?.name === 'AbortError') return;   // cerró el selector sin elegir
+                toast(err?.message || String(err), { error: true });
+              }
+            },
+          })),
+      ]);
+    });
+  }
+
+  /** Si había fotos guardadas en el navegador, ofrece pasarlas también a la carpeta. */
+  async _ofrecerMover() {
+    const privadas = (await library.list()).filter((i) => i.storage !== 'carpeta').length;
+    if (!privadas) return;
+    const ok = await confirmDialog(
+      `Ya hay ${privadas} archivo${privadas === 1 ? '' : 's'} guardado${privadas === 1 ? '' : 's'} en el navegador. ¿Pasarlos también a «${library.nombreCarpeta()}»?`,
+      { confirmLabel: 'Pasarlos' });
+    if (!ok) return;
+    this.app.setBusy(true, 'Pasando a la carpeta…');
+    try {
+      const n = await library.moverACarpeta((h, t) => this.app.setBusy(true, `Pasando a la carpeta… ${h} de ${t}`));
+      toast(`${n} archivo${n === 1 ? '' : 's'} en ${library.nombreCarpeta()}`);
+    } catch (err) {
+      toast('No se pudieron pasar: ' + (err?.message || err), { error: true });
+    } finally {
+      this.app.setBusy(false);
+    }
   }
 
   async _tile(item) {
@@ -359,7 +443,7 @@ export class LibraryView {
       },
     }, img, badges,
       el('span', { class: 'tile__check', 'aria-hidden': 'true' }),
-      el('span', { class: 'tile__info' }, `${item.width}×${item.height}`),
+      el('span', { class: 'tile__info' }, item.dimsAprox ? 'RAW' : `${item.width}×${item.height}`),
       el('span', {
         class: 'tile__more', 'aria-label': 'Opciones',
         onclick: (e) => { e.stopPropagation(); this._actions(item); },
@@ -414,7 +498,9 @@ export class LibraryView {
 
     const sheet = this.app.sheet(item.kind === 'video' ? 'Vídeo' : 'Foto', [
       el('dl', { class: 'meta' },
-        this._metaRow('Dimensiones', `${item.width}×${item.height}`),
+        this._metaRow('Dimensiones', item.dimsAprox ? 'RAW (se mide al abrirlo)' : `${item.width}×${item.height}`),
+        item.storage === 'carpeta' ? this._metaRow('Archivo', `${library.nombreCarpeta()} › ${item.ruta.replace('/', ' › ')}`) : null,
+        item.fuente?.ruta && item.fuente.ruta !== item.fuente.nombre ? this._metaRow('Origen del archivo', item.fuente.ruta) : null,
         this._metaRow('Tamaño', formatBytes(item.size)),
         this._metaRow('Emulsión', film ? `${film.brand} ${film.name}` : '—'),
         foto ? this._metaRow('Ajustes', describeEdits(item.params) || 'Ninguno') : null,
@@ -567,8 +653,10 @@ export class LibraryView {
 
   async _clearAll() {
     if (!this.items.length) return toast('La carpeta ya está vacía');
+    const enCarpeta = this.items.filter((i) => i.storage === 'carpeta').length;
     const ok = await confirmDialog(
-      `¿Eliminar los ${this.items.length} archivos de la carpeta local? No se puede deshacer.`,
+      `¿Eliminar los ${this.items.length} archivos de la biblioteca? No se puede deshacer.`
+        + (enCarpeta ? ` Se borran también sus copias de «${library.nombreCarpeta()}» (sólo las que hizo la app; lo demás de esa carpeta no se toca).` : ''),
       { confirmLabel: 'Vaciar', danger: true });
     if (!ok) return;
     this.app.setBusy(true, 'Vaciando…');

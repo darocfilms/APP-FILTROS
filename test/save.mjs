@@ -76,7 +76,11 @@ for (let i = 0; i < 3; i++) {
   files.push(p);
 }
 await page.setInputFiles('input[type=file]', files);
-await page.waitForTimeout(4500);
+// Varios archivos a la vez van al menú de importación, todos marcados.
+await page.waitForSelector('.imp:not([hidden]) .imp__item');
+await page.locator('.imp__acciones .btn--primary').click();
+await page.waitForSelector('.imp', { state: 'hidden', timeout: 30_000 });
+await page.waitForTimeout(800);
 await page.locator('.tabbar__tab[data-tab="library"]').click();
 await page.waitForTimeout(1500);
 check('los tres archivos están en la biblioteca',

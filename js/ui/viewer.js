@@ -137,7 +137,13 @@ export class Viewer {
     // visor: pueden haber cambiado en el laboratorio desde entonces.
     const fresco = await library.get(item.id);
     if (fresco) Object.assign(item, fresco);
-    const file = await library.getFile(item.id);
+    let file = null;
+    let sinPermiso = null;
+    try {
+      file = await library.getFile(item.id);
+    } catch (err) {
+      sinPermiso = err?.message || String(err);   // carpeta de Imágenes sin acceso
+    }
     const lado = Math.round(Math.max(innerWidth, innerHeight) * Math.min(devicePixelRatio || 1, 3));
     const editada = item.kind === 'photo' && hasEdits(item.params);
     let vista = file;
@@ -168,7 +174,9 @@ export class Viewer {
     if (this.current !== item) return;
     clear(this.stage);
 
-    if (!file) {
+    if (sinPermiso) {
+      this.stage.append(el('p', { class: 'viewer__missing', text: sinPermiso }));
+    } else if (!file) {
       this.stage.append(el('p', { class: 'viewer__missing', text: 'El archivo ya no está en la carpeta local.' }));
     } else if (!vista) {
       this.stage.append(el('p', { class: 'viewer__missing', text: editada ? 'No se ha podido revelar esta foto.' : 'No se ha podido revelar este RAW.' }));

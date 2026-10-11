@@ -5,7 +5,10 @@
 
 import { el, clear, toast, haptic } from './utils/dom.js';
 import { saveFiles, canShareFiles, isIOS, isNativeApp } from './utils/share.js';
-import { library, makeThumb, videoPoster, decodeScaled, THUMB_SIZE } from './store/library.js';
+import { library } from './store/library.js';
+import { importarArchivo, refinarMiniaturas } from './store/importar.js';
+import { archivosSoltados } from './store/preview.js';
+import { Importer, ACEPTA } from './ui/importer.js';
 import { CameraView } from './views/camera.js';
 import { LabView } from './views/lab.js';
 import { LibraryView } from './views/library.js';
@@ -59,12 +62,13 @@ class App {
       // Las extensiones de RAW de Sony van aparte: no son `image/*` para el
       // sistema, y sin ellas el selector del iPhone no deja elegir un ARW
       // desde Archivos.
-      type: 'file', accept: 'image/*,video/*,.arw,.ARW,.sr2,.SR2,.srf,.SRF,image/x-sony-arw', multiple: true,
+      type: 'file', accept: ACEPTA, multiple: true,
       class: 'visually-hidden', 'aria-hidden': 'true', tabindex: -1,
     });
     this.fileInput.addEventListener('change', () => this._handleFiles([...this.fileInput.files]));
 
     clear(this.mount).append(this.stack, this.tabbar, this.busy, this.fileInput);
+    this.importer = new Importer(this);
 
     // Volver a la cámara al reactivar la pestaña; soltarla al ocultarla, para
     // no dejar el indicador de cámara encendido en segundo plano.
@@ -75,17 +79,49 @@ class App {
 
     window.addEventListener('resize', () => this.views.lab._layout?.());
 
-    // Arrastrar y soltar en escritorio: cómodo para probar sin cámara.
-    document.addEventListener('dragover', (e) => { e.preventDefault(); });
-    document.addEventListener('drop', (e) => {
+    // Arrastrar y soltar en el ordenador: fotos sueltas o carpetas enteras.
+    document.addEventListener('dragover', (e) => {
       e.preventDefault();
-      const files = [...(e.dataTransfer?.files || [])];
-      if (files.length) this._handleFiles(files);
+      document.body.classList.add('is-dropping');
+    });
+    document.addEventListener('dragleave', (e) => {
+      if (!e.relatedTarget) document.body.classList.remove('is-dropping');
+    });
+    document.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      document.body.classList.remove('is-dropping');
+      const carpetas = [...(e.dataTransfer?.items || [])].some((it) => it.webkitGetAsEntry?.()?.isDirectory);
+      const lista = await archivosSoltados(e.dataTransfer);
+      if (!lista.length) return;
+      // Una sola foto se abre directamente, como siempre; varias o una
+      // carpeta van al menú de importación para elegir.
+      if (lista.length === 1 && !carpetas && !this.importer.abierto) this._handleFiles([lista[0].file]);
+      else this.importer.abrir(lista);
     });
 
     const items = await library.list();
     this.go(items.length && !navigator.mediaDevices ? 'library' : 'camera');
     this._registerServiceWorker();
+    // Miniaturas de RAW que quedaron a medias en otra sesión.
+    if (items.some((i) => i.thumbProvisional)) setTimeout(() => this.refinar(), 4000);
+  }
+
+  /** Rehace en segundo plano las miniaturas de RAW, fuera del laboratorio y la cámara. */
+  refinar() {
+    refinarMiniaturas({ pausa: () => document.hidden || this.current === 'lab' || this.current === 'camera' });
+  }
+
+  /** El menú de importación: elegir fotos, carpetas o discos, y cuáles entran. */
+  openImporter() {
+    this.importer.abrir();
+  }
+
+  /** Lo que hace la app después de importar desde el menú. */
+  importados(n, primero) {
+    if (!n) return;
+    this.refinar();
+    if (n === 1 && primero?.kind === 'photo' && this.current === 'lab') this.openInLab(primero);
+    else if (this.current !== 'library') this.go('library');
   }
 
   _checkSupport() {
@@ -214,58 +250,30 @@ class App {
   }
 
   /**
-   * Los archivos importados se escriben en la carpeta local ANTES de abrirse.
-   * Así el original nunca se queda flotando como blob en memoria: el
-   * laboratorio lo vuelve a leer del disco, ya reducido a proxy.
+   * Lo elegido con el selector rápido. Una sola foto se importa y se abre en el
+   * laboratorio sin más pasos; varias van al menú de importación, para elegir.
+   *
+   * Los archivos se escriben en la biblioteca ANTES de abrirse: así el original
+   * nunca se queda flotando como blob en memoria, y el laboratorio lo vuelve a
+   * leer del disco, ya reducido a proxy.
    */
   async _handleFiles(files) {
     if (!files.length) return;
-    this.setBusy(true, files.length > 1 ? `Importando ${files.length} archivos…` : 'Importando…');
-    let first = null;
-    let failed = 0;
-
-    for (const file of files) {
-      try {
-        const isVideo = file.type.startsWith('video');
-        let width = 0, height = 0, durationMs = 0, thumbBlob = null;
-
-        if (isVideo) {
-          const url = URL.createObjectURL(file);
-          try {
-            const poster = await videoPoster(url);
-            width = poster.width; height = poster.height;
-            durationMs = (poster.duration || 0) * 1000;
-            thumbBlob = poster.blob;
-          } catch {
-            // Un códec que el navegador no sabe previsualizar no debe impedir
-            // guardar el archivo: entra sin miniatura y ya está.
-          } finally {
-            URL.revokeObjectURL(url);
-          }
-        } else {
-          const { bitmap, sourceWidth, sourceHeight } = await decodeScaled(file, THUMB_SIZE);
-          width = sourceWidth; height = sourceHeight;
-          thumbBlob = await makeThumb(bitmap);
-          bitmap.close?.();
-        }
-
-        const item = await library.put(file, {
-          kind: isVideo ? 'video' : 'photo', width, height, durationMs, origin: 'importado',
-        });
-        if (thumbBlob) await library.putThumb(item.id, thumbBlob);
-        if (!first) first = item;
-      } catch (err) {
-        console.error(err);
-        failed++;
-      }
+    if (files.length > 1) {
+      this.importer.abrir(files.map((file) => ({ file, ruta: file.name })));
+      return;
     }
-
-    this.setBusy(false);
-    if (failed) toast(`${failed} archivo${failed === 1 ? '' : 's'} no se pudo importar`, { error: true });
-    if (first) {
-      toast(files.length > 1 ? `${files.length - failed} archivos en la carpeta local` : 'Importado');
-      if (files.length === 1) this.openInLab(first);
-      else this.go('library');
+    this.setBusy(true, 'Importando…');
+    try {
+      const item = await importarArchivo(files[0]);
+      toast('Importado');
+      this.refinar();
+      this.openInLab(item);
+    } catch (err) {
+      console.error(err);
+      toast('No se pudo importar: ' + (err?.message || err), { error: true });
+    } finally {
+      this.setBusy(false);
     }
   }
 

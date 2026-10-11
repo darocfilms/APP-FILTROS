@@ -24,6 +24,8 @@ const SHELL = [
   './js/store/library.js',
   './js/store/raw.js',
   './js/store/develop.js',
+  './js/store/importar.js',
+  './js/store/preview.js',
   // El decodificador de RAW: sin él en la caché, un ARW no abre sin conexión.
   './js/vendor/libraw/index.js',
   './js/vendor/libraw/worker.js',
@@ -35,6 +37,8 @@ const SHELL = [
   './js/ui/histogram.js',
   './js/ui/panels.js',
   './js/ui/viewer.js',
+  './js/ui/filmstrip.js',
+  './js/ui/importer.js',
   './js/ui/wheel.js',
   './js/utils/dom.js',
   './js/utils/share.js',

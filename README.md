@@ -220,6 +220,24 @@ un proxy fijo de 1600 px se ve blando cuando la imagen ocupa toda la altura.
 Además: deshacer y rehacer, comparación antes/después manteniendo pulsada la
 imagen, histograma superpuesto y presets propios.
 
+**Lupa.** Doble clic sobre la foto (doble toque en el teléfono) la amplía al
+**100 %** justo donde se pulsó: un píxel de la foto por píxel de pantalla, para
+mirar el enfoque, el ruido o el grano mientras se edita. Arrastrando —o con dos
+dedos en el trackpad— se mueve, y otro doble clic la vuelve a encajar. En el
+ordenador se carga **la foto entera** (hasta 36 Mpx; un RAW, revelado a tamaño
+de sensor) y los ajustes se siguen viendo en vivo sobre ella; mientras carga se
+amplía la vista previa y luego se afina sola. En el teléfono amplía la vista
+previa, que ya tiene la resolución de la pantalla: una foto entera de 24 Mpx es
+la forma más rápida de que Safari cierre la pestaña. Una foto pequeña, que al
+100 % apenas crecería, se amplía al doble, y la etiqueta dice cuánto es
+respecto del original.
+
+**Tira de fotos.** El botón de los tres fotogramas enseña u oculta una fila con
+todas las fotos de la biblioteca en pequeño, para pasar de una a otra sin salir
+del laboratorio; la que está abierta va marcada, y las editadas llevan un
+punto. En el Mac va debajo de la foto y empieza abierta; en el teléfono, arriba
+y cerrada. Se acuerda de cómo la dejaste.
+
 Los ajustes se guardan junto al archivo: al reabrirlo sigue donde lo dejaste.
 Y no se quedan en el laboratorio: la biblioteca enseña y guarda la foto tal
 como quedó (ver [Biblioteca](#biblioteca)).
@@ -239,9 +257,14 @@ dentro de *Presets*), y los atajos de siempre:
 |---|---|
 | ⌘Z · ⇧⌘Z | Deshacer · rehacer |
 | ⌘C · ⌘V | Copiar los ajustes de color de la foto · pegarlos |
+| Z · Esc | Lupa al 100 % · encajar |
+| ← → | Foto anterior · siguiente |
 
-Siguen funcionando con un deslizador en foco, que es justo después de moverlo.
-En un campo de texto (el nombre de un preset) son del campo.
+Los de ⌘ siguen funcionando con un deslizador en foco, que es justo después de
+moverlo; las flechas, no: ahí mueven el deslizador. En un campo de texto (el
+nombre de un preset) todos son del campo.
+
+La foto encajada deja aire alrededor, como en cualquier revelador de escritorio.
 
 #### RAW de Sony
 
@@ -290,7 +313,9 @@ entregar un JPEG en su lugar.
 ### Biblioteca
 
 Tocar una miniatura abre un **visor a pantalla completa**: la foto sobre negro y
-nada más. Un toque saca los botones que hacen falta —cerrar, abrir en el
+nada más, siempre entera. (En una pantalla ancha una foto grande se ajustaba al
+ancho y se salía por arriba y por abajo, como ampliada; en el teléfono no se
+notaba porque manda el ancho.) Un toque saca los botones que hacen falta —cerrar, abrir en el
 laboratorio, guardar en el dispositivo, borrar— y otro los quita. Borrar
 pregunta antes, y al confirmar el visor sigue con la siguiente en vez de
 devolverte a la cuadrícula: se estaba mirando, no ordenando. Se desliza en
@@ -300,6 +325,55 @@ Safari cierre la pestaña.
 
 La carpeta local por dentro. Miniaturas, espacio ocupado, y para cada archivo:
 abrir en el laboratorio, guardar en el dispositivo o eliminar.
+
+#### Importar
+
+El botón **Importar** abre el menú de importación:
+
+- **Fotos y vídeos…** o **Carpeta o disco…**: una carpeta entera con sus
+  subcarpetas, que sirve igual para una de Imágenes, para la **tarjeta de la
+  cámara** o para un **disco externo** (en el Mac salen en el selector, bajo
+  *Ubicaciones*). También se pueden **soltar** fotos o carpetas encima de la
+  ventana.
+- Todo sale en miniatura, agrupado por carpeta, y se marca qué entra: **una a
+  una** con un clic, un tramo con **Mayúsculas**, **Seleccionar todas**,
+  **Ninguna**, o una carpeta entera desde su título. Abajo, cuántas van y
+  cuánto ocupan.
+- Lo que no es foto ni vídeo se queda fuera solo: las copias ocultas «._» que
+  deja el Mac en las tarjetas, los .XML de los vídeos de Sony, los .THM…
+- Lo que ya se importó antes sale como **Ya importada** y desmarcado: volver a
+  meter la misma tarjeta no duplica nada.
+- De un **RAW** no se revela nada para verlo: se usa la vista previa en JPEG que
+  la cámara guarda dentro del archivo, así que una tarjeta con cientos de ARW se
+  ve al momento y se importa deprisa. Después, en segundo plano y de uno en uno,
+  la miniatura se rehace con el revelado de la app —lo que se verá al abrirlo— y
+  se apunta el tamaño real del sensor. Se para mientras estás en el laboratorio
+  o en la cámara.
+
+Una sola foto elegida desde el laboratorio, o soltada sola, se importa y se
+abre directamente, como siempre.
+
+#### En una carpeta de Imágenes (Mac, con Chrome o Edge)
+
+Los originales pueden guardarse como archivos normales en una carpeta del
+ordenador, visible en el Finder, en vez de dentro del navegador: en la
+biblioteca, **Guardar en Imágenes…** (o desde el menú de importación). Se elige
+**Imágenes** y dentro se crea **Laboratorio**, con una subcarpeta por cada
+importación —«2026-10-11 Viaje», que se puede renombrar antes de importar— y
+otras por fecha para lo capturado («Cámara») y lo revelado («Revelados»). Los
+archivos conservan su nombre (DSC01234.ARW). Lo que ya hubiera en la biblioteca
+se puede pasar también.
+
+- Las miniaturas y los ajustes siguen en la app: son caché y metadatos.
+- Borrar una foto de la biblioteca borra **su copia** de esa carpeta, la que
+  hizo la app al importarla; nada más de la carpeta se toca, y el original de
+  la tarjeta o del disco, tampoco.
+- El navegador puede pedir que se le vuelva a dar acceso a la carpeta en otra
+  sesión: la biblioteca lo avisa con un botón **Dar acceso**. Instalando la app
+  desde Chrome (⋮ → *Instalar*) se puede dejar el permiso fijo.
+- **Safari no lo permite**: no deja a una web escribir en una carpeta elegida.
+  Ahí las fotos se guardan dentro del navegador, como hasta ahora, y se sacan
+  con *Guardar*.
 
 **Lo editado en el laboratorio es lo que se ve aquí.** El original no se toca
 nunca —los ajustes se guardan aparte, junto a él—, pero fuera del laboratorio
@@ -441,6 +515,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Las dos barras verticales: que la línea sea fina pero su área táctil llegue a 46 px, que arrastrar hacia arriba suba de verdad la exposición, que la barra siga al pellizco y que sin gran angular no baje de 1×. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome — ni a la propia app nativa, que también es una vista web sin «Safari» en su user agent y sin la excepción bloquearía su cámara |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 | `raw` | Con un ARW real de una Sony FX30: que se reconozca por nombre o por tipo, que la conversión a media precisión sea exacta en los 63 488 float16 finitos, que entre en la biblioteca como `.arw` y no como `.bin`, que el laboratorio lo revele como luz lineal en una textura flotante, que a +1,5 EV no queme lo que la misma imagen en 8 bits sí quema, que a +3 EV sus sombras tengan más del doble de tonos, que girarlo no cueste nada de eso, el antes/después, el selector de emulsión, el visor y la exportación a 6240×4168. El ARW (31 MB) se descarga la primera vez; sin red, la suite se omite avisando |
+| `import` | Una «tarjeta de memoria» con dos carpetas, un ARW de verdad, las copias «._» del Mac y un XML de Sony: entran las siete fotos agrupadas por carpeta, se ignora lo demás y el RAW se ve por su vista previa incrustada. Marcar una a una, un tramo con Mayúsculas, todas y ninguna. Con la carpeta de Imágenes elegida (el selector se simula con una carpeta del sistema de archivos privado, que tiene la misma interfaz), los originales quedan en Laboratorio/<subcarpeta>/ con su nombre, y el visor los abre desde allí; la miniatura del RAW entra provisional y se rehace con el tamaño del sensor (6240×4168); volver a meter la tarjeta avisa de las ya importadas. Y el laboratorio: la tira abre fotos y ← → pasa de una a otra; doble clic amplía al 100 % con la foto entera (4800 px), arrastrar y el trackpad la mueven, editar ampliada sigue sobre la foto entera, doble clic, Z y Esc; una foto pequeña se dobla; mantener pulsado sigue enseñando el antes. Una sola foto va directa al laboratorio |
 | `desktop` | El Mac: que en una ventana de 1440×900 los ajustes vayan en una columna a la derecha sin tapar la foto, que tocar la pestaña activa no los esconda, y que en el iPhone todo siga como estaba. Lo editado en el laboratorio —emulsión, exposición y un giro— tiene que aparecer en la miniatura, en el visor y **en el archivo que se guarda**, abierto y medido: a 1200×900 y más claro, mientras *Guardar el original* entrega los bytes de entrada. Copiar lleva el color y no el encuadre; pegar en las tres fotos pregunta, respeta el recorte y el espejo que tenía cada una y rehace sus miniaturas; la foto abierta en el laboratorio recoge lo pegado; ⌘Z, ⇧⌘Z, ⌘C y ⌘V, también con un deslizador en foco; *Quitar los ajustes* devuelve el original a la cuadrícula. Y que al volver del laboratorio no salgan casillas repetidas |
 | `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
 
@@ -582,13 +657,19 @@ js/
     films.js                 catálogo de emulsiones
     params.js                modelo de ajustes; genera también la interfaz
   store/
-    library.js               carpeta local: OPFS + IndexedDB
+    library.js               biblioteca: OPFS + IndexedDB, o una carpeta de Imágenes
     raw.js                   RAW de Sony: LibRaw en un worker, luz lineal
     develop.js               revelar con los ajustes fuera del laboratorio;
                              portapapeles de ajustes
+    importar.js              meter archivos en la biblioteca; miniaturas de
+                             RAW provisionales y su refinado
+    preview.js               qué se puede importar, vista previa de un RAW,
+                             carpetas soltadas
   ui/
     controls.js curve.js wheel.js crop.js histogram.js filmpicker.js panels.js
-    viewer.js
+    viewer.js                visor a pantalla completa
+    filmstrip.js             tira de fotos del laboratorio
+    importer.js              menú de importación
   views/
     camera.js lab.js library.js
   utils/

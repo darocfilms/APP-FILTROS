@@ -283,7 +283,11 @@ export class GLContext {
       gl.viewport(0, 0, target.width, target.height);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      // El búfer de dibujo, no el tamaño del lienzo: el navegador puede darlo
+      // más pequeño de lo pedido si el lienzo es enorme (una foto entera
+      // ampliada al 100 %), y dibujar con el tamaño pedido dejaría fuera una
+      // parte de la imagen y la otra se vería estirada, como con zoom.
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     }
 
     gl.useProgram(program.prog);
