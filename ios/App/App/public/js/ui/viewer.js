@@ -13,6 +13,7 @@
 import { el, clear, haptic } from '../utils/dom.js';
 import { library, decodeScaled } from '../store/library.js';
 import { isRawFile } from '../store/raw.js';
+import { esHeif } from '../store/heif.js';
 import { hasEdits, describeEdits, develop } from '../store/develop.js';
 
 /**
@@ -156,12 +157,15 @@ export class Viewer {
         console.error(err);
         vista = null;
       }
-    } else if (file && (item.raw || isRawFile(file))) {
+    } else if (file && (item.raw || isRawFile(file) || esHeif(file))) {
       // Un RAW no lo sabe pintar un <img>: se revela en neutro al tamaño de la
       // pantalla, que es lo que se va a ver, y se enseña como JPEG.
       try {
         const { bitmap } = await decodeScaled(file, lado);
-        const lienzo = bitmap.toCanvas();
+        // Un RAW se revela en neutro; un HEIF (que Chrome no sabe enseñar en
+        // un <img>) ya viene descodificado y sólo se dibuja.
+        const lienzo = bitmap.toCanvas ? bitmap.toCanvas() : Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height });
+        if (!bitmap.toCanvas) lienzo.getContext('2d').drawImage(bitmap, 0, 0);
         bitmap.close();
         vista = await new Promise((r) => lienzo.toBlob(r, 'image/jpeg', 0.92));
         lienzo.width = lienzo.height = 0;

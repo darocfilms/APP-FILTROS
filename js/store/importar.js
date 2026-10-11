@@ -10,6 +10,7 @@
 
 import { library, decodeScaled, makeThumb, videoPoster, THUMB_SIZE } from './library.js';
 import { clasificar, vistaPreviaRaw, dibujarReducida } from './preview.js';
+import { esHeif } from './heif.js';
 
 /**
  * @param {File} file
@@ -47,7 +48,7 @@ export async function importarArchivo(file, { carpeta = null, ruta = '' } = {}) 
         provisional = true;
       }
     }
-    if (!thumbBlob && tipo === 'foto') {
+    if (!thumbBlob && tipo === 'foto' && !esHeif(file)) {
       // Una sola descodificación: de ella salen el tamaño y la miniatura. (En
       // un lote de doscientas fotos, descodificar dos veces se nota.)
       let bmp;
@@ -66,6 +67,8 @@ export async function importarArchivo(file, { carpeta = null, ruta = '' } = {}) 
       }
     }
     if (!thumbBlob) {
+      // RAW sin vista previa y HEIF: decodeScaled sabe abrirlos (LibRaw, el
+      // navegador o libheif, con la miniatura que el HEIF lleva dentro).
       const { bitmap, sourceWidth, sourceHeight } = await decodeScaled(file, THUMB_SIZE);
       width = sourceWidth; height = sourceHeight;
       thumbBlob = await makeThumb(bitmap);

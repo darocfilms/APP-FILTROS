@@ -18,10 +18,12 @@ import { clasificar, miniaturaRapida } from '../store/preview.js';
 import { importarArchivo, firmasImportadas, firma } from '../store/importar.js';
 import { isIOS } from '../utils/share.js';
 
-// Sin .heic a propósito: con «image/*» a secas, el iPhone convierte sus HEIC a
-// JPEG al elegirlos, que se abren en cualquier navegador; pedir HEIC
-// explícitamente hace que los entregue tal cual.
-export const ACEPTA = 'image/*,video/*,.arw,.ARW,.sr2,.SR2,.srf,.SRF,image/x-sony-arw';
+// Las extensiones de RAW y de HEIF van aparte: un .ARW o un .HIF no son
+// «image/*» para el sistema, y sin ellas el selector no deja elegirlos (en el
+// iPhone, desde Archivos). Con HEIC en la lista el iPhone entrega sus fotos tal
+// cual, sin convertirlas a JPEG: las abre Safari o, si no, libheif.
+export const ACEPTA = 'image/*,video/*,.arw,.ARW,.sr2,.SR2,.srf,.SRF,image/x-sony-arw,'
+  + '.heic,.HEIC,.heif,.HEIF,.hif,.HIF,image/heic,image/heif';
 const A_LA_VEZ = 3;
 
 const comparar = new Intl.Collator('es', { numeric: true, sensitivity: 'base' }).compare;

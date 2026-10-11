@@ -9,8 +9,10 @@
  */
 
 import { isRawFile } from './raw.js';
+import { esHeif, abrirHeif } from './heif.js';
 
-const FOTO = /\.(jpe?g|png|webp|heic|heif|avif|gif)$/i;
+// HIF: el HEIF de las Sony y las Fujifilm (10 bits, 4:2:2).
+const FOTO = /\.(jpe?g|png|webp|heic|heif|hif|avif|gif)$/i;
 const VIDEO = /\.(mp4|m4v|mov|webm)$/i;
 
 /** 'foto' | 'raw' | 'video' | null (no se importa). */
@@ -116,6 +118,11 @@ export function dibujarReducida(fuente, lado, orientacion = 1) {
  */
 export async function miniaturaRapida(file, tipo, lado = 220) {
   if (tipo === 'video') return null;
+  if (esHeif(file)) {
+    // La miniatura que lleva dentro, con el navegador o con libheif.
+    const { bitmap } = await abrirHeif(file, lado * 2, { miniatura: true });
+    try { return dibujarReducida(bitmap, lado); } finally { bitmap.close?.(); }
+  }
   let fuente = file, orientacion = 1;
   if (tipo === 'raw') {
     const prev = await vistaPreviaRaw(file);

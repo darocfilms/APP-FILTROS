@@ -266,6 +266,27 @@ nombre de un preset) todos son del campo.
 
 La foto encajada deja aire alrededor, como en cualquier revelador de escritorio.
 
+#### HEIF: HEIC del iPhone y HIF de Sony
+
+Se importan y se editan los **HEIF**: los **.HEIC** del iPhone y los **.HIF**
+de las Sony (y las Fujifilm), que son de 10 bits y 4:2:2. Safari abre los del
+iPhone por su cuenta; Chrome y Firefox no abren ninguno, y para ellos va dentro
+**libheif** compilado a WebAssembly (con libde265 para el HEVC), en su propio
+worker para no congelar la interfaz. Primero se le pregunta al navegador; si no
+sabe, libheif.
+
+- Para las **miniaturas** —el menú de importación y la biblioteca— no se
+  descodifica la foto entera: casi todos los HEIF llevan dentro una pequeña, y
+  se usa ésa. libheif no la ofrece en esta compilación, así que se le enseña
+  como si fuera la imagen principal (se reescribe ese número en una copia del
+  archivo, sin mover ni un byte). Una tarjeta llena de HIF se ve al momento.
+- En el laboratorio y al exportar se descodifica entera, en el worker, y se
+  reduce allí mismo al tamaño que hace falta.
+- Un HIF sale a **8 bits**, como una foto normal: el revelado de una foto
+  trabaja en 8 bits. (Los RAW, en cambio, entran en coma flotante.)
+- El selector de archivos acepta .heic, .heif y .hif. Con HEIC en la lista, el
+  iPhone entrega sus fotos tal cual en vez de convertirlas a JPEG.
+
 #### RAW de Sony
 
 Los **ARW** (y los antiguos SR2/SRF) se importan como cualquier foto y se
@@ -515,6 +536,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Las dos barras verticales: que la línea sea fina pero su área táctil llegue a 46 px, que arrastrar hacia arriba suba de verdad la exposición, que la barra siga al pellizco y que sin gran angular no baje de 1×. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome — ni a la propia app nativa, que también es una vista web sin «Safari» en su user agent y sin la excepción bloquearía su cámara |
 | `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 | `raw` | Con un ARW real de una Sony FX30: que se reconozca por nombre o por tipo, que la conversión a media precisión sea exacta en los 63 488 float16 finitos, que entre en la biblioteca como `.arw` y no como `.bin`, que el laboratorio lo revele como luz lineal en una textura flotante, que a +1,5 EV no queme lo que la misma imagen en 8 bits sí quema, que a +3 EV sus sombras tengan más del doble de tonos, que girarlo no cueste nada de eso, el antes/después, el selector de emulsión, el visor y la exportación a 6240×4168. El ARW (31 MB) se descarga la primera vez; sin red, la suite se omite avisando |
+| `heif` | Con dos muestras pequeñas que van en el repositorio, hechas con libheif + x265 con la estructura de las de verdad —un HEIC de 8 bits 4:2:0 como el del iPhone y un HIF de 10 bits 4:2:2 como el de una Sony, cada uno con su miniatura dentro— y un patrón de cuatro colores conocidos: que Chromium no los abre por su cuenta (es lo que hay que probar), que la miniatura sale de la que lleva dentro, que la foto entera sale a su tamaño con los colores exactos y en su sitio (±3 de 255, también el 4:2:2 de 10 bits), que entran por el menú con su miniatura y su tamaño, que un .HIF sin tipo queda como image/heif, que el visor y el laboratorio los abren con los mismos colores, que exportar con un ajuste sale a 3000×2000 y que un solo .HIF va directo al laboratorio |
 | `import` | Una «tarjeta de memoria» con dos carpetas, un ARW de verdad, las copias «._» del Mac y un XML de Sony: entran las siete fotos agrupadas por carpeta, se ignora lo demás y el RAW se ve por su vista previa incrustada. Marcar una a una, un tramo con Mayúsculas, todas y ninguna. Con la carpeta de Imágenes elegida (el selector se simula con una carpeta del sistema de archivos privado, que tiene la misma interfaz), los originales quedan en Laboratorio/<subcarpeta>/ con su nombre, y el visor los abre desde allí; la miniatura del RAW entra provisional y se rehace con el tamaño del sensor (6240×4168); volver a meter la tarjeta avisa de las ya importadas. Y el laboratorio: la tira abre fotos y ← → pasa de una a otra; doble clic amplía al 100 % con la foto entera (4800 px), arrastrar y el trackpad la mueven, editar ampliada sigue sobre la foto entera, doble clic, Z y Esc; una foto pequeña se dobla; mantener pulsado sigue enseñando el antes. Una sola foto va directa al laboratorio |
 | `desktop` | El Mac: que en una ventana de 1440×900 los ajustes vayan en una columna a la derecha sin tapar la foto, que tocar la pestaña activa no los esconda, y que en el iPhone todo siga como estaba. Lo editado en el laboratorio —emulsión, exposición y un giro— tiene que aparecer en la miniatura, en el visor y **en el archivo que se guarda**, abierto y medido: a 1200×900 y más claro, mientras *Guardar el original* entrega los bytes de entrada. Copiar lleva el color y no el encuadre; pegar en las tres fotos pregunta, respeta el recorte y el espejo que tenía cada una y rehace sus miniaturas; la foto abierta en el laboratorio recoge lo pegado; ⌘Z, ⇧⌘Z, ⌘C y ⌘V, también con un deslizador en foco; *Quitar los ajustes* devuelve el original a la cuadrícula. Y que al volver del laboratorio no salgan casillas repetidas |
 | `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
@@ -665,6 +687,10 @@ js/
                              RAW provisionales y su refinado
     preview.js               qué se puede importar, vista previa de un RAW,
                              carpetas soltadas
+    heif.js                  HEIC y HIF: el navegador o libheif en un worker
+  vendor/
+    libraw/                  LibRaw en WebAssembly (RAW)
+    libheif/                 libheif + libde265 en WebAssembly (HEIF)
   ui/
     controls.js curve.js wheel.js crop.js histogram.js filmpicker.js panels.js
     viewer.js                visor a pantalla completa
@@ -711,6 +737,9 @@ y la exportación: sólo cambia el tamaño del lienzo.
 
 - `getUserMedia` no da acceso a la resolución completa del sensor ni al RAW:
   es un límite de iOS, no de la aplicación. Se pide la máxima disponible.
+- Los HIF de Sony grabados en **HLG** (el ajuste «Imágenes fijas HLG») se
+  abren como si fueran SDR: se ven planos y lavados, porque no se convierte la
+  curva HLG. Los normales, sí bien.
 - Los RAW que se abren son los de **Sony**. LibRaw sabe leer los de otras
   marcas, pero sólo los ARW se han probado con un archivo real; abrir los demás
   es cambiar una línea en `js/store/raw.js`, y probarlos, otra cosa.

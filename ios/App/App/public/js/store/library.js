@@ -28,6 +28,7 @@
  */
 
 import { isRawFile, rawExtension, decodeRaw, RAW_MIME } from './raw.js';
+import { esHeif, abrirHeif } from './heif.js';
 
 const DB_NAME = 'filtros-lab';
 const DB_VERSION = 1;
@@ -357,7 +358,8 @@ class Library extends EventTarget {
       id,
       name,
       kind: meta.kind || (blob.type.startsWith('video') ? 'video' : 'photo'),
-      mime: raw ? (blob.type || RAW_MIME) : blob.type,
+      // Un .HIF de Sony llega sin tipo: se le pone, para que nada lo tome por binario.
+      mime: raw ? (blob.type || RAW_MIME) : (blob.type || (esHeif(blob) ? 'image/heif' : '')),
       raw,
       size: blob.size,
       width: meta.width || 0,
@@ -578,6 +580,9 @@ export async function decodeScaled(file, maxSize) {
   // Un RAW no lo sabe abrir el navegador: va a LibRaw, y vuelve como luz lineal
   // en `bitmap`, con la misma forma que el resto para que nadie más distinga.
   if (isRawFile(file)) return decodeRaw(file, maxSize);
+  // Un HEIF (HEIC, HIF) lo abre Safari y Chrome no: abrirHeif decide. Para
+  // miniaturas usa la que el archivo trae dentro.
+  if (esHeif(file)) return abrirHeif(file, maxSize, { miniatura: maxSize <= 640 });
   const probe = await createImageBitmap(file);
   const { width, height } = probe;
   if (Math.max(width, height) <= maxSize) {

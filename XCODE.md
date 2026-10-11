@@ -62,7 +62,9 @@ Lo que no se puede probar sin un iPhone de verdad:
    compartir, elige *Guardar imagen*. Si sale la imagen con *"Mantén pulsada…"*,
    mantenla pulsada y elige *Añadir a Fotos*.
 4. **Vídeo** — graba unos segundos y comprueba que tiene sonido.
-5. **RAW de Sony** — importa un `.ARW` desde **Archivos** (no desde la
+5. **HIF de Sony** — importa un `.HIF` desde **Archivos** y ábrelo en el
+   laboratorio: arriba tiene que decir *HIF*.
+6. **RAW de Sony** — importa un `.ARW` desde **Archivos** (no desde la
    fototeca, que suele dar un JPEG) y ábrelo en el laboratorio: arriba tiene que
    decir *RAW* y el modelo de la cámara.
 

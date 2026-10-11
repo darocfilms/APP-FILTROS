@@ -550,7 +550,8 @@ export class LabView {
       // Un RAW se dice como tal, con la cámara: es lo que explica por qué abre
       // más plano que el JPEG de la cámara y por qué aguanta más ajuste.
       const esRaw = !!bitmap.linear;
-      this.title.textContent = esRaw ? 'RAW' : item.kind === 'photo' ? 'Foto' : 'Vídeo';
+      this.title.textContent = esRaw ? 'RAW' : /\.hif$/i.test(item.fuente?.nombre || item.name) ? 'HIF'
+        : /\.hei[cf]$/i.test(item.name) ? 'HEIF' : item.kind === 'photo' ? 'Foto' : 'Vídeo';
       this.subtitle.textContent = (esRaw && bitmap.info?.camara ? bitmap.info.camara + ' · ' : '')
         + `${sourceWidth}×${sourceHeight} · ${formatBytes(item.size)}`
         + (scaled ? ` · proxy ${bitmap.width}×${bitmap.height}` : '');
