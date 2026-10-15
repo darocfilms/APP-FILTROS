@@ -26,6 +26,7 @@ const SUITES = [
   ['import', 'menú de importación, carpetas y discos, carpeta de Imágenes, tira y lupa'],
   ['heif', 'HEIC del iPhone y HIF de Sony: libheif, miniatura incorporada, colores exactos'],
   ['raw', 'RAW de Sony: importar, revelar como luz, exportar a tamaño de sensor'],
+  ['alojada', 'cargada desde otra página (la app de Floot): workers, biblioteca, sin service worker'],
   ['ios', 'el proyecto de Xcode lleva la última versión y sus permisos'],
 ];
 

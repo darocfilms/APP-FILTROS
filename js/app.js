@@ -3,6 +3,9 @@
  * archivos y arranque.
  */
 
+// El primero: si otra página (la app de Floot) carga estos módulos, prepara
+// los workers antes de que nadie cree uno.
+import { alojada } from './utils/alojada.js';
 import { el, clear, toast, haptic } from './utils/dom.js';
 import { saveFiles, canShareFiles, isIOS, isNativeApp } from './utils/share.js';
 import { library } from './store/library.js';
@@ -283,6 +286,9 @@ class App {
     // En la app nativa los archivos ya van dentro del paquete: no hay red de la
     // que protegerse, y el esquema propio de la app no admite service workers.
     if (isNativeApp()) return;
+    // Cargada desde otra página (la app de Floot), el service worker sería de
+    // ese otro sitio: ni se puede registrar ni le corresponde a Laboratorio.
+    if (alojada) return;
     if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
     try {
       await navigator.serviceWorker.register('./sw.js', { scope: './' });

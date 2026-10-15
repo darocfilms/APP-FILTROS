@@ -10,12 +10,15 @@
  * Respuesta: { id, width, height, data (ArrayBuffer RGBA), srcW, srcH, deMiniatura } | { id, error }
  */
 /* global libheif */
-importScripts('./libheif.js');
+// Cargado desde otra página (js/utils/alojada.js), este worker vive en un blob
+// y las rutas relativas ya no apuntan a esta carpeta: `__BASE__` dice cuál es.
+const BASE = self.__BASE__ || new URL('./', self.location.href).href;
+importScripts(BASE + 'libheif.js');
 
 let mod = null;
 const listo = new Promise((resolve, reject) => {
   try {
-    mod = libheif({ onRuntimeInitialized: () => resolve() });
+    mod = libheif({ locateFile: (archivo) => BASE + archivo, onRuntimeInitialized: () => resolve() });
   } catch (err) {
     reject(err);
   }

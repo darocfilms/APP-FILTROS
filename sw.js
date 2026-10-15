@@ -44,6 +44,7 @@ const SHELL = [
   './js/ui/filmstrip.js',
   './js/ui/importer.js',
   './js/ui/wheel.js',
+  './js/utils/alojada.js',
   './js/utils/dom.js',
   './js/utils/share.js',
   './js/views/camera.js',
