@@ -41,6 +41,24 @@ certificados).
 Mac, se firma con un Apple ID y se instala en el iPhone sin instalar nada más.
 Los pasos, en **[XCODE.md](XCODE.md)**.
 
+### App nativa con Floot (iPhone y Android, sin Mac)
+
+Floot compila y sube la app a las tiendas sin Xcode. Su proyecto
+(«Laboratorio», en floot.com) es sólo una cáscara: una página que enlaza
+`styles/app.css` e importa `js/app.js` **desde GitHub Pages**, y los monta en un
+`#app` que React no toca. Por eso:
+
+- Cada empuje a `main` llega a la app nativa al volver a abrirla, sin pasar por
+  la tienda. En Floot sólo se toca la cáscara, el icono, los permisos y los
+  datos de la tienda.
+- Hace falta conexión para abrirla (si no la hay, lo dice y ofrece reintentar).
+  Las fotos de la biblioteca se guardan en el teléfono igualmente.
+- Floot no admite WebAssembly ni workers dentro del proyecto, y el navegador no
+  deja crear un worker con la URL de otro origen. `js/utils/alojada.js` lo
+  resuelve: si la app se importa desde otra página, envuelve los workers de
+  LibRaw y libheif en un worker de blob que importa el script verdadero, y no
+  registra el service worker. Lo comprueba la suite `alojada`.
+
 ### Publicarla en internet
 
 Ya está publicada en GitHub Pages: cada empuje a `main` reconstruye y despliega.
@@ -539,6 +557,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `heif` | Con dos muestras pequeñas que van en el repositorio, hechas con libheif + x265 con la estructura de las de verdad —un HEIC de 8 bits 4:2:0 como el del iPhone y un HIF de 10 bits 4:2:2 como el de una Sony, cada uno con su miniatura dentro— y un patrón de cuatro colores conocidos: que Chromium no los abre por su cuenta (es lo que hay que probar), que la miniatura sale de la que lleva dentro, que la foto entera sale a su tamaño con los colores exactos y en su sitio (±3 de 255, también el 4:2:2 de 10 bits), que entran por el menú con su miniatura y su tamaño, que un .HIF sin tipo queda como image/heif, que el visor y el laboratorio los abren con los mismos colores, que exportar con un ajuste sale a 3000×2000 y que un solo .HIF va directo al laboratorio |
 | `import` | Una «tarjeta de memoria» con dos carpetas, un ARW de verdad, las copias «._» del Mac y un XML de Sony: entran las siete fotos agrupadas por carpeta, se ignora lo demás y el RAW se ve por su vista previa incrustada. Marcar una a una, un tramo con Mayúsculas, todas y ninguna. Con la carpeta de Imágenes elegida (el selector se simula con una carpeta del sistema de archivos privado, que tiene la misma interfaz), los originales quedan en Laboratorio/<subcarpeta>/ con su nombre, y el visor los abre desde allí; la miniatura del RAW entra provisional y se rehace con el tamaño del sensor (6240×4168); volver a meter la tarjeta avisa de las ya importadas. Y el laboratorio: la tira abre fotos y ← → pasa de una a otra; doble clic amplía al 100 % con la foto entera (4800 px), arrastrar y el trackpad la mueven, editar ampliada sigue sobre la foto entera, doble clic, Z y Esc; una foto pequeña se dobla; mantener pulsado sigue enseñando el antes. Una sola foto va directa al laboratorio |
 | `desktop` | El Mac: que en una ventana de 1440×900 los ajustes vayan en una columna a la derecha sin tapar la foto, que tocar la pestaña activa no los esconda, y que en el iPhone todo siga como estaba. Lo editado en el laboratorio —emulsión, exposición y un giro— tiene que aparecer en la miniatura, en el visor y **en el archivo que se guarda**, abierto y medido: a 1200×900 y más claro, mientras *Guardar el original* entrega los bytes de entrada. Copiar lleva el color y no el encuadre; pegar en las tres fotos pregunta, respeta el recorte y el espejo que tenía cada una y rehace sus miniaturas; la foto abierta en el laboratorio recoge lo pegado; ⌘Z, ⇧⌘Z, ⌘C y ⌘V, también con un deslizador en foco; *Quitar los ajustes* devuelve el original a la cuadrícula. Y que al volver del laboratorio no salgan casillas repetidas |
+| `alojada` | La app importada desde la página de otro origen, como la carga Floot (dos servidores, uno con el CORS de GitHub Pages): que arranca con su hoja de estilos, que no registra service worker en la anfitriona, que un HIF de Sony y un ARW se descodifican en sus workers —sin `alojada.js` el navegador se niega a crearlos—, y que una foto importada queda en la biblioteca de la anfitriona, sigue tras recargar y se abre en el laboratorio |
 | `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
