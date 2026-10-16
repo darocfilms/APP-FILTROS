@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Laboratorio · Cámara y revelado con ciencia de color</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Cámara con emulsiones fotográficas reales y laboratorio de revelado. Funciona sin conexión y guarda en una carpeta local del dispositivo.">
+<meta name="theme-color" content="#08090b">
+<meta name="color-scheme" content="dark">
+
+<!-- Pantalla de inicio de iOS: sin esto no hay pantalla completa ni persistencia real -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Laboratorio">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+<div id="app">
+  <div class="boot">
+    <div class="boot__mark" aria-hidden="true"></div>
+    <p class="boot__text">Cargando el laboratorio…</p>
+  </div>
+</div>
+<noscript>
+  <div class="fatal">
+    <h1>Hace falta JavaScript</h1>
+    <p>Toda la ciencia de color se ejecuta en el dispositivo y necesita JavaScript activado.</p>
+  </div>
+</noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
