@@ -68,7 +68,16 @@ const PAGINA = `<!doctype html>
   app.id = 'app';
   document.getElementById('raiz-react').append(app);
   window.__base = BASE;
-  window.__carga = import(BASE + 'js/app.js').then(() => 'ok', (e) => 'error: ' + e.message);
+  // Con <script type="module"> y no con import(): el empaquetador de Floot
+  // intercepta import() y busca el módulo dentro del proyecto.
+  window.__carga = new Promise((resolve) => {
+    const js = document.createElement('script');
+    js.type = 'module';
+    js.src = BASE + 'js/app.js';
+    js.onload = () => resolve('ok');
+    js.onerror = () => resolve('error al descargar ' + js.src);
+    document.head.append(js);
+  });
 </script></body></html>`;
 const servHost = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }).end(PAGINA);
