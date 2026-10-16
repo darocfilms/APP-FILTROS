@@ -12,6 +12,7 @@ import { library } from './store/library.js';
 import { importarArchivo, refinarMiniaturas } from './store/importar.js';
 import { archivosSoltados } from './store/preview.js';
 import { Importer, ACEPTA } from './ui/importer.js';
+import { Conmutador } from './ui/conmutador.js';
 import { CameraView } from './views/camera.js';
 import { LabView } from './views/lab.js';
 import { LibraryView } from './views/library.js';
@@ -23,11 +24,6 @@ function formatSize(n) {
   return (n / 1024 ** i).toFixed(i === 0 ? 0 : 1) + ' ' + u[i];
 }
 
-const TABS = [
-  { id: 'camera', label: 'Cámara', icon: '◉' },
-  { id: 'lab', label: 'Laboratorio', icon: '◑' },
-  { id: 'library', label: 'Biblioteca', icon: '▦' },
-];
 
 class App {
   constructor() {
@@ -48,13 +44,10 @@ class App {
     this.stack = el('main', { class: 'stack' },
       this.views.camera.root, this.views.lab.root, this.views.library.root);
 
-    this.tabbar = el('nav', { class: 'tabbar', role: 'tablist', 'aria-label': 'Secciones' },
-      TABS.map((t) => el('button', {
-        type: 'button', class: 'tabbar__tab', role: 'tab', dataset: { tab: t.id },
-        onclick: () => this.go(t.id),
-      },
-        el('span', { class: 'tabbar__icon', text: t.icon }),
-        el('span', { class: 'tabbar__label', text: t.label }))));
+    // La cápsula de las secciones y sus gestos (deslizar de lado, hacia
+    // arriba o con dos dedos): js/ui/conmutador.js.
+    this.conmutador = new Conmutador(this);
+    this.tabbar = this.conmutador.root;
 
     this.busy = el('div', { class: 'busy', hidden: true, 'aria-live': 'polite' },
       el('div', { class: 'busy__box' },
@@ -70,7 +63,7 @@ class App {
     });
     this.fileInput.addEventListener('change', () => this._handleFiles([...this.fileInput.files]));
 
-    clear(this.mount).append(this.stack, this.tabbar, this.busy, this.fileInput);
+    clear(this.mount).append(this.stack, this.tabbar, this.conmutador.capa, this.busy, this.fileInput);
     this.importer = new Importer(this);
 
     // Volver a la cámara al reactivar la pestaña; soltarla al ocultarla, para
@@ -146,11 +139,7 @@ class App {
     this.current = id;
     for (const v of Object.values(this.views)) v.root.classList.remove('is-active');
     this.views[id].root.classList.add('is-active');
-    for (const t of this.tabbar.children) {
-      const on = t.dataset.tab === id;
-      t.classList.toggle('is-active', on);
-      t.setAttribute('aria-selected', String(on));
-    }
+    this.conmutador.marcar(id);
     this.views[id].activate?.();
     haptic();
   }
@@ -162,6 +151,7 @@ class App {
 
   notifyCapture(item) {
     this._lastCapture = item;
+    this.views.camera.pintarUltima?.();
     if (this.current === 'library') this.views.library.render();
   }
 
@@ -187,9 +177,13 @@ class App {
       el('div', { class: 'sheet__grab' }),
       el('h3', { class: 'sheet__title', text: title }),
       ...content);
+    // Un toque en el fondo cierra la hoja, pero no en el primer instante: el
+    // click que sigue a la pulsación que la abrió (mantener pulsada una foto)
+    // caería justo ahí.
+    const abierta = performance.now();
     const backdrop = el('div', {
       class: 'sheet-backdrop',
-      onclick: (e) => { if (e.target === backdrop) close(); },
+      onclick: (e) => { if (e.target === backdrop && performance.now() - abierta > 450) close(); },
     }, panel);
     document.body.append(backdrop);
     requestAnimationFrame(() => backdrop.classList.add('is-open'));

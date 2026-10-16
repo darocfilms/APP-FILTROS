@@ -43,6 +43,8 @@ const SHELL = [
   './js/ui/viewer.js',
   './js/ui/filmstrip.js',
   './js/ui/importer.js',
+  './js/ui/conmutador.js',
+  './js/ui/iconos.js',
   './js/ui/wheel.js',
   './js/utils/alojada.js',
   './js/utils/dom.js',

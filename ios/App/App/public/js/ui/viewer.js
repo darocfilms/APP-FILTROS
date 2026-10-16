@@ -1,9 +1,10 @@
 /**
  * viewer.js — Visor a pantalla completa de la biblioteca.
  *
- * La cuadrícula sirve para encontrar; esto sirve para MIRAR. Por eso arranca
- * limpio: la foto sobre negro y nada más. Un toque saca los botones que hacen
- * falta —cerrar, editar, guardar, borrar— y otro los quita.
+ * La cuadrícula sirve para encontrar; esto sirve para MIRAR. Es el visor de
+ * Fotos: la foto sobre negro, arriba la fecha y un botón redondo para volver,
+ * y abajo una barra de cristal con guardar, editar y borrar. Un toque quita
+ * todo y otro lo devuelve; deslizar de lado pasa de foto y hacia abajo cierra.
  *
  * Se carga un archivo cada vez y se suelta al pasar al siguiente: con doce
  * megapíxeles por imagen, mantener varios abiertos es la forma más rápida de
@@ -15,16 +16,8 @@ import { library, decodeScaled } from '../store/library.js';
 import { isRawFile } from '../store/raw.js';
 import { esHeif } from '../store/heif.js';
 import { hasEdits, describeEdits, develop } from '../store/develop.js';
+import { ICONO } from './iconos.js';
 
-/**
- * La papelera va dibujada, no como carácter: el glifo de «borrar» de Unicode
- * sale como tres letras diminutas en las fuentes del sistema, y un icono que
- * hay que descifrar no es un icono.
- */
-const PAPELERA = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" '
-  + 'stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" '
-  + 'aria-hidden="true" focusable="false">'
-  + '<path d="M4 6.5h16M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10.5 10v6M13.5 10v6"/></svg>';
 
 export class Viewer {
   /**
@@ -43,32 +36,28 @@ export class Viewer {
 
     this.top = el('div', { class: 'viewer__top' },
       el('button', {
-        type: 'button', class: 'viewer__btn', 'aria-label': 'Cerrar',
+        type: 'button', class: 'viewer__btn glass', 'aria-label': 'Cerrar', html: ICONO.volver,
         onclick: (e) => { e.stopPropagation(); this.close(); },
-      }, '✕'),
+      }),
+      this.caption,
       this.counter);
 
-    // El pie va en dos filas: los datos arriba y los botones abajo. Con tres
-    // acciones, repartirlos a los lados del texto los dejaba del ancho de un
-    // dedo mal puesto.
-    this.actions = el('div', { class: 'viewer__actions' },
-      el('button', {
-        type: 'button', class: 'viewer__action',
-        onclick: (e) => { e.stopPropagation(); this.hooks.onEdit?.(this.current); },
-      }, el('span', { class: 'viewer__icon', text: '◑' }), 'Laboratorio'),
-      el('button', {
-        type: 'button', class: 'viewer__action',
-        onclick: (e) => { e.stopPropagation(); this.hooks.onSave?.(this.current); },
-      }, el('span', { class: 'viewer__icon', text: '⤓' }), 'Guardar'),
-      el('button', {
-        type: 'button', class: 'viewer__action viewer__action--danger',
-        onclick: (e) => { e.stopPropagation(); this.hooks.onDelete?.(this.current); },
-      }, el('span', { class: 'viewer__icon', html: PAPELERA }), 'Borrar'));
+    // Iconos con su nombre en texto oculto. En el documento va primero
+    // Laboratorio (el botón principal), y en pantalla en medio, como «Editar»
+    // en Fotos: guardar a la izquierda y borrar a la derecha.
+    const accion = (nombre, icono, fn, extra = '') => el('button', {
+      type: 'button', class: 'viewer__action' + extra, title: nombre,
+      onclick: (e) => { e.stopPropagation(); fn(this.current); },
+    }, el('span', { class: 'viewer__icon', html: icono }), el('span', { class: 'visually-hidden', text: nombre }));
+    this.actions = el('div', { class: 'viewer__actions', role: 'toolbar', 'aria-label': 'Acciones de la foto' },
+      accion('Laboratorio', ICONO.editar, (it) => this.hooks.onEdit?.(it), ' viewer__action--editar'),
+      accion('Guardar', ICONO.compartir, (it) => this.hooks.onSave?.(it), ' viewer__action--guardar'),
+      accion('Borrar', ICONO.eliminar, (it) => this.hooks.onDelete?.(it), ' viewer__action--danger'));
 
-    this.bottom = el('div', { class: 'viewer__bottom' }, this.caption, this.actions);
+    this.bottom = el('div', { class: 'viewer__bottom' }, this.actions);
 
     this.root = el('div', {
-      class: 'viewer', hidden: true, role: 'dialog', 'aria-modal': 'true',
+      class: 'viewer', hidden: true, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Visor',
       onclick: () => this.toggleChrome(),
     }, this.stage, this.top, this.bottom);
 
@@ -96,6 +85,7 @@ export class Viewer {
     this.root.hidden = true;
     document.body.classList.remove('is-viewing');
     haptic();
+    this.hooks.onClose?.();
   }
 
   toggleChrome() {
@@ -188,18 +178,29 @@ export class Viewer {
       this.url = URL.createObjectURL(vista);
       this.stage.append(item.kind === 'video'
         ? el('video', { class: 'viewer__media', src: this.url, controls: '', playsinline: '', autoplay: '' })
-        : el('img', { class: 'viewer__media', src: this.url, alt: '', decoding: 'async' }));
+        // Sin arrastre nativo: con ratón, arrastrar la imagen la «cogía» y el
+        // gesto de cerrar deslizando hacia abajo no llegaba a soltarse.
+        : el('img', { class: 'viewer__media', src: this.url, alt: '', decoding: 'async', draggable: 'false' }));
     }
 
-    const fecha = new Date(item.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    // Arriba, como en Fotos: la fecha («Hoy», «Ayer» o el día) y debajo la
+    // hora con lo que la distingue (RAW, la emulsión o los ajustes).
+    const cuando = new Date(item.createdAt);
+    const dias = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(cuando).setHours(0, 0, 0, 0)) / 864e5);
+    const dia = dias === 0 ? 'Hoy' : dias === 1 ? 'Ayer'
+      : cuando.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: cuando.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+    const hora = cuando.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
     const look = editada ? describeEdits(item.params) : item.filmName;
     clear(this.caption).append(
-      el('span', { class: 'viewer__dims', text: `${item.width}×${item.height}` }),
-      el('span', { class: 'viewer__meta', text: (item.raw ? 'RAW · ' : '') + (look ? look + ' · ' : '') + fecha }));
+      el('span', { class: 'viewer__dims', text: dia }),
+      el('span', { class: 'viewer__meta', text: [hora, item.raw ? 'RAW' : `${item.width}×${item.height}`, look].filter(Boolean).join(' · ') }));
     this.counter.textContent = this.items.length > 1 ? `${this.index + 1} / ${this.items.length}` : '';
   }
 
-  /** Deslizar en horizontal pasa de una foto a otra, como cualquier galería. */
+  /**
+   * Deslizar en horizontal pasa de una foto a otra, como cualquier galería, y
+   * hacia abajo cierra el visor, como en Fotos.
+   */
   _bindSwipe() {
     let x0 = null, y0 = null;
     this.stage.addEventListener('pointerdown', (ev) => { x0 = ev.clientX; y0 = ev.clientY; });
@@ -208,12 +209,24 @@ export class Viewer {
       const dx = ev.clientX - x0;
       const dy = ev.clientY - y0;
       x0 = null;
-      // Sólo si el gesto es claramente horizontal: en vertical puede ser el
-      // arrastre para cerrar, o simplemente un toque con la mano poco firme.
+      // Sólo si el gesto es claramente de un lado: con la mano poco firme un
+      // toque se mueve unos píxeles y no debe cambiar nada.
       if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6) {
         ev.stopPropagation();
+        this._swallowClick();
         this.go(dx < 0 ? 1 : -1);
+      } else if (dy > 90 && dy > Math.abs(dx) * 1.4) {
+        ev.stopPropagation();
+        this._swallowClick();
+        this.close();
       }
     });
+  }
+
+  /** El click que sigue a un deslizamiento no es un toque: no cambia los mandos. */
+  _swallowClick() {
+    const tragar = (e) => { e.stopPropagation(); e.preventDefault(); };
+    this.root.addEventListener('click', tragar, { capture: true, once: true });
+    setTimeout(() => this.root.removeEventListener('click', tragar, { capture: true }), 400);
   }
 }

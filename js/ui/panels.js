@@ -6,7 +6,7 @@
 
 import { el, clear, haptic, esEscritorio } from '../utils/dom.js';
 import {
-  PANELS, HSL_BANDS, ASPECTS, getPath, setPath, panelIsModified,
+  PANELS, HSL_BANDS, ASPECTS, getPath, setPath, panelIsModified, formatValue,
 } from '../data/params.js';
 import { makeSlider, makeSegmented, makeSwitch } from './controls.js';
 import { CurveEditor } from './curve.js';
@@ -28,6 +28,8 @@ export class PanelStack {
     this.hooks = hooks;
     this.active = 'film';
     this.sliders = new Map();
+    /** El deslizador elegido en cada panel de círculos, por panel. */
+    this.elegido = {};
     this.bodies = new Map();
 
     this.collapsed = false;
@@ -170,15 +172,23 @@ export class PanelStack {
     if (panel.custom === 'gradePanel') wrap.append(this._gradePanel());
     if (panel.custom === 'geometryPanel') wrap.append(this._geometryPanel());
 
-    for (const ctrl of panel.controls) {
+    const sliders = panel.controls.map((ctrl) => {
       const slider = makeSlider(ctrl, getPath(this.params, ctrl.path), (v, committed) => {
         setPath(this.params, ctrl.path, v);
         this.onChange(committed);
         this.refreshBadges();
       });
       this.sliders.set(ctrl.path, slider);
-      wrap.append(slider);
+      return slider;
+    });
+    // Varios deslizadores sin interfaz propia: círculos y regla, como Fotos.
+    if (!panel.custom || panel.custom === 'monoToggle') {
+      if (panel.controls.length > 1) {
+        wrap.classList.add('panel--rueda');
+        wrap.append(this._circulos(panel, sliders));
+      }
     }
+    wrap.append(...sliders);
 
     if (panel.custom === 'monoToggle') wrap.append(this._monoPanel());
 
@@ -189,6 +199,49 @@ export class PanelStack {
       })));
 
     return wrap;
+  }
+
+  /**
+   * Los ajustes de un panel como los de Fotos: una fila de círculos, uno por
+   * deslizador, con su valor dentro y un aro amarillo que dice cuánto se ha
+   * movido; debajo, la regla del que esté elegido. En el teléfono sólo se ve
+   * esa regla —la pantalla es de la foto—; en la columna del Mac caben todos
+   * y los círculos sobran (lo decide la hoja de estilos).
+   */
+  _circulos(panel, sliders) {
+    const elegir = (i, avisar = true) => {
+      this.elegido[panel.id] = i;
+      sliders.forEach((sl, j) => sl.classList.toggle('is-elegido', j === i));
+      botones.forEach((b, j) => {
+        b.classList.toggle('is-elegida', j === i);
+        b.setAttribute('aria-pressed', String(j === i));
+      });
+      if (avisar) {
+        haptic();
+        botones[i].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      }
+    };
+    const botones = panel.controls.map((ctrl, i) => {
+      const aro = el('span', { class: 'herramienta__aro' });
+      const valor = el('span', { class: 'herramienta__valor' });
+      const b = el('button', {
+        type: 'button', class: 'herramienta', 'aria-label': ctrl.label, dataset: { path: ctrl.path },
+        onclick: () => elegir(i),
+        // Doble toque en el círculo: vuelve al valor neutro, como en la etiqueta.
+        ondblclick: () => sliders[i].querySelector('.slider__head')?.dispatchEvent(new MouseEvent('dblclick')),
+      }, el('span', { class: 'herramienta__circulo' }, aro, valor), el('span', { class: 'herramienta__nombre', text: ctrl.label }));
+      sliders[i].alPintar = (v, pos, origin) => {
+        aro.style.setProperty('--ini', String(Math.min(pos, origin) - origin));
+        aro.style.setProperty('--largo', String(Math.abs(pos - origin)));
+        // Sin unidad: dentro del círculo no cabe, y el nombre ya dice qué es.
+        valor.textContent = formatValue(ctrl, v).replace(/\s*(%|EV|K|×)$/u, '');
+        b.classList.toggle('is-modified', Math.abs(v - ctrl.def) > 1e-6);
+      };
+      sliders[i].repintar();
+      return b;
+    });
+    elegir(Math.min(this.elegido[panel.id] ?? 0, botones.length - 1), false);
+    return el('div', { class: 'herramientas', role: 'toolbar', 'aria-label': panel.label }, botones);
   }
 
   /* ───────────────────────────── Emulsión ───────────────────────────── */

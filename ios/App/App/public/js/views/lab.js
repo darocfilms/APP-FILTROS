@@ -19,15 +19,11 @@ import { Filmstrip } from '../ui/filmstrip.js';
 import { timestampName, isIOS } from '../utils/share.js';
 import { isRawFile } from '../store/raw.js';
 import { copySettings, copiedSettings, describeEdits, colorPart, EVENTO_PORTAPAPELES } from '../store/develop.js';
+import { ICONO } from '../ui/iconos.js';
 
 const PRESET_KEY = 'filtros.presets.v1';
 const TIRA_KEY = 'lab.tira.v1';
 
-/** Icono de la tira: tres fotogramas en fila, como un trozo de película. */
-const TIRA_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" '
-  + 'stroke-width="1.8" stroke-linejoin="round" aria-hidden="true" focusable="false">'
-  + '<rect x="2.5" y="6" width="5.5" height="12" rx="1"/><rect x="9.25" y="6" width="5.5" height="12" rx="1"/>'
-  + '<rect x="16" y="6" width="5.5" height="12" rx="1"/></svg>';
 const HISTORY_MAX = 60;
 
 const EXPORT_SIZES = [
@@ -79,10 +75,11 @@ export class LabView {
     this.title = el('span', { class: 'lab__title', text: 'Laboratorio' });
     this.subtitle = el('span', { class: 'lab__subtitle' });
 
-    this.undoBtn = this._iconBtn('↺', 'Deshacer', () => this.undo());
-    this.redoBtn = this._iconBtn('↻', 'Rehacer', () => this.redo());
-    this.compareBtn = this._iconBtn('◐', 'Ver el antes', () => this.toggleCompare());
-    this.histBtn = this._iconBtn('▟', 'Histograma', (e) => {
+    const icono = (svg) => el('span', { class: 'iconbtn__svg', html: svg });
+    this.undoBtn = this._iconBtn(icono(ICONO.deshacer), 'Deshacer', () => this.undo());
+    this.redoBtn = this._iconBtn(icono(ICONO.rehacer), 'Rehacer', () => this.redo());
+    this.compareBtn = this._iconBtn(icono(ICONO.comparar), 'Ver el antes', () => this.toggleCompare());
+    this.histBtn = this._iconBtn(icono(ICONO.histograma), 'Histograma', (e) => {
       const on = this.histogram.root.classList.toggle('is-visible');
       e.currentTarget.classList.toggle('is-active', on);
       this._render();
@@ -120,12 +117,18 @@ export class LabView {
 
     const root = el('section', { class: 'view view--lab', id: 'view-lab' },
       this.stage,
+      // Arriba, la barra de edición de Fotos: volver a la izquierda, los mandos
+      // en una cápsula de cristal en medio y exportar, en amarillo, a la derecha.
       el('header', { class: 'lab__bar' },
+        el('button', {
+          type: 'button', class: 'iconbtn glass lab__volver', 'aria-label': 'Volver a la biblioteca', title: 'Volver a la biblioteca',
+          onclick: () => { haptic(); this.app.go('library'); },
+        }, icono(ICONO.volver)),
         el('div', { class: 'lab__id' }, this.title, this.subtitle),
-        el('div', { class: 'lab__actions' },
+        el('div', { class: 'lab__actions glass' },
           this.undoBtn, this.redoBtn, this.compareBtn, this.histBtn,
-          this.stripBtn = this._iconBtn(el('span', { class: 'iconbtn__svg', html: TIRA_SVG }), 'Tira de fotos', () => this.toggleStrip()),
-          this._iconBtn('⤓', 'Presets', () => this._openPresets()),
+          this.stripBtn = this._iconBtn(icono(ICONO.tira), 'Tira de fotos', () => this.toggleStrip()),
+          this._iconBtn(icono(ICONO.presets), 'Presets', () => this._openPresets()),
           // En el Mac sobra sitio en la barra: copiar y pegar a la vista. En el
           // teléfono no caben, y están dentro de Presets.
           el('button', {
@@ -136,11 +139,11 @@ export class LabView {
             type: 'button', class: 'btn btn--ghost lab__clip', text: 'Pegar',
             title: 'Pegar los ajustes copiados (⌘V)', disabled: !copiedSettings(),
             onclick: () => this.pasteAdjustments(),
-          }),
-          el('button', {
-            type: 'button', class: 'btn btn--primary lab__export',
-            onclick: () => this._openExport(),
-          }, 'Exportar'))),
+          })),
+        el('button', {
+          type: 'button', class: 'lab__export', title: 'Exportar',
+          onclick: () => this._openExport(),
+        }, icono(ICONO.compartir), el('span', { class: 'lab__exporttxt', text: 'Exportar' }))),
       this.panels.root);
 
     // El hueco de la imagen se calcula con el alto real de los ajustes: al

@@ -11,6 +11,7 @@ import { library, formatBytes } from '../store/library.js';
 import { timestampName } from '../utils/share.js';
 import { getFilm } from '../data/films.js';
 import { Viewer } from '../ui/viewer.js';
+import { ICONO } from '../ui/iconos.js';
 import {
   hasEdits, hasColorEdits, describeEdits, fileForSaving,
   copySettings, copiedSettings, pasteInto, clearEdits, EVENTO_PORTAPAPELES,
@@ -27,8 +28,10 @@ export class LibraryView {
     this.selecting = false;
 
     this.grid = el('div', { class: 'gallery' });
+    this._columnas();
     this.empty = el('div', { class: 'gallery__empty' },
-      el('p', { text: 'Todavía no hay nada guardado.' }),
+      el('span', { class: 'gallery__emptyicon', html: ICONO.biblioteca }),
+      el('p', { class: 'gallery__emptytitle', text: 'Todavía no hay nada guardado' }),
       el('p', { class: 'muted', text: 'Lo que captures con la cámara o importes desde el dispositivo se guardará aquí, en una carpeta local que sobrevive al cierre del navegador.' }),
       el('div', { class: 'gallery__emptyactions' },
         el('button', { type: 'button', class: 'btn btn--primary', text: 'Abrir la cámara', onclick: () => this.app.go('camera') }),
@@ -38,23 +41,36 @@ export class LibraryView {
     this.usageText = el('span', { class: 'usage__text' });
     this.storageNote = el('span', { class: 'usage__mode' });
 
-    this.filterRow = el('div', { class: 'chiprow chiprow--filters' },
+    // Todo · Fotos · Vídeos, como el control segmentado de Fotos.
+    this.filterRow = el('div', { class: 'chiprow chiprow--filters', role: 'tablist', 'aria-label': 'Mostrar' },
       ...[['all', 'Todo'], ['photo', 'Fotos'], ['video', 'Vídeos']].map(([k, label]) =>
         el('button', {
           type: 'button', class: 'chip' + (k === this.filter ? ' is-active' : ''),
-          dataset: { value: k },
+          role: 'tab', dataset: { value: k },
           onclick: () => { this.filter = k; this._paintFilters(); this.render(); haptic(); },
         }, label)));
 
+    this.subtitle = el('span', { class: 'lib__sub' });
+    this.totales = el('p', { class: 'lib__totales' });
+
     this.root = el('section', { class: 'view view--library', id: 'view-library' },
+      // Título grande y botones de cristal arriba, como en Fotos. La cabecera
+      // se queda pegada arriba con un degradado que deja ver la cuadrícula.
       el('header', { class: 'lib__bar' },
-        el('h2', { class: 'lib__title', text: 'Biblioteca' }),
-        el('div', { class: 'lib__baractions' },
-          this.selectBtn = el('button', {
-            type: 'button', class: 'btn btn--ghost', text: 'Seleccionar',
-            onclick: () => this.setSelecting(!this.selecting),
-          }),
-          el('button', { type: 'button', class: 'btn btn--ghost', text: 'Importar', onclick: () => this.app.openImporter() }))),
+        el('div', { class: 'lib__fila' },
+          el('div', { class: 'lib__cabeza' },
+            el('h2', { class: 'lib__title', text: 'Biblioteca' }),
+            this.subtitle),
+          el('div', { class: 'lib__baractions' },
+            this.selectBtn = el('button', {
+              type: 'button', class: 'btn glass', text: 'Seleccionar',
+              onclick: () => this.setSelecting(!this.selecting),
+            }),
+            el('button', {
+              type: 'button', class: 'btn glass btn--icono', 'aria-label': 'Importar', title: 'Importar fotos, carpetas o discos',
+              onclick: () => this.app.openImporter(),
+            }, el('span', { class: 'btn__icono', html: ICONO.anadir }), el('span', { class: 'visually-hidden', text: 'Importar' })))),
+        this.filterRow),
       // Fotos guardadas en una carpeta de Imágenes cuyo permiso caducó: sin
       // él no se pueden abrir, y el navegador sólo lo vuelve a dar tras un toque.
       this.avisoCarpeta = el('div', { class: 'lib__aviso', hidden: true },
@@ -63,21 +79,25 @@ export class LibraryView {
           type: 'button', class: 'btn btn--primary', text: 'Dar acceso',
           onclick: async () => { if (await library.pedirPermisoCarpeta()) { toast('Acceso concedido'); this.render(); } },
         })),
-      el('div', { class: 'usage' },
-        el('div', { class: 'usage__track' }, this.usageBar),
-        el('div', { class: 'usage__row' }, this.usageText, this.storageNote)),
-      this.filterRow,
       this.grid,
       this.empty,
       this.selectionBar = this._buildSelectionBar(),
-      el('div', { class: 'lib__foot' },
+      // Al final de la cuadrícula, como Fotos: cuántas hay y dónde viven.
+      el('footer', { class: 'lib__foot' },
+        this.totales,
+        el('div', { class: 'usage' },
+          el('div', { class: 'usage__track' }, this.usageBar),
+          el('div', { class: 'usage__row' }, this.usageText, this.storageNote)),
         el('button', {
           type: 'button', class: 'linkbtn linkbtn--danger', text: 'Vaciar la carpeta local',
           onclick: () => this._clearAll(),
         })));
 
     this.viewer = new Viewer({
-      onEdit: (item) => { this.viewer.close(); this.app.openInLab(item); },
+      onEdit: (item) => { this._editando = true; this.viewer.close(); this._editando = false; this.app.openInLab(item); },
+      // Abierto sobre la cámara (la miniatura de la última foto), al cerrarlo
+      // la cámara vuelve a encenderse donde se dejó.
+      onClose: () => { if (this.app.current === 'camera' && !this._editando) this.app.views.camera.activate(); },
       onSave: (item) => { this.viewer.close(); this._download(item); },
       onDelete: (item) => this._deleteFromViewer(item),
     });
@@ -117,33 +137,33 @@ export class LibraryView {
 
   /* ───────────────────────── Selección múltiple ─────────────────────── */
 
+  /**
+   * Barra de selección: la de Fotos, una cápsula de cristal en el sitio de la
+   * de secciones. Guardar a la izquierda, el recuento en medio y pegar ajustes
+   * y eliminar a la derecha. Los botones son iconos; su nombre va en texto
+   * oculto para quien no los ve.
+   */
   _buildSelectionBar() {
     this.selCount = el('span', { class: 'selbar__count' });
+    const boton = (texto, icono, onclick, extra = '') => el('button', {
+      type: 'button', class: 'btn selbar__btn' + extra, title: texto, onclick,
+    }, el('span', { class: 'btn__icono', html: icono }), el('span', { class: 'visually-hidden', text: texto }));
     return el('div', { class: 'selbar', hidden: true, role: 'toolbar', 'aria-label': 'Acciones sobre la selección' },
       el('div', { class: 'selbar__info' },
         this.selCount,
-        el('button', {
-          type: 'button', class: 'linkbtn', text: 'Todo',
-          onclick: () => this.selectAllShown(),
-        }),
-        el('button', {
-          type: 'button', class: 'linkbtn', text: 'Ninguno',
-          onclick: () => { this.selection.clear(); this._paintSelection(); },
-        })),
+        el('div', { class: 'selbar__links' },
+          el('button', {
+            type: 'button', class: 'linkbtn', text: 'Todo',
+            onclick: () => this.selectAllShown(),
+          }),
+          el('button', {
+            type: 'button', class: 'linkbtn', text: 'Ninguno',
+            onclick: () => { this.selection.clear(); this._paintSelection(); },
+          }))),
       el('div', { class: 'selbar__actions' },
-        el('button', {
-          type: 'button', class: 'btn btn--primary', text: 'Guardar',
-          onclick: () => this._saveSelection(),
-        }),
-        this.pasteBtn = el('button', {
-          type: 'button', class: 'btn', text: 'Pegar ajustes',
-          title: 'Pega en las fotos elegidas los ajustes de color copiados',
-          onclick: () => this._pasteSelection(),
-        }),
-        el('button', {
-          type: 'button', class: 'btn btn--danger', text: 'Eliminar',
-          onclick: () => this._deleteSelection(),
-        })));
+        boton('Guardar', ICONO.compartir, () => this._saveSelection(), ' selbar__btn--guardar'),
+        this.pasteBtn = boton('Pegar ajustes', ICONO.pegar, () => this._pasteSelection()),
+        boton('Eliminar', ICONO.eliminar, () => this._deleteSelection(), ' selbar__btn--eliminar')));
   }
 
   setSelecting(on) {
@@ -181,7 +201,7 @@ export class LibraryView {
     for (const btn of this.selectionBar.querySelectorAll('.btn')) btn.disabled = n === 0;
     // Sin nada copiado, pegar no puede hacer nada: se ve, pero apagado.
     if (!copiedSettings()) this.pasteBtn.disabled = true;
-    for (const tile of this.grid.children) {
+    for (const tile of this.grid.querySelectorAll('.tile')) {
       const on = this.selection.has(tile.dataset.id);
       tile.classList.toggle('is-selected', on);
       tile.setAttribute('aria-pressed', String(on));
@@ -277,7 +297,29 @@ export class LibraryView {
 
   deactivate() { this._releaseUrls(); }
 
+  /**
+   * El conmutador de secciones la enseña como tarjeta aunque no sea la vista
+   * abierta, y cerrada no tiene miniaturas (se sueltan al salir): se pintan
+   * para la tarjeta y se vuelven a soltar si al final no se entra.
+   */
+  prepararTarjeta() { if (this.app.current !== 'library') this.render(); }
+
+  /** Abre el visor en la última foto, encima de la sección en la que se esté. */
+  async verUltima() {
+    const items = await library.list();
+    if (!items.length) return;
+    if (this.app.current === 'camera') this.app.views.camera.deactivate();
+    this.viewer.open(items, 0);
+  }
+  soltarTarjeta() { if (this.app.current !== 'library') this._releaseUrls(); }
+
   _releaseUrls() {
+    // Una miniatura que aún no ha cargado (diferida, o pintada para la tarjeta
+    // del conmutador sin llegar a verse) intentaría cargar la URL ya soltada
+    // al volver a la vista: sin src, ni lo intenta.
+    for (const img of this.grid.querySelectorAll('.tile__img')) {
+      if (!img.complete) img.removeAttribute('src');
+    }
     for (const url of this.urls.values()) URL.revokeObjectURL(url);
     this.urls.clear();
   }
@@ -316,7 +358,25 @@ export class LibraryView {
     // Las miniaturas se leen en paralelo; en serie, una biblioteca grande
     // tardaría un segundo largo en aparecer.
     const tiles = await Promise.all(shown.map((item) => this._tile(item)));
-    this.grid.append(...tiles);
+    // Separadas por meses, como Fotos: el título del mes ocupa la fila entera.
+    let mes = '';
+    shown.forEach((item, i) => {
+      const m = this._mes(item.createdAt);
+      if (m !== mes) {
+        mes = m;
+        this.grid.append(el('h3', { class: 'gallery__mes', text: m }));
+      }
+      this.grid.append(tiles[i]);
+    });
+
+    const fotos = this.items.filter((i) => i.kind !== 'video').length;
+    const videos = this.items.length - fotos;
+    const cuenta = [
+      fotos ? `${fotos.toLocaleString('es-ES')} ${fotos === 1 ? 'foto' : 'fotos'}` : '',
+      videos ? `${videos.toLocaleString('es-ES')} ${videos === 1 ? 'vídeo' : 'vídeos'}` : '',
+    ].filter(Boolean).join(' · ');
+    this.subtitle.textContent = cuenta;
+    this.totales.textContent = cuenta;
 
     const u = await library.usage();
     const pct = u.quota ? Math.min(100, (u.used / u.quota) * 100) : 0;
@@ -410,6 +470,45 @@ export class LibraryView {
     }
   }
 
+  /** «Octubre de 2026», con mayúscula como en Fotos. */
+  _mes(t) {
+    const m = new Date(t).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    return m.charAt(0).toUpperCase() + m.slice(1);
+  }
+
+  /**
+   * Columnas de la cuadrícula en el teléfono: tres, como Fotos, o cinco para
+   * ver más de un vistazo. Se cambia pellizcando, igual que en Fotos, y se
+   * recuerda. En una pantalla ancha las pone el ancho y esto no cuenta.
+   */
+  _columnas() {
+    const CLAVE = 'lib.columnas.v1';
+    let n = 3;
+    try { n = Number(localStorage.getItem(CLAVE)) === 5 ? 5 : 3; } catch { /* sin almacenamiento */ }
+    const poner = (c) => {
+      n = c;
+      this.grid.style.setProperty('--cols', String(c));
+      this.grid.dataset.columnas = String(c);
+      try { localStorage.setItem(CLAVE, String(c)); } catch { /* sin almacenamiento */ }
+    };
+    poner(n);
+    let d0 = 0, ratio = 1;
+    const dist = (ts) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+    this.grid.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) { d0 = dist(e.touches); ratio = 1; }
+    }, { passive: true });
+    this.grid.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && d0) ratio = dist(e.touches) / d0;
+    }, { passive: true });
+    this.grid.addEventListener('touchend', () => {
+      if (!d0) return;
+      // Juntar los dedos aleja (más columnas); separarlos acerca.
+      if (ratio < 0.8 && n !== 5) { poner(5); haptic(); }
+      else if (ratio > 1.25 && n !== 3) { poner(3); haptic(); }
+      d0 = 0;
+    }, { passive: true });
+  }
+
   async _tile(item) {
     const img = el('img', { class: 'tile__img', alt: '', loading: 'lazy', decoding: 'async' });
     const thumb = await library.getThumbBlob(item.id);
@@ -428,26 +527,43 @@ export class LibraryView {
       editada ? el('span', { class: 'tile__badge tile__badge--film tile__badge--edit', text: editada })
         : film && film.id !== 'neutral' ? el('span', { class: 'tile__badge tile__badge--film', text: film.name }) : null);
 
-    return el('button', {
+    // Mantener pulsado abre las opciones de la foto, como el menú contextual
+    // de Fotos. En el iPhone no llega `contextmenu` al mantener pulsado un
+    // botón, así que se cuenta el tiempo; con ratón vale el clic derecho.
+    let reloj = 0, pulsado = false;
+    const soltar = () => clearTimeout(reloj);
+    const tile = el('button', {
       type: 'button', class: 'tile', dataset: { id: item.id },
-      onclick: () => {
+      onclick: (e) => {
+        if (pulsado) { pulsado = false; e.preventDefault(); return; }
         if (this.selecting) this.toggleSelected(item.id);
         else this._openItem(item);
       },
-      // Mantener pulsado entra en selección múltiple con ese elemento ya
-      // marcado, que es como se espera en cualquier galería.
+      onpointerdown: (e) => {
+        pulsado = false;
+        if (e.pointerType === 'mouse') return;
+        soltar();
+        const x = e.clientX, y = e.clientY;
+        reloj = setTimeout(() => { pulsado = true; this._actions(item); }, 480);
+        tile.onpointermove = (m) => { if (Math.hypot(m.clientX - x, m.clientY - y) > 8) soltar(); };
+      },
+      onpointerup: soltar,
+      onpointercancel: soltar,
+      // Al levantar el dedo tras mantenerlo, el navegador aún manda un click,
+      // y caería en el fondo de la hoja recién abierta, cerrándola.
+      ontouchend: (e) => { if (pulsado) e.preventDefault(); },
       oncontextmenu: (e) => {
         e.preventDefault();
-        if (!this.selecting) { this.setSelecting(true); this.toggleSelected(item.id); }
-        else this._actions(item);
+        if (!pulsado) this._actions(item);
       },
     }, img, badges,
-      el('span', { class: 'tile__check', 'aria-hidden': 'true' }),
-      el('span', { class: 'tile__info' }, item.dimsAprox ? 'RAW' : `${item.width}×${item.height}`),
+      el('span', { class: 'tile__check', 'aria-hidden': 'true', html: ICONO.hecho }),
+      item.dimsAprox || item.raw ? el('span', { class: 'tile__info', text: 'RAW' }) : null,
       el('span', {
         class: 'tile__more', 'aria-label': 'Opciones',
         onclick: (e) => { e.stopPropagation(); this._actions(item); },
       }, '⋯'));
+    return tile;
   }
 
   /** Cambia la imagen de una casilla sin repintar la cuadrícula. */
@@ -456,7 +572,7 @@ export class LibraryView {
     // A media pasada la casilla puede no existir todavía, o estar a punto de
     // sustituirse por una con la miniatura vieja: otra pasada al terminar.
     if (this._pintando) { this._otraVez = true; return; }
-    const tile = [...this.grid.children].find((t) => t.dataset.id === id);
+    const tile = [...this.grid.querySelectorAll('.tile')].find((t) => t.dataset.id === id);
     if (!tile) return;
     const blob = await library.getThumbBlob(id);
     if (!blob || !tile.isConnected) return;

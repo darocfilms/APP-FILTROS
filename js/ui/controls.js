@@ -43,8 +43,11 @@ export function makeSlider(ctrl, value, onChange) {
     root.style.setProperty('--origin', origin);
     root.classList.toggle('is-modified', Math.abs(v - ctrl.def) > 1e-6);
     readout.textContent = formatValue(ctrl, v);
+    // Quien enseña este valor en otro sitio (el círculo del panel) se entera.
+    root.alPintar?.(v, pos, origin);
   };
   paint(value);
+  root.repintar = () => paint(parseFloat(input.value));
 
   const emit = (committed) => {
     const v = parseFloat(input.value);

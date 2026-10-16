@@ -20,6 +20,7 @@ import { rangeTrack, verticalRail } from '../ui/controls.js';
 import { getFilm, FILMS, filmsByKind } from '../data/films.js';
 import { library, makeThumb } from '../store/library.js';
 import { isNativeApp } from '../utils/share.js';
+import { ICONO } from '../ui/iconos.js';
 
 /**
  * Emulsión con la que arranca la cámara.
@@ -284,15 +285,17 @@ export class CameraView {
       toolRow,
       this.modeSwitch,
       el('div', { class: 'cam__bar' },
-        el('button', {
-          type: 'button', class: 'iconbtn', 'aria-label': 'Ocultar los mandos',
-          onclick: () => this.toggleImmersive(),
-        }, '⤢'),
+        // La última foto, como en la Cámara del iPhone: un toque la abre en
+        // el visor sin salir de aquí. (Esconder los mandos ya es tocar la imagen.)
+        this.ultima = el('button', {
+          type: 'button', class: 'cam__ultima', 'aria-label': 'Ver la última foto', hidden: true,
+          onclick: () => this.app.views.library.verUltima?.(),
+        }, this.ultimaImg = el('img', { class: 'cam__ultimaimg', alt: '', decoding: 'async' })),
         this.shutter,
         this.flipBtn = el('button', {
-          type: 'button', class: 'iconbtn', 'aria-label': 'Cambiar de cámara',
+          type: 'button', class: 'iconbtn', 'aria-label': 'Cambiar de cámara', html: ICONO.girarCamara,
           onclick: () => this.flip(),
-        }, '⟳')));
+        })));
 
     this._buildRails();
 
@@ -843,7 +846,20 @@ export class CameraView {
 
   /* ──────────────────────────── Ciclo de vida ────────────────────────── */
 
+  /** La miniatura de la última foto o vídeo guardado, junto al disparador. */
+  async pintarUltima() {
+    try {
+      const [ultimo] = await library.list();
+      const blob = ultimo ? await library.getThumbBlob(ultimo.id) : null;
+      if (this._ultimaUrl) URL.revokeObjectURL(this._ultimaUrl);
+      this._ultimaUrl = blob ? URL.createObjectURL(blob) : null;
+      this.ultima.hidden = !this._ultimaUrl;
+      if (this._ultimaUrl) this.ultimaImg.src = this._ultimaUrl;
+    } catch { this.ultima.hidden = true; }
+  }
+
   async activate() {
+    this.pintarUltima();
     this._showMessage(null);
     if (inAppBrowser()) {
       return this._showMessage(

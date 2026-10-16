@@ -95,9 +95,45 @@ Safari → Compartir → **Añadir a pantalla de inicio**. Merece la pena hacerl
 
 ---
 
+## El diseño: el de Fotos del iPhone
+
+La app copia el aspecto de Fotos y Cámara de iOS en modo oscuro: negro puro, los
+grises del sistema y **cristal** translúcido para todo lo que flota sobre la
+foto (botones redondos, barras, la cápsula de secciones). Dos colores con
+función fija, como en iOS: **azul** para lo que se toca en la biblioteca y
+**amarillo** para lo que se está ajustando en el laboratorio y en la cámara.
+Las maquetas están en el lienzo de Design «Laboratorio estilo Fotos».
+
+### Cambiar de sección con el dedo
+
+Abajo flota una **cápsula de cristal** con Cámara, Laboratorio y Biblioteca y
+una lente que marca la abierta (en la cámara y el laboratorio se queda en
+iconos). Además de tocar cada icono:
+
+- **Deslizar de lado sobre la cápsula**: la lente sigue al dedo y la sección de
+  al lado entra deslizándose. Se queda en la más cercana al soltar, o en la
+  siguiente con un golpe rápido (nunca salta dos).
+- **Deslizar hacia arriba desde la cápsula**: la pantalla encoge siguiendo al
+  dedo hasta ser una tarjeta, con las otras dos a los lados, como el selector de
+  apps del iPhone. Las tarjetas son las vistas de verdad (la cámara sigue en
+  directo dentro de la suya). Al soltar el carrusel queda abierto: de lado se
+  elige, un toque entra, un toque fuera o Esc vuelve.
+- **Dos dedos hacia arriba en cualquier sitio** abre el mismo carrusel. No
+  choca con nada: un dedo es de los deslizadores y el disparador, y el pellizco
+  cambia la distancia entre los dedos.
+
+Todo en `js/ui/conmutador.js`; los iconos, en `js/ui/iconos.js` (dibujos
+propios con el lenguaje de los de Apple, que no se pueden usar fuera de sus
+plataformas).
+
 ## Las tres pestañas
 
 ### Cámara
+
+Abajo, como en la Cámara del iPhone: FOTO · VÍDEO con el modo activo en
+amarillo, el disparador blanco, la **miniatura de la última foto** a la
+izquierda (la abre en el visor sin salir de la cámara, que sigue encendida al
+cerrarlo) y cambiar de cámara a la derecha.
 
 La imagen ocupa la pantalla entera. Nada de la interfaz la recorta. Sólo abren
 **ventana flotante** los ajustes que son una LISTA de opciones; los que son un
@@ -202,6 +238,18 @@ al disparar se captura el fotograma a resolución nativa y se revela en un pase
 aparte a tamaño completo.
 
 ### Laboratorio
+
+Es la pantalla de edición de Fotos. Arriba, volver (botón redondo de cristal),
+los mandos en una cápsula —deshacer, rehacer, ver el antes, histograma, tira de
+fotos y presets— y **Exportar en amarillo**. Abajo, los paneles como pestañas de
+texto («Película · Luz · Color · …»), con un punto amarillo en los que tienen
+algo cambiado. En el teléfono, los paneles de varios deslizadores (Luz, Color,
+Detalle, Efectos, Viñeta) son **círculos y regla**: un círculo por ajuste con
+su valor dentro y un aro amarillo que dice cuánto se ha movido, y debajo la
+regla del elegido. Por dentro sigue siendo el `<input type="range">` de siempre
+(arrastre nativo, teclado y VoiceOver). Película es un carrusel de borde a borde,
+con el nombre de cada familia encima de su tramo. En la columna del Mac caben
+todos los deslizadores a la vez y los círculos no se usan.
 
 Diez paneles de ajustes:
 
@@ -351,8 +399,20 @@ entregar un JPEG en su lugar.
 
 ### Biblioteca
 
+Como Fotos: título grande con el recuento, botones de cristal (Seleccionar e
+Importar), Todo · Fotos · Vídeos en un control segmentado y la cuadrícula de
+borde a borde, cuadrada y con junta de dos píxeles, **separada por meses**.
+**Pellizcar** cambia entre tres y cinco columnas (se recuerda). **Mantener
+pulsada** una foto abre sus opciones; con ratón, clic derecho o el ⋯ que
+aparece al pasar por encima. Al seleccionar, cada foto lleva la marca azul de
+Fotos y la cápsula de secciones se cambia por la barra de selección: guardar,
+el recuento, pegar ajustes y eliminar. Al final de la cuadrícula, cuántas hay
+y el espacio que ocupan.
+
 Tocar una miniatura abre un **visor a pantalla completa**: la foto sobre negro y
-nada más, siempre entera. (En una pantalla ancha una foto grande se ajustaba al
+nada más, siempre entera. Arriba, como en Fotos, el día («Hoy», «Ayer») y la
+hora, y abajo una barra de cristal con guardar, editar en el laboratorio y
+borrar; deslizar hacia abajo lo cierra. (En una pantalla ancha una foto grande se ajustaba al
 ancho y se salía por arriba y por abajo, como ampliada; en el teléfono no se
 notaba porque manda el ancho.) Un toque saca los botones que hacen falta —cerrar, abrir en el
 laboratorio, guardar en el dispositivo, borrar— y otro los quita. Borrar
@@ -557,6 +617,7 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 | `heif` | Con dos muestras pequeñas que van en el repositorio, hechas con libheif + x265 con la estructura de las de verdad —un HEIC de 8 bits 4:2:0 como el del iPhone y un HIF de 10 bits 4:2:2 como el de una Sony, cada uno con su miniatura dentro— y un patrón de cuatro colores conocidos: que Chromium no los abre por su cuenta (es lo que hay que probar), que la miniatura sale de la que lleva dentro, que la foto entera sale a su tamaño con los colores exactos y en su sitio (±3 de 255, también el 4:2:2 de 10 bits), que entran por el menú con su miniatura y su tamaño, que un .HIF sin tipo queda como image/heif, que el visor y el laboratorio los abren con los mismos colores, que exportar con un ajuste sale a 3000×2000 y que un solo .HIF va directo al laboratorio |
 | `import` | Una «tarjeta de memoria» con dos carpetas, un ARW de verdad, las copias «._» del Mac y un XML de Sony: entran las siete fotos agrupadas por carpeta, se ignora lo demás y el RAW se ve por su vista previa incrustada. Marcar una a una, un tramo con Mayúsculas, todas y ninguna. Con la carpeta de Imágenes elegida (el selector se simula con una carpeta del sistema de archivos privado, que tiene la misma interfaz), los originales quedan en Laboratorio/<subcarpeta>/ con su nombre, y el visor los abre desde allí; la miniatura del RAW entra provisional y se rehace con el tamaño del sensor (6240×4168); volver a meter la tarjeta avisa de las ya importadas. Y el laboratorio: la tira abre fotos y ← → pasa de una a otra; doble clic amplía al 100 % con la foto entera (4800 px), arrastrar y el trackpad la mueven, editar ampliada sigue sobre la foto entera, doble clic, Z y Esc; una foto pequeña se dobla; mantener pulsado sigue enseñando el antes. Una sola foto va directa al laboratorio |
 | `desktop` | El Mac: que en una ventana de 1440×900 los ajustes vayan en una columna a la derecha sin tapar la foto, que tocar la pestaña activa no los esconda, y que en el iPhone todo siga como estaba. Lo editado en el laboratorio —emulsión, exposición y un giro— tiene que aparecer en la miniatura, en el visor y **en el archivo que se guarda**, abierto y medido: a 1200×900 y más claro, mientras *Guardar el original* entrega los bytes de entrada. Copiar lleva el color y no el encuadre; pegar en las tres fotos pregunta, respeta el recorte y el espejo que tenía cada una y rehace sus miniaturas; la foto abierta en el laboratorio recoge lo pegado; ⌘Z, ⇧⌘Z, ⌘C y ⌘V, también con un deslizador en foco; *Quitar los ajustes* devuelve el original a la cuadrícula. Y que al volver del laboratorio no salgan casillas repetidas |
+| `conmutador` | El diseño de Fotos y sus gestos, hechos de verdad con el puntero y con toques de dos dedos: que la cápsula flota centrada y es de cristal, que deslizar de lado mete la sección de al lado mientras se arrastra y se queda en ella (o en la siguiente con un golpe, y en la misma si fue poco y despacio), que deslizar hacia arriba encoge la pantalla a tarjeta con las otras al lado y sus títulos, que el carrusel queda abierto, se mueve de lado y un toque entra, que subir poco no lo abre, que dos dedos lo abren y un pellizco no, y que nunca quedan estilos del gesto pegados a las vistas. La biblioteca: título grande, tres columnas de borde a borde, meses, pellizco a cinco y vuelta a tres, y mantener pulsado abre las opciones sin que el click de después las cierre. El visor: guardar · editar · borrar en ese orden y deslizar hacia abajo cierra. El laboratorio: un círculo por ajuste y una sola regla, que tocar otro círculo trae la suya y que moverla cambia el ajuste, el número y el aro. La cámara: la última foto junto al disparador abre el visor y al cerrarlo la cámara sigue encendida |
 | `alojada` | La app importada desde la página de otro origen, como la carga Floot (dos servidores, uno con el CORS de GitHub Pages): que arranca con su hoja de estilos, que no registra service worker en la anfitriona, que un HIF de Sony y un ARW se descodifican en sus workers —sin `alojada.js` el navegador se niega a crearlos—, y que una foto importada queda en la biblioteca de la anfitriona, sigue tras recargar y se abre en el laboratorio |
 | `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
 
