@@ -19,7 +19,7 @@ import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
 import { rangeTrack, verticalRail } from '../ui/controls.js';
 import { getFilm, FILMS, filmsByKind } from '../data/films.js';
 import { library, makeThumb } from '../store/library.js';
-import { isNativeApp } from '../utils/share.js';
+import { isNativeApp, isMacApp } from '../utils/share.js';
 import { ICONO } from '../ui/iconos.js';
 
 /**
@@ -887,7 +887,9 @@ export class CameraView {
       const map = {
         // En la app el permiso es de la app, no de Safari: mandar a Ajustes →
         // Safari dejaría al usuario cambiando un interruptor que no cuenta.
-        NotAllowedError: isNativeApp()
+        NotAllowedError: isMacApp()
+          ? 'Permiso denegado. Actívalo en Ajustes del Sistema → Privacidad y seguridad → Cámara → Laboratorio, y vuelve a abrir la app.'
+          : isNativeApp()
           ? 'Permiso denegado. Actívalo en Ajustes → Laboratorio → Cámara y vuelve a abrir la app.'
           : 'Permiso denegado. Actívalo en Ajustes → Safari → Cámara y recarga. '
             + 'Si abriste el enlace desde otra aplicación, ábrelo en Safari.',

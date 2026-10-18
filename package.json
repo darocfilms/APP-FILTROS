@@ -10,7 +10,9 @@
     "test": "node test/run.mjs",
     "build": "node build.mjs",
     "ios": "node build.mjs && cap sync ios",
-    "ios:abrir": "node build.mjs && cap sync ios && cap open ios"
+    "ios:abrir": "node build.mjs && cap sync ios && cap open ios",
+    "mac": "npm --prefix mac start",
+    "mac:dmg": "sh mac/hacer-dmg.sh"
   },
   "engines": {
     "node": ">=22"

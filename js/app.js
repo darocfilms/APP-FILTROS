@@ -7,7 +7,7 @@
 // los workers antes de que nadie cree uno.
 import { alojada } from './utils/alojada.js';
 import { el, clear, toast, haptic } from './utils/dom.js';
-import { saveFiles, canShareFiles, isIOS, isNativeApp } from './utils/share.js';
+import { saveFiles, canShareFiles, isIOS, isNativeApp, isMacApp } from './utils/share.js';
 import { library } from './store/library.js';
 import { importarArchivo, refinarMiniaturas } from './store/importar.js';
 import { archivosSoltados } from './store/preview.js';
@@ -16,6 +16,16 @@ import { Conmutador } from './ui/conmutador.js';
 import { CameraView } from './views/camera.js';
 import { LabView } from './views/lab.js';
 import { LibraryView } from './views/library.js';
+
+/** Tipo de un archivo abierto con la app de Mac, que llega sólo con su nombre. */
+function tipoPorNombre(nombre) {
+  const ext = (nombre.split('.').pop() || '').toLowerCase();
+  return {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', tif: 'image/tiff', tiff: 'image/tiff',
+    heic: 'image/heic', heif: 'image/heif', hif: 'image/heif', arw: 'image/x-sony-arw',
+    mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4',
+  }[ext] || '';
+}
 
 function formatSize(n) {
   if (!n) return '0 B';
@@ -95,6 +105,13 @@ class App {
       else this.importer.abrir(lista);
     });
 
+    // La app de Mac (mac/): su barra de menús manda órdenes, y las fotos
+    // abiertas con ella («Abrir con», soltarlas en el Dock) llegan aquí.
+    window.__labMenu = (accion) => this._accionMenu(accion);
+    globalThis.laboratorioMac?.alAbrirArchivos?.((lista) => {
+      this._handleFiles(lista.map(({ nombre, datos }) => new File([datos], nombre, { type: tipoPorNombre(nombre) })));
+    });
+
     const items = await library.list();
     this.go(items.length && !navigator.mediaDevices ? 'library' : 'camera');
     this._registerServiceWorker();
@@ -105,6 +122,21 @@ class App {
   /** Rehace en segundo plano las miniaturas de RAW, fuera del laboratorio y la cámara. */
   refinar() {
     refinarMiniaturas({ pausa: () => document.hidden || this.current === 'lab' || this.current === 'camera' });
+  }
+
+  /** Órdenes de la barra de menús de la app de Mac. */
+  _accionMenu(accion) {
+    if (accion === 'camera' || accion === 'lab' || accion === 'library') this.go(accion);
+    else if (accion === 'carrusel') this.conmutador.abrir();
+    else if (accion === 'importar' || accion === 'importar-carpeta') {
+      // Llega como gesto del usuario (main.js), así que el selector se puede
+      // abrir directamente, sin pasar por el botón del menú de importación.
+      this.importer.abrir();
+      (accion === 'importar' ? this.importer.inputArchivos : this.importer.inputCarpeta).click();
+    } else if (accion === 'exportar') {
+      if (this.current === 'lab' && this.views.lab.item) this.views.lab._openExport();
+      else toast('Abre una foto en el laboratorio para exportarla');
+    }
   }
 
   /** El menú de importación: elegir fotos, carpetas o discos, y cuáles entran. */
@@ -279,7 +311,7 @@ class App {
   async _registerServiceWorker() {
     // En la app nativa los archivos ya van dentro del paquete: no hay red de la
     // que protegerse, y el esquema propio de la app no admite service workers.
-    if (isNativeApp()) return;
+    if (isNativeApp() || isMacApp()) return;
     // Cargada desde otra página (la app de Floot), el service worker sería de
     // ese otro sitio: ni se puede registrar ni le corresponde a Laboratorio.
     if (alojada) return;

@@ -36,6 +36,10 @@
   --glass-blur: blur(24px) saturate(180%);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.14);
 
+  /* Lo que hay que dejar libre arriba: la muesca del iPhone, o en la app de
+     Mac la franja de los semáforos (abajo, html.app-mac--barra). */
+  --arriba: env(safe-area-inset-top, 0px);
+
   /* La cápsula de secciones flota sobre el indicador de inicio, no en él:
      un gesto que empieza en el borde de abajo es del sistema. --tab-h es todo
      el alto que reserva: la cápsula, su margen y un respiro encima. */
@@ -50,6 +54,17 @@
   --spring: cubic-bezier(0.2, 0.9, 0.25, 1.12);
 
   color-scheme: dark;
+}
+
+/* App de Mac (mac/): los semáforos van sobre la página, así que arriba se
+   reserva su franja, y esa franja arrastra la ventana como una barra de
+   título. En pantalla completa no hay semáforos y no hace falta. */
+html.app-mac--barra { --arriba: 34px; }
+html.app-mac--barra.app-mac--completa { --arriba: 0px; }
+html.app-mac--barra body::after {
+  content: ''; position: fixed; left: 0; right: 0; top: 0; z-index: 10000;
+  height: var(--arriba);
+  -webkit-app-region: drag; app-region: drag;
 }
 
 * { box-sizing: border-box; }
@@ -326,7 +341,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 @keyframes flash { from { opacity: 0.9; } to { opacity: 0; } }
 
 .cam__badge {
-  position: absolute; top: calc(44px + env(safe-area-inset-top)); left: 50%;
+  position: absolute; top: calc(44px + var(--arriba)); left: 50%;
   transform: translateX(-50%);
   padding: 6px 14px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px);
@@ -340,7 +355,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 
 .cam__res {
   position: absolute; left: 50%; transform: translateX(-50%);
-  top: calc(14px + env(safe-area-inset-top));
+  top: calc(14px + var(--arriba));
   padding: 3px 10px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.42);
   font-size: 9.5px; color: rgba(255, 255, 255, 0.66);
@@ -350,7 +365,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 .view--camera.is-immersive .cam__res { opacity: 0; }
 
 .cam__rec {
-  position: absolute; top: calc(14px + env(safe-area-inset-top)); right: 14px;
+  position: absolute; top: calc(14px + var(--arriba)); right: 14px;
   display: flex; align-items: center; gap: 7px; z-index: 3;
   padding: 6px 12px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; font-size: 13px;
@@ -375,7 +390,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
    borde, donde el pulgar de esa mano llega sin recolocar el teléfono. */
 .cam__rail {
   position: absolute; z-index: 5;
-  top: calc(96px + env(safe-area-inset-top));
+  top: calc(96px + var(--arriba));
   bottom: calc(var(--tab-h) + 178px);
   min-height: 150px;
   width: 46px;
@@ -650,7 +665,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 .lab__bar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 6;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: calc(6px + env(safe-area-inset-top)) 10px 10px;
+  padding: calc(6px + var(--arriba)) 10px 10px;
   background: linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.38) 70%, transparent);
 }
 .lab__volver { width: 40px; height: 40px; flex: 0 0 40px; }
@@ -687,7 +702,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
      panel abierto, así que la foto saltaba de tamaño al cambiar de pestaña —
      justo cuando se está mirando un color. Ahora los ajustes flotan encima con
      transparencia y la imagen se queda quieta debajo. */
-  top: calc(58px + env(safe-area-inset-top));
+  top: calc(58px + var(--arriba));
   left: 0; right: 0;
   bottom: calc(var(--tab-h) + 4px);
 }
@@ -736,7 +751,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 .iconbtn__svg { display: grid; place-items: center; }
 .tira {
   position: absolute; z-index: 4;
-  top: calc(58px + env(safe-area-inset-top)); left: 0; right: 0;
+  top: calc(58px + var(--arriba)); left: 0; right: 0;
   height: var(--tira-h);
   display: flex; align-items: center; gap: 6px;
   padding: 6px 10px;
@@ -766,7 +781,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 }
 .tira__item.is-edited .tira__marca { display: block; }
 .tira__vacia { color: var(--text-dim); font-size: 12px; padding: 0 6px; }
-.view--lab.has-strip .lab__frame { top: calc(62px + env(safe-area-inset-top) + var(--tira-h)); }
+.view--lab.has-strip .lab__frame { top: calc(62px + var(--arriba) + var(--tira-h)); }
 
 .histogram {
   position: absolute; right: 8px; top: 8px; width: 132px; height: 50px;
@@ -1189,7 +1204,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 .lib__bar {
   position: sticky; top: 0; z-index: 3;
   display: grid; gap: 10px;
-  padding: calc(10px + env(safe-area-inset-top)) 16px 12px;
+  padding: calc(10px + var(--arriba)) 16px 12px;
   background: linear-gradient(rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 62%, rgba(0, 0, 0, 0));
 }
 .lib__fila { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
@@ -1243,7 +1258,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   background: var(--bg);
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--arriba);
   padding-bottom: env(safe-area-inset-bottom);
 }
 .imp__bar {
@@ -1502,7 +1517,7 @@ body.is-viewing { overflow: hidden; }
 }
 .viewer__top {
   top: 0; justify-content: space-between;
-  padding: calc(8px + env(safe-area-inset-top)) 12px 18px;
+  padding: calc(8px + var(--arriba)) 12px 18px;
   background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
 }
 .viewer__bottom {
@@ -1717,7 +1732,7 @@ body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-
   /* Con aire alrededor, como en cualquier revelador de escritorio: la foto
      encajada no llega a tocar los bordes ni la columna de ajustes. */
   .lab__frame {
-    top: calc(60px + env(safe-area-inset-top));
+    top: calc(60px + var(--arriba));
     left: 24px; right: calc(var(--side-w) + 24px);
     bottom: calc(var(--tab-h) + 20px);
   }
@@ -1728,11 +1743,11 @@ body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-
     padding: 8px 14px;
   }
   .view--lab.has-strip .lab__frame {
-    top: calc(60px + env(safe-area-inset-top));
+    top: calc(60px + var(--arriba));
     bottom: calc(var(--tab-h) + var(--tira-h) + 16px);
   }
   .panels {
-    top: calc(58px + env(safe-area-inset-top)); bottom: var(--tab-h);
+    top: calc(58px + var(--arriba)); bottom: var(--tab-h);
     left: auto; right: 0; width: var(--side-w);
     background: var(--bg-raised);
     border-top: 0; border-left: 1px solid rgba(255, 255, 255, 0.07);

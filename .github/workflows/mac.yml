@@ -1,0 +1,58 @@
+# App de Mac: construye Laboratorio.app (Apple Silicon e Intel en un solo
+# archivo) y Laboratorio.dmg en un Mac de GitHub, y lo deja en la release «mac»:
+#   https://github.com/darocfilms/APP-FILTROS/releases/download/mac/Laboratorio.dmg
+# Se rehace en cada cambio de la web o de mac/, y a mano desde Actions.
+name: App de Mac
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'js/**'
+      - 'styles/**'
+      - 'icons/**'
+      - 'index.html'
+      - 'manifest.webmanifest'
+      - 'sw.js'
+      - 'build.mjs'
+      - 'mac/**'
+      - '.github/workflows/mac.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-de-mac
+  cancel-in-progress: true
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mac/package-lock.json
+
+      - name: Construir Laboratorio.app y Laboratorio.dmg
+        run: sh mac/hacer-dmg.sh
+        env:
+          # Sin certificado de Apple: firma ad hoc (la hace hacer-dmg.sh).
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Publicar en la release «mac»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTAS="Laboratorio para Mac (Apple Silicon e Intel, macOS 12 o posterior).
+
+          Descarga Laboratorio.dmg, ábrelo y arrastra Laboratorio a Aplicaciones. La primera vez, macOS pide permiso para abrir una app que no viene de la App Store: Ajustes del Sistema → Privacidad y seguridad → «Abrir igualmente».
+
+          Versión del $(date -u +%Y-%m-%d), commit ${GITHUB_SHA::7}."
+          gh release view mac >/dev/null 2>&1 || gh release create mac --title "Laboratorio para Mac" --notes "$NOTAS"
+          gh release edit mac --notes "$NOTAS" --latest
+          gh release upload mac mac/salida/Laboratorio.dmg --clobber

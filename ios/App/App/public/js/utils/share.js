@@ -39,6 +39,14 @@ export function isNativeApp() {
   return /\bLaboratorioApp\b/.test(navigator.userAgent || '');
 }
 
+/**
+ * ¿Corremos dentro de la app de Mac (mac/, con Electron)? Allí lo que se
+ * guarda va directo a Imágenes › Laboratorio › Exportadas y la app avisa.
+ */
+export function isMacApp() {
+  return !!globalThis.laboratorioMac;
+}
+
 export function canShareFiles(files) {
   const list = Array.isArray(files) ? files : [files];
   try {
@@ -131,6 +139,13 @@ export async function saveFiles(blobs, names, { title } = {}) {
   const list = Array.isArray(blobs) ? blobs : [blobs];
   const labels = uniqueNames(Array.isArray(names) ? names : [names]);
   const files = list.map((b, i) => new File([b], labels[i] || labels[0], { type: b.type }));
+
+  // En la app de Mac guardar es guardar: a la carpeta de Exportadas, sin la
+  // hoja de compartir de por medio (la app avisa al terminar).
+  if (isMacApp()) {
+    for (const [i, b] of list.entries()) downloadNow(b, labels[i] || labels[0]);
+    return 'downloaded';
+  }
 
   const shared = await shareNow(files, title || (files.length > 1 ? `${files.length} archivos` : files[0].name));
   if (shared === 'shared' || shared === 'cancelled') return shared;

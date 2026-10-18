@@ -1,0 +1,75 @@
+{
+  "name": "laboratorio-mac",
+  "productName": "Laboratorio",
+  "version": "1.0.0",
+  "description": "Laboratorio para macOS: cámara con emulsiones, laboratorio de revelado con ciencia de color y biblioteca.",
+  "author": "Daroc Films",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "web": "node ../build.mjs",
+    "start": "npm run web && electron .",
+    "app": "npm run web && electron-builder --mac --universal --dir",
+    "dmg": "sh hacer-dmg.sh"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.darocfilms.laboratorio.mac",
+    "productName": "Laboratorio",
+    "copyright": "© Daroc Films",
+    "directories": {
+      "output": "salida",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "servidor.js",
+      "menu.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "web"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.photography",
+      "icon": "build/icon.png",
+      "identity": null,
+      "darkModeSupport": true,
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Laboratorio usa la cámara para fotografiar y grabar con la emulsión aplicada en directo.",
+        "NSMicrophoneUsageDescription": "Laboratorio usa el micrófono para grabar el sonido de tus vídeos.",
+        "CFBundleDevelopmentRegion": "es"
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "jpg",
+          "jpeg",
+          "png",
+          "heic",
+          "heif",
+          "hif",
+          "arw",
+          "webp",
+          "tif",
+          "tiff"
+        ],
+        "name": "Foto",
+        "role": "Viewer"
+      }
+    ],
+    "electronLanguages": [
+      "es",
+      "en"
+    ]
+  }
+}
