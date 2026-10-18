@@ -9,7 +9,7 @@
   "scripts": {
     "web": "node ../build.mjs",
     "start": "npm run web && electron .",
-    "app": "npm run web && electron-builder --mac --universal --dir",
+    "app": "npm run web && electron-builder --mac --universal --dir --publish never",
     "dmg": "sh hacer-dmg.sh"
   },
   "devDependencies": {

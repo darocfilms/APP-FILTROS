@@ -205,5 +205,49 @@ try {
   await app.close();
 }
 
+/* La app empaquetada busca la web en Resources/web, no en la dist/ del
+   repositorio. En un Mac la empaqueta GitHub Actions; aquí se empaqueta para
+   este sistema con la misma configuración y se comprueba que arranca. */
+console.log('\n── Empaquetada ──');
+const SALIDA = fs.mkdtempSync(path.join(os.tmpdir(), 'lab-paquete-'));
+const plataforma = process.platform === 'darwin' ? '--mac' : process.platform === 'win32' ? '--win' : '--linux';
+const builder = path.join(MAC, 'node_modules', '.bin', 'electron-builder');
+let empaquetada = null;
+if (fs.existsSync(builder)) {
+  const r = spawnSync(builder, [plataforma, '--dir', '--publish', 'never', `-c.directories.output=${SALIDA}`],
+    { cwd: MAC, encoding: 'utf8', env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false' } });
+  const buscar = (dir) => {
+    for (const n of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, n.name);
+      if (n.isDirectory() && n.name.endsWith('.app')) return path.join(p, 'Contents', 'MacOS', 'Laboratorio');
+      if (n.isDirectory()) { const x = buscar(p); if (x) return x; }
+      else if (/^(laboratorio-mac|Laboratorio)(\.exe)?$/i.test(n.name)) return p;
+    }
+    return null;
+  };
+  empaquetada = r.status === 0 ? buscar(SALIDA) : null;
+  check('se empaqueta con la configuración de mac/package.json', !!empaquetada, r.status === 0 ? empaquetada : (r.stderr || r.stdout).slice(-300));
+  const web = empaquetada && [path.join(path.dirname(empaquetada), 'resources', 'web'), path.join(path.dirname(empaquetada), '..', 'Resources', 'web')].find((d) => fs.existsSync(d));
+  check('con la web dentro (Resources/web)', !!web && fs.existsSync(path.join(web, 'js', 'vendor', 'libraw', 'libraw.wasm')), web || '');
+}
+if (empaquetada) {
+  const paquete = await pw._electron.launch({
+    executablePath: empaquetada,
+    args: process.platform === 'linux' ? ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] : [],
+    env: { ...process.env, LABORATORIO_DATOS: fs.mkdtempSync(path.join(os.tmpdir(), 'lab-datos2-')), LABORATORIO_IMAGENES: IMAGENES },
+  });
+  try {
+    const page = await paquete.firstWindow();
+    await page.waitForSelector('.tabbar__tab', { timeout: 30_000 }).catch(() => {});
+    const r = await page.evaluate(() => ({ url: location.href, pestañas: document.querySelectorAll('.tabbar__tab').length }));
+    check('y la app empaquetada arranca con ella', r.url === 'laboratorio://app/index.html' && r.pestañas === 3, JSON.stringify(r));
+  } finally {
+    await paquete.close();
+  }
+} else if (!fs.existsSync(builder)) {
+  console.log('  ⚠ sin electron-builder en mac/: se omite');
+}
+fs.rmSync(SALIDA, { recursive: true, force: true });
+
 console.log(failures ? `\n${failures} comprobaciones fallidas\n` : '\nTodo en orden\n');
 process.exit(failures ? 1 : 0);
