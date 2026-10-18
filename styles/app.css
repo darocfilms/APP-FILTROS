@@ -1,0 +1,1783 @@
+/* =============================================================================
+   Laboratorio — hoja de estilos única.
+
+   Pensada para iPhone en primer lugar: áreas seguras, objetivos táctiles de
+   44 px, sin rebote de scroll y sin zoom accidental al tocar dos veces.
+
+   El aspecto es el de Fotos y Cámara del iPhone en modo oscuro: negro puro,
+   los grises del sistema, cristal translúcido para lo que flota (la cápsula de
+   secciones, los botones redondos, las barras) y dos colores con función fija,
+   como en iOS: azul para lo que se toca en la biblioteca y amarillo para lo que
+   se está ajustando en el laboratorio y en la cámara.
+   ========================================================================== */
+
+:root {
+  --bg: #000;
+  --bg-raised: #1c1c1e;
+  --bg-panel: #1c1c1e;
+  --bg-input: #2c2c2e;
+  --line: #38383a;
+  --line-soft: #2c2c2e;
+  --text: #fff;
+  --text-dim: rgba(235, 235, 245, 0.62);
+  --text-faint: rgba(235, 235, 245, 0.38);
+  /* Amarillo de edición de Fotos: el valor que se está tocando. */
+  --accent: #ffd60a;
+  --accent-ink: #000;
+  /* Azul del sistema: botones, selección y enlaces. */
+  --tint: #0a84ff;
+  --danger: #ff453a;
+  --ok: #30d158;
+
+  /* Cristal: lo que flota sobre la foto deja verla, desenfocada y oscurecida. */
+  --glass: rgba(44, 44, 48, 0.62);
+  --glass-strong: rgba(36, 36, 40, 0.82);
+  --glass-edge: rgba(255, 255, 255, 0.16);
+  --glass-blur: blur(24px) saturate(180%);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+
+  /* Lo que hay que dejar libre arriba: la muesca del iPhone, o en la app de
+     Mac la franja de los semáforos (abajo, html.app-mac--barra). */
+  --arriba: env(safe-area-inset-top, 0px);
+
+  /* La cápsula de secciones flota sobre el indicador de inicio, no en él:
+     un gesto que empieza en el borde de abajo es del sistema. --tab-h es todo
+     el alto que reserva: la cápsula, su margen y un respiro encima. */
+  --cap-bottom: max(10px, calc(env(safe-area-inset-bottom) - 12px));
+  --cap-h: 58px;
+  --tab-h: calc(var(--cap-h) + var(--cap-bottom) + 8px);
+  /* Alto real del panel de ajustes del laboratorio, medido desde JS. */
+  --lab-panels: 220px;
+  --radius: 14px;
+  --radius-sm: 12px;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --spring: cubic-bezier(0.2, 0.9, 0.25, 1.12);
+
+  color-scheme: dark;
+}
+
+/* App de Mac (mac/): los semáforos van sobre la página, así que arriba se
+   reserva su franja, y esa franja arrastra la ventana como una barra de
+   título. En pantalla completa no hay semáforos y no hace falta. */
+html.app-mac--barra { --arriba: 34px; }
+html.app-mac--barra.app-mac--completa { --arriba: 0px; }
+html.app-mac--barra body::after {
+  content: ''; position: fixed; left: 0; right: 0; top: 0; z-index: 10000;
+  height: var(--arriba);
+  -webkit-app-region: drag; app-region: drag;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body { touch-action: manipulation; }
+
+/* `hidden` debe ganar siempre. Una regla de clase con `display` tiene la misma
+   especificidad que el `[hidden]` de la hoja del navegador y, al ir después,
+   lo anulaba: la capa de "ocupado" se quedaba encima bloqueando los toques. */
+[hidden] { display: none !important; }
+
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; -webkit-appearance: none; appearance: none; background: none; border: 0; }
+h1, h2, h3, h4, p, dl, dd, dt { margin: 0; }
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+.muted { color: var(--text-dim); }
+
+/* ── Arranque y errores ─────────────────────────────────────────────────── */
+
+.boot, .fatal {
+  position: fixed; inset: 0; display: grid; place-content: center;
+  gap: 14px; text-align: center; padding: 32px;
+}
+.boot__mark {
+  width: 46px; height: 46px; margin: 0 auto; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+.boot__text, .fatal p { color: var(--text-dim); max-width: 34ch; }
+.fatal h1 { font-size: 19px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Armazón ────────────────────────────────────────────────────────────── */
+
+#app { height: 100%; }
+
+.stack {
+  position: fixed;
+  /* Ocupa la pantalla entera, incluido el hueco de la cápsula de secciones:
+     cada vista decide si su contenido llega hasta abajo (la cámara y el
+     laboratorio ponen la imagen debajo de sus mandos) o se aparta (la
+     biblioteca). */
+  inset: 0;
+}
+
+.view {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  transform-origin: 50% 50%;
+}
+.view.is-active { display: flex; }
+
+/* ── Cápsula de secciones ───────────────────────────────────────────────
+   Flota abajo en el centro, como la de Fotos en iOS 26. La lente de cristal
+   marca la sección abierta y se desliza con un pequeño rebote al cambiar; al
+   arrastrar sobre la cápsula sigue al dedo. En la cámara y el laboratorio se
+   queda en iconos: allí lo que importa es la imagen.                        */
+
+.tabbar {
+  --item-w: 88px; --item-h: 50px; --gap: 2px; --pad: 4px;
+  position: fixed; left: 50%; bottom: var(--cap-bottom); z-index: 40;
+  display: flex; gap: var(--gap); padding: var(--pad);
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+  box-shadow: var(--glass-shine), 0 10px 30px rgba(0, 0, 0, 0.45);
+  transform: translateX(-50%);
+  /* El arrastre es de la cápsula: ni scroll ni zoom del navegador. */
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  transition: opacity 0.24s var(--ease), transform 0.3s var(--ease), box-shadow 0.2s;
+}
+.tabbar[data-vista="camera"], .tabbar[data-vista="lab"] { --item-w: 56px; --item-h: 44px; }
+.tabbar[data-vista="camera"] .tabbar__label, .tabbar[data-vista="lab"] .tabbar__label { display: none; }
+.tabbar.is-arrastrando {
+  transform: translateX(-50%) scale(1.06);
+  box-shadow: var(--glass-shine), 0 0 0 6px rgba(255, 255, 255, 0.06), 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+.tabbar__lente {
+  position: absolute; left: var(--pad); top: var(--pad);
+  width: var(--item-w); height: var(--item-h); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateX(calc(var(--pos, 0) * (var(--item-w) + var(--gap))));
+  transition: transform 0.46s var(--spring), width 0.3s var(--ease), height 0.3s var(--ease);
+  pointer-events: none;
+}
+/* Arrastrada, la lente se hincha y sigue al dedo sin retraso. */
+.tabbar.is-arrastrando .tabbar__lente {
+  transition: none;
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateX(calc(var(--pos, 0) * (var(--item-w) + var(--gap)))) scale(1.12, 1.08);
+}
+.tabbar.is-asentando .tabbar__lente { transition: transform 0.38s var(--spring); }
+.tabbar__tab {
+  position: relative;
+  width: var(--item-w); height: var(--item-h);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border-radius: 999px;
+  color: rgba(235, 235, 245, 0.72);
+  transition: color 0.2s, width 0.3s var(--ease), height 0.3s var(--ease);
+}
+.tabbar__tab.is-active { color: var(--tab-tint, var(--tint)); }
+.tabbar[data-vista="camera"], .tabbar[data-vista="lab"] { --tab-tint: var(--accent); }
+.tabbar__icon { display: grid; place-items: center; }
+.tabbar__icon svg { width: 24px; height: 24px; display: block; }
+.tabbar__label { font-size: 10px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.2; }
+/* Mientras se cambia de sección la cápsula se aparta: las tarjetas mandan. */
+body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: none; }
+
+/* ── Carrusel de secciones ──────────────────────────────────────────────
+   Las vistas de verdad, encogidas como las tarjetas del selector de apps.
+   Detrás, un fondo oscuro; encima, sólo los títulos y un botón invisible del
+   tamaño de cada tarjeta para entrar en ella.                              */
+
+.stack.is-carrusel, .stack.is-pasando {
+  background: radial-gradient(120% 70% at 50% 45%, #1d1d22 0%, #030304 75%);
+}
+.stack.is-carrusel .view, .stack.is-pasando .view {
+  overflow: hidden;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 30px 60px rgba(0, 0, 0, 0.6);
+  will-change: transform;
+}
+/* Las vistas no se tocan mientras son tarjetas: los toques son del carrusel. */
+.stack.is-carrusel .view { pointer-events: none; }
+.stack.is-asentando .view {
+  transition: transform 0.38s var(--ease), border-radius 0.38s var(--ease);
+}
+
+.carrusel {
+  position: fixed; inset: 0; z-index: 41;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+  pointer-events: none;
+}
+.carrusel.is-abierto { pointer-events: auto; }
+.carrusel__tarjeta {
+  position: absolute; display: block; padding: 0;
+  border-radius: 36px;
+  transition: none;
+}
+.carrusel.is-asentando .carrusel__tarjeta {
+  transition: left 0.38s var(--ease), top 0.38s var(--ease), width 0.38s var(--ease),
+    height 0.38s var(--ease), opacity 0.3s;
+}
+.carrusel__tarjeta:focus-visible { outline: 2px solid var(--tint); outline-offset: 4px; }
+.carrusel__titulo {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 10px);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 14px; font-weight: 600; color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+.carrusel__tarjeta.is-centro .carrusel__titulo { color: #fff; font-size: 15px; }
+.carrusel__icono svg { width: 18px; height: 18px; display: block; }
+.carrusel__pista {
+  position: absolute; left: 0; right: 0;
+  bottom: calc(var(--cap-bottom) + 18px);
+  text-align: center; font-size: 13px; color: var(--text-dim);
+  opacity: 0; transition: opacity 0.3s;
+}
+.carrusel.is-abierto .carrusel__pista { opacity: 1; }
+
+/* ── Botones ────────────────────────────────────────────────────────────── */
+
+/* Como los de iOS: gris relleno, sin borde; el principal en azul. */
+.btn {
+  min-height: 44px; padding: 0 18px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: 15px; font-weight: 600;
+  border: 0;
+  transition: transform 0.1s var(--ease), background 0.15s, opacity 0.15s;
+}
+.btn:active { transform: scale(0.97); opacity: 0.8; }
+.btn--primary { background: var(--tint); color: #fff; }
+.btn--danger { background: var(--bg-input); color: var(--danger); }
+.btn--ghost { background: transparent; color: var(--tint); }
+.btn--ghost.is-active { background: var(--tint); color: #fff; }
+.btn:disabled { opacity: 0.35; }
+
+/* Cristal: botones que flotan sobre la foto (los de arriba del visor, del
+   laboratorio y de la biblioteca). */
+.glass {
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+  box-shadow: var(--glass-shine);
+  color: #fff;
+}
+.glass.btn { border-radius: 999px; min-height: 38px; padding: 0 16px; font-size: 15px; }
+.glass.btn.is-active { background: var(--tint); border-color: transparent; color: #fff; }
+.glass.iconbtn { background: var(--glass); }
+.iconbtn svg, .btn svg { width: 20px; height: 20px; display: block; }
+
+.iconbtn {
+  width: 40px; height: 40px; flex: 0 0 40px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  font-size: 16px;
+  transition: background 0.15s, transform 0.1s var(--ease), color 0.15s;
+}
+.iconbtn:active { transform: scale(0.92); }
+.iconbtn.is-active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.iconbtn:disabled { opacity: 0.3; }
+
+.linkbtn {
+  min-height: 40px; padding: 0 6px;
+  color: var(--tint); font-size: 13px;
+}
+.linkbtn--danger { color: var(--danger); }
+
+.chiprow { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 6px; scrollbar-width: none; }
+.chiprow::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto; min-height: 34px; padding: 0 14px;
+  border-radius: 999px; background: var(--glass);
+  border: 0.5px solid var(--glass-edge); color: #fff; font-size: 13px; font-weight: 600;
+}
+.chip.is-active { background: #fff; color: #000; border-color: transparent; }
+/* Opción disponible pero limitada por el dispositivo: se puede elegir, y la
+   nota de debajo explica qué hará en su lugar. */
+.chip.is-warn { border-style: dashed; color: var(--text-faint); }
+.chip.is-warn.is-active { background: var(--accent); color: var(--accent-ink); border-style: solid; }
+
+/* ── Cámara ─────────────────────────────────────────────────────────────
+   La imagen ocupa la pantalla entera y nada la recorta desde la interfaz. Los
+   ajustes no viven en un panel fijo: emergen como ventanas flotantes, una a la
+   vez, agrupadas por función, y se esconden con el mismo gesto que las abre.  */
+
+.view--camera { background: #000; }
+
+.cam__stage { position: absolute; inset: 0; overflow: hidden; }
+.cam__canvas {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; display: block;
+  /* El lienzo ya viene recortado a la proporción elegida, así que "contain"
+     muestra el fotograma íntegro: es lo que se quiere en 4:3, 1:1, 16:9 y Máx. */
+  object-fit: contain;
+}
+/* Con «Pantalla» el recorte YA es el de la ventana; `cover` sólo absorbe la
+   milésima que deja el redondeo a píxeles enteros, que si no se ve como una
+   banda negra de un par de píxeles. */
+.view--camera.is-screenfit .cam__canvas { object-fit: cover; }
+.cam__video { display: none; }
+
+.cam__stage.is-flashing::after {
+  content: ''; position: absolute; inset: 0; background: #fff;
+  animation: flash 0.18s ease-out;
+}
+@keyframes flash { from { opacity: 0.9; } to { opacity: 0; } }
+
+.cam__badge {
+  position: absolute; top: calc(44px + var(--arriba)); left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px);
+  font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  transition: opacity 0.35s; pointer-events: none; z-index: 3;
+}
+.cam__badge.is-hidden { opacity: 0; }
+/* Sin texto la insignia dejaba una pastilla oscura flotando bajo la
+   resolución, que parecía un elemento roto. */
+.cam__badge:empty { display: none; }
+
+.cam__res {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(14px + var(--arriba));
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.42);
+  font-size: 9.5px; color: rgba(255, 255, 255, 0.66);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  pointer-events: none; transition: opacity 0.28s; z-index: 2;
+}
+.view--camera.is-immersive .cam__res { opacity: 0; }
+
+.cam__rec {
+  position: absolute; top: calc(14px + var(--arriba)); right: 14px;
+  display: flex; align-items: center; gap: 7px; z-index: 3;
+  padding: 6px 12px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6); font-variant-numeric: tabular-nums; font-size: 13px;
+}
+.cam__recdot {
+  width: 9px; height: 9px; border-radius: 50%; background: #ff3b30;
+  animation: pulse 1.1s ease-in-out infinite;
+}
+@keyframes pulse { 50% { opacity: 0.25; } }
+
+.cam__message {
+  position: absolute; inset: 0; display: grid; place-content: center; gap: 16px;
+  padding: 32px; text-align: center; background: rgba(0, 0, 0, 0.9); z-index: 8;
+}
+.cam__message p { color: var(--text-dim); max-width: 32ch; }
+
+/* ── Barras verticales del visor ────────────────────────────────────────── */
+
+/* Lo delgado es la LÍNEA, no el objetivo: la caja mide 46 px para que el pulgar
+   la encuentre sin mirar, y dentro va un raíl de 3 px que casi no tapa nada.
+   Se colocan entre la insignia de arriba y los mandos de abajo, pegadas a cada
+   borde, donde el pulgar de esa mano llega sin recolocar el teléfono. */
+.cam__rail {
+  position: absolute; z-index: 5;
+  top: calc(96px + var(--arriba));
+  bottom: calc(var(--tab-h) + 178px);
+  min-height: 150px;
+  width: 46px;
+  touch-action: none;   /* el arrastre es del raíl, no del desplazamiento */
+  transition: opacity 0.24s var(--ease);
+}
+.cam__rail--left { left: 0; }
+.cam__rail--right { right: 0; }
+/* Se esconden con el resto de los mandos: el encuadre limpio es limpio. */
+.view--camera.is-immersive .cam__rail { opacity: 0; pointer-events: none; }
+
+.rail { --pos: 0.5; --origin: 0; }
+.rail__track {
+  position: absolute; top: 0; bottom: 0; left: 50%;
+  width: 3px; margin-left: -1.5px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.55);
+}
+/* Relleno desde el valor neutro: de un vistazo se ve cuánto te has desviado y
+   hacia dónde, sin leer el número. */
+.rail__fill {
+  position: absolute; left: 0; right: 0; border-radius: 2px;
+  background: var(--accent);
+  bottom: calc(min(var(--pos), var(--origin)) * 100%);
+  top: calc((1 - max(var(--pos), var(--origin))) * 100%);
+}
+.rail__tick {
+  position: absolute; left: -3px; right: -3px; height: 2px; margin-top: -1px;
+  top: calc((1 - var(--origin)) * 100%);
+  background: rgba(255, 255, 255, 0.6); border-radius: 1px;
+}
+.rail__thumb {
+  position: absolute; left: 50%; width: 20px; height: 20px;
+  margin: -10px 0 0 -10px;
+  top: calc((1 - var(--pos)) * 100%);
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  transition: transform 0.12s var(--ease);
+}
+.rail.is-active .rail__thumb { transform: scale(1.25); }
+
+/* El número sólo aparece mientras se mueve: el resto del tiempo estorba a la
+   imagen, que es lo que se está mirando para decidir. */
+.rail__value {
+  position: absolute; top: calc((1 - var(--pos)) * 100% - 13px);
+  padding: 3px 9px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(10px);
+  font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity 0.18s;
+}
+.cam__rail--left .rail__value { left: calc(100% - 4px); }
+.cam__rail--right .rail__value { right: calc(100% - 4px); }
+.rail.is-active .rail__value { opacity: 1; }
+/* Sin gran angular no hay nada por debajo de 1×: el tramo se apaga en vez de
+   prometer un objetivo que este teléfono no tiene. */
+.cam__rail.is-noultra .rail__track {
+  background: linear-gradient(to top,
+    rgba(255, 255, 255, 0.08) 0, rgba(255, 255, 255, 0.08) calc(var(--origin) * 100%),
+    rgba(255, 255, 255, 0.28) calc(var(--origin) * 100%));
+}
+
+/* ── HUD flotante ───────────────────────────────────────────────────────── */
+
+.cam__hud {
+  position: absolute; left: 0; right: 0; bottom: var(--tab-h); z-index: 5;
+  display: grid; gap: 8px;
+  padding: 0 10px 10px;
+  transition: opacity 0.24s var(--ease), transform 0.28s var(--ease);
+}
+.view--camera.is-immersive .cam__hud {
+  opacity: 0; transform: translateY(20px); pointer-events: none;
+}
+
+/* Con los mandos ocultos queda este único asidero para recuperarlos. */
+.cam__reveal {
+  position: absolute; right: 12px; bottom: calc(var(--tab-h) + 12px); z-index: 6;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 15px;
+  background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(10px);
+  color: #fff; opacity: 0; pointer-events: none;
+  transition: opacity 0.24s;
+}
+.view--camera.is-immersive .cam__reveal { opacity: 1; pointer-events: auto; }
+
+/* Tres iconos sueltos sobre la imagen. Sin caja que los agrupe: la barra
+   translúcida ocupaba todo el ancho del visor para sostener tres símbolos, y
+   lo que sobra aquí tapa el encuadre. Lo que los separa de la foto es la
+   sombra, no un fondo. */
+.cam__tools {
+  display: flex; align-items: center; justify-content: center; gap: 18px;
+}
+
+.camtool {
+  flex: 0 0 auto; width: 46px; height: 46px;
+  display: grid; place-items: center;
+  color: #fff;
+  transition: color 0.15s, transform 0.1s var(--ease);
+}
+.camtool__icon {
+  display: grid; place-items: center; line-height: 1;
+  /* Doble sombra: la corta define el borde sobre un fondo claro y la larga lo
+     despega de uno con textura. Es lo que sustituye al recuadro. */
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 2px 7px rgba(0, 0, 0, 0.55));
+}
+/* Con ventana abierta o con el flash encendido, el icono se tiñe. Un recuadro
+   de color volvería a meter la caja que se acaba de quitar. */
+.camtool.is-open, .camtool.is-on { color: var(--accent); }
+.camtool:active { transform: scale(0.88); }
+
+/* Destello de pantalla: la única luz que un navegador puede dar cuando no
+   expone el LED. Va sobre el visor, no sobre toda la vista, para que los
+   mandos no parpadeen con él. */
+.cam__screenflash {
+  position: absolute; inset: 0; z-index: 4;
+  background: #fff; pointer-events: none;
+}
+
+/* ── Ventana de ajustes ─────────────────────────────────────────────────── */
+
+.cam__panelhost { display: grid; }
+.cam__panelhost:empty { display: none; }
+
+.campanel {
+  border-radius: 16px; overflow: hidden;
+  background: rgba(18, 19, 23, 0.78);
+  backdrop-filter: saturate(150%) blur(20px);
+  -webkit-backdrop-filter: saturate(150%) blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+  animation: campanel-in 0.22s var(--ease);
+}
+@keyframes campanel-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+}
+.campanel__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 8px 5px 14px;
+}
+.campanel__title {
+  font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--accent);
+}
+.campanel__close {
+  width: 34px; height: 34px; display: grid; place-items: center;
+  color: var(--text-dim); font-size: 13px; border-radius: 50%;
+}
+.campanel__body { padding: 0 12px 12px; display: grid; gap: 8px; min-width: 0; }
+.campanel__row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.campanel__label { font-size: 12px; color: var(--text-dim); flex: 0 0 auto; }
+.campanel__row .slider__input { flex: 1; min-width: 0; }
+.campanel__row .slider__track { height: 34px; }
+.campanel__value {
+  font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums;
+  min-width: 58px; text-align: right; flex: 0 0 auto;
+}
+.campanel__chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.chip--stacked {
+  display: grid; gap: 0; place-items: center; line-height: 1.15;
+  min-height: 44px; padding: 0 12px;
+}
+.chip__label { font-size: 13px; font-weight: 600; }
+.chip__sub { font-size: 9px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+.campanel__chips::-webkit-scrollbar { display: none; }
+.campanel__note { font-size: 11px; color: var(--text-faint); }
+
+/* ── Tira de emulsiones ─────────────────────────────────────────────────── */
+
+.strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; min-width: 0; }
+.strip::-webkit-scrollbar { display: none; }
+.strip__item {
+  flex: 0 0 auto; display: grid; justify-items: center; gap: 3px;
+  padding: 2px; width: 62px;
+}
+.strip__swatch {
+  width: 40px; height: 40px; border-radius: 11px;
+  background: linear-gradient(135deg, var(--c1), var(--c2));
+  border: 2px solid transparent;
+  transition: border-color 0.15s, transform 0.12s var(--ease);
+}
+.strip__item.is-active .strip__swatch { border-color: var(--accent); transform: scale(1.08); }
+/* Tres líneas justas y una altura fija: «Vision Premier 2383» y «…2393» sólo
+   se distinguen por el número, así que cortarlo deja dos botones idénticos.
+   La altura exacta evita además que asome media línea por abajo. */
+.strip__name {
+  font-size: 8.5px; color: rgba(255, 255, 255, 0.55); text-align: center;
+  line-height: 1.15; max-width: 60px; height: calc(3 * 1.15em);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.strip__item.is-active .strip__name { color: var(--text); font-weight: 600; }
+
+.cam__modes { display: flex; justify-content: center; gap: 24px; }
+/* FOTO · VÍDEO como en la Cámara del iPhone: el modo activo en amarillo. */
+.cam__mode {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.12em; color: #fff;
+  padding: 4px 4px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+.cam__mode.is-active { color: var(--accent); }
+.cam__modes.is-locked { opacity: 0.4; pointer-events: none; }
+
+.cam__bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 22px; }
+/* La última foto, abajo a la izquierda como en la Cámara del iPhone. */
+.cam__ultima {
+  grid-column: 1; justify-self: start;
+  width: 48px; height: 48px; padding: 0; overflow: hidden;
+  border-radius: 9px; border: 1.5px solid rgba(255, 255, 255, 0.75);
+  background: var(--bg-raised);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s var(--ease);
+}
+.cam__ultima:active { transform: scale(0.92); }
+.cam__ultimaimg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam__bar .shutter { grid-column: 2; }
+/* Los dos redondos de esta barra se pulsan con el teléfono ya levantado y sin
+   mirarlos: 40 px se fallan, y fallar el de la derecha te da la vuelta a la
+   cámara en mitad del encuadre. */
+.cam__bar .iconbtn { width: 46px; height: 46px; flex-basis: 46px; font-size: 17px; }
+.cam__bar .iconbtn:last-child { grid-column: 3; justify-self: end; }
+.cam__bar .iconbtn {
+  background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+}
+
+.shutter {
+  width: 74px; height: 74px; position: relative; display: grid; place-items: center;
+}
+.shutter__ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 4px solid #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+.shutter__core {
+  width: 60px; height: 60px; border-radius: 50%; background: #fff;
+  transition: transform 0.12s var(--ease), border-radius 0.2s var(--ease), background 0.2s;
+}
+.shutter:active .shutter__core { transform: scale(0.86); }
+.shutter--video .shutter__core { background: #ff3b30; }
+.shutter.is-recording .shutter__core { width: 24px; height: 24px; border-radius: 6px; }
+.shutter.is-busy { opacity: 0.5; pointer-events: none; }
+
+/* ── Guardar manteniendo pulsado (reserva de iOS) ───────────────────────── */
+
+.longpress {
+  position: fixed; inset: 0; z-index: 150;
+  display: grid; place-items: center; padding: 20px;
+  background: rgba(0, 0, 0, 0.88);
+}
+.longpress__box {
+  display: grid; gap: 12px; justify-items: center;
+  max-width: 100%; max-height: 100%;
+}
+.longpress__hint {
+  font-size: 13px; color: var(--text-dim); text-align: center; max-width: 30ch;
+}
+.longpress__media {
+  max-width: 100%; max-height: 66vh; border-radius: 10px;
+  /* Sin esto, iOS no ofrece «Añadir a Fotos» al mantener pulsado. */
+  -webkit-touch-callout: default;
+}
+
+/* ── Laboratorio ────────────────────────────────────────────────────────
+   Mismo principio que en la cámara: la imagen es el objeto de trabajo y ocupa
+   toda la vista. La barra superior y los ajustes flotan encima con velos, y el
+   lienzo se coloca en el hueco libre para que nunca quede tapado. Plegando los
+   ajustes —un toque en la pestaña activa o en el tirador— la imagen se queda
+   con la pantalla entera.                                                    */
+
+.view--lab { background: var(--bg); }
+
+/* La barra de edición de Fotos: volver en un botón redondo de cristal, los
+   mandos en una cápsula de cristal y exportar en amarillo. */
+.lab__bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(6px + var(--arriba)) 10px 10px;
+  background: linear-gradient(rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.38) 70%, transparent);
+}
+.lab__volver { width: 40px; height: 40px; flex: 0 0 40px; }
+.lab__id { display: none; min-width: 0; flex: 1; }
+.lab__title { font-size: 15px; font-weight: 600; line-height: 1.2; }
+.lab__subtitle { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab__actions {
+  display: flex; align-items: center; gap: 0;
+  padding: 2px; border-radius: 999px; min-width: 0;
+}
+.lab__actions .iconbtn { width: 38px; height: 38px; flex-basis: 38px; background: transparent; }
+.lab__actions .iconbtn:disabled { opacity: 0.32; }
+.lab__actions .iconbtn.is-active { background: var(--accent); color: #000; }
+.iconbtn__svg { display: grid; place-items: center; }
+.iconbtn__svg svg { width: 20px; height: 20px; display: block; }
+.lab__export {
+  height: 40px; min-width: 40px; flex: 0 0 auto; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 999px; background: var(--accent); color: #000;
+  font-size: 14px; font-weight: 600;
+  box-shadow: 0 6px 18px rgba(255, 214, 10, 0.22);
+  transition: transform 0.1s var(--ease);
+}
+.lab__export:active { transform: scale(0.94); }
+.lab__exporttxt { display: none; }
+/* Copiar y pegar a la vista sólo en el Mac; en el teléfono están en Presets. */
+.lab__clip { display: none; }
+.lab__actions .lab__clip { min-height: 34px; padding: 0 10px; font-size: 13px; color: #fff; }
+
+.lab__stage { position: absolute; inset: 0; }
+.lab__frame {
+  position: absolute;
+  /* La imagen ocupa TODO el hueco y no se mueve. Antes su altura dependía del
+     panel abierto, así que la foto saltaba de tamaño al cambiar de pestaña —
+     justo cuando se está mirando un color. Ahora los ajustes flotan encima con
+     transparencia y la imagen se queda quieta debajo. */
+  top: calc(58px + var(--arriba));
+  left: 0; right: 0;
+  bottom: calc(var(--tab-h) + 4px);
+}
+.lab__canvas {
+  position: absolute; display: block;
+  touch-action: none;
+}
+/* Ampliada, la foto es más grande que su hueco y se mueve por dentro: lo que
+   sobra se recorta para que nunca tape los ajustes. (Sin ampliar no se recorta:
+   los tiradores del encuadre asoman un poco por fuera de la foto.) */
+.view--lab.is-zoomed .lab__frame { overflow: hidden; }
+.view--lab.is-zoomed .lab__canvas { cursor: grab; box-shadow: none; }
+.view--lab.is-zoomed .lab__canvas.is-grabbing { cursor: grabbing; }
+@media (hover: hover) and (pointer: fine) {
+  .view--lab.has-image:not(.is-zoomed) .lab__canvas { cursor: zoom-in; }
+}
+.lab__zoomtag {
+  position: absolute; left: 10px; top: 10px; z-index: 3;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  font-size: 11.5px; color: #fff; pointer-events: none;
+}
+.lab__zoomtag b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.lab__zoomtag .spinner { width: 12px; height: 12px; border-width: 2px; }
+/* Sin esto no se sabe cuál de las dos versiones se está mirando. */
+.lab__comparetag {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+  z-index: 3; padding: 4px 12px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(8px);
+  font-size: 10px; letter-spacing: 0.14em; color: var(--accent);
+  pointer-events: none;
+}
+.lab__empty {
+  position: absolute; inset: 0; display: grid; place-content: center;
+  gap: 16px; padding: 28px; text-align: center;
+}
+.lab__empty p { color: var(--text-dim); max-width: 30ch; }
+.lab__emptyactions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.view--lab.has-image .lab__empty { display: none; }
+
+/* ── Tira de fotos del laboratorio ──────────────────────────────────────── */
+/* En el teléfono va arriba, bajo la barra: abajo flotan los ajustes. En el Mac
+   va abajo, debajo de la foto y a la izquierda de la columna de ajustes. */
+.view--lab { --tira-h: 70px; }
+.iconbtn__svg { display: grid; place-items: center; }
+.tira {
+  position: absolute; z-index: 4;
+  top: calc(58px + var(--arriba)); left: 0; right: 0;
+  height: var(--tira-h);
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  overflow-x: auto; overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  background: rgba(0, 0, 0, 0.82);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.1);
+}
+.tira[hidden] { display: none; }
+.tira__item {
+  position: relative; flex: 0 0 auto;
+  height: 100%; aspect-ratio: 1;
+  border-radius: 5px; overflow: hidden;
+  background: var(--bg-raised);
+  border: 2px solid transparent;
+  opacity: 0.72; transition: opacity 0.15s, border-color 0.15s;
+}
+.tira__item:hover { opacity: 1; }
+.tira__item.is-current { border-color: var(--accent); opacity: 1; }
+.tira__img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tira__marca {
+  position: absolute; right: 3px; bottom: 3px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.6);
+  display: none;
+}
+.tira__item.is-edited .tira__marca { display: block; }
+.tira__vacia { color: var(--text-dim); font-size: 12px; padding: 0 6px; }
+.view--lab.has-strip .lab__frame { top: calc(62px + var(--arriba) + var(--tira-h)); }
+
+.histogram {
+  position: absolute; right: 8px; top: 8px; width: 132px; height: 50px;
+  border-radius: 8px; overflow: hidden;
+  background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.histogram.is-visible { opacity: 1; }
+.histogram__canvas { width: 100%; height: 100%; display: block; }
+
+/* ── Recorte ────────────────────────────────────────────────────────────── */
+
+.crop { position: absolute; touch-action: none; z-index: 5; }
+.crop::before {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+}
+.crop__rect {
+  position: absolute;
+  outline: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.52);
+}
+.crop__thirds {
+  position: absolute; inset: 0; opacity: 0; transition: opacity 0.18s;
+  background:
+    linear-gradient(to right, transparent 33.2%, rgba(255,255,255,0.4) 33.2%, rgba(255,255,255,0.4) 33.5%, transparent 33.5%),
+    linear-gradient(to right, transparent 66.5%, rgba(255,255,255,0.4) 66.5%, rgba(255,255,255,0.4) 66.8%, transparent 66.8%),
+    linear-gradient(to bottom, transparent 33.2%, rgba(255,255,255,0.4) 33.2%, rgba(255,255,255,0.4) 33.5%, transparent 33.5%),
+    linear-gradient(to bottom, transparent 66.5%, rgba(255,255,255,0.4) 66.5%, rgba(255,255,255,0.4) 66.8%, transparent 66.8%);
+}
+.crop__rect.is-dragging .crop__thirds { opacity: 1; }
+.crop__handle { position: absolute; width: 34px; height: 34px; }
+.crop__handle::after {
+  content: ''; position: absolute; background: #fff; border-radius: 1px;
+}
+.crop__handle--nw { left: -17px; top: -17px; }
+.crop__handle--ne { right: -17px; top: -17px; }
+.crop__handle--sw { left: -17px; bottom: -17px; }
+.crop__handle--se { right: -17px; bottom: -17px; }
+.crop__handle--nw::after, .crop__handle--ne::after,
+.crop__handle--sw::after, .crop__handle--se::after {
+  width: 20px; height: 20px; background: none;
+  border: 3px solid #fff; border-radius: 2px;
+}
+.crop__handle--nw::after { left: 8px; top: 8px; border-right: 0; border-bottom: 0; }
+.crop__handle--ne::after { right: 8px; top: 8px; border-left: 0; border-bottom: 0; }
+.crop__handle--sw::after { left: 8px; bottom: 8px; border-right: 0; border-top: 0; }
+.crop__handle--se::after { right: 8px; bottom: 8px; border-left: 0; border-top: 0; }
+.crop__handle--n { left: 17px; right: 17px; top: -17px; width: auto; }
+.crop__handle--s { left: 17px; right: 17px; bottom: -17px; width: auto; }
+.crop__handle--w { top: 17px; bottom: 17px; left: -17px; height: auto; }
+.crop__handle--e { top: 17px; bottom: 17px; right: -17px; height: auto; }
+.crop__handle--n::after, .crop__handle--s::after { left: 50%; width: 28px; height: 3px; margin-left: -14px; }
+.crop__handle--n::after { top: 15px; }
+.crop__handle--s::after { bottom: 15px; }
+.crop__handle--w::after, .crop__handle--e::after { top: 50%; width: 3px; height: 28px; margin-top: -14px; }
+.crop__handle--w::after { left: 15px; }
+.crop__handle--e::after { right: 15px; }
+
+/* ── Paneles de ajustes ─────────────────────────────────────────────────── */
+
+.panels {
+  position: absolute; left: 0; right: 0; bottom: var(--tab-h); z-index: 5;
+  display: flex; flex-direction: column;
+  /* El fondo va por partes, no en bloque: los controles casi transparentes
+     para que la foto se siga viendo entera mientras se ajusta, y la barra de
+     pestañas apenas velada para que se lea siempre. */
+  background: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Casi del todo transparente: sólo el desenfoque y la sombra del texto separan
+   los controles de la foto. Es lo justo para leerlos sin taparla. */
+.panels__grab, .panelbody {
+  background: rgba(9, 10, 13, 0.16);
+  /* El velo lo pone un filtro, no una capa: `brightness` apaga lo que hay
+     detrás sin taparlo, así que la foto sigue viéndose entera y el texto se
+     lee igual sobre un cielo blanco que sobre una sombra. */
+  backdrop-filter: brightness(0.42) saturate(150%) blur(16px);
+  -webkit-backdrop-filter: brightness(0.42) saturate(150%) blur(16px);
+}
+.panelbody { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75); }
+
+/* Tirador: la forma directa de dejar la imagen sola. */
+.panels__grab {
+  width: 100%; height: 26px; display: grid; place-items: center; flex: 0 0 auto;
+  touch-action: none;   /* el arrastre es nuestro, no del scroll de la página */
+}
+.panels__grabline {
+  width: 40px; height: 4px; border-radius: 2px; background: var(--line);
+  transition: background 0.15s, width 0.18s var(--ease);
+}
+.panels__grab:active .panels__grabline { background: var(--text-faint); width: 52px; }
+.panels.is-collapsed .panels__grabline { background: var(--accent); opacity: 0.75; }
+
+.panelbody {
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 2px 14px 4px;
+  /* Por defecto la imagen se queda con la mayor parte de la pantalla; el
+     tirador cambia el reparto y la elección se recuerda. */
+  max-height: var(--panel-h, min(26vh, 220px));
+}
+/* Mientras se arrastra no hay transiciones: el panel debe seguir al dedo. */
+.panels.is-dragging, .panels.is-dragging * { transition: none !important; }
+.panels.is-dragging ~ .lab__stage .lab__frame,
+.view--lab.is-dragging .lab__frame { transition: none !important; }
+.panel { display: grid; gap: 2px; }
+/* El mínimo automático de Grid es el ancho del contenido, así que una fila con
+   veinte tarjetas ensancha la columna entera y el texto de al lado se sale por
+   la derecha. `min-width: 0` deja que cada hijo se contenga y desplace lo suyo. */
+.panel, .panel > *, .filmpicker, .filmpicker > *, .hsl, .mono, .geo, .curve { min-width: 0; }
+.filmpicker__row, .strip, .seg, .chiprow, .panelbar { min-width: 0; }
+.panel__subtitle {
+  font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-faint); margin: 10px 0 6px;
+}
+.panel__foot { display: flex; justify-content: center; padding: 2px 0 6px; }
+
+/* Las pestañas de los paneles son texto, como «Ajustar · Filtros · Recortar»
+   en Fotos: la activa en blanco con una raya amarilla, las demás en gris, y un
+   punto amarillo en las que tienen algo cambiado. La barra va casi opaca: es
+   el sitio donde se pulsa a ciegas, y un objetivo que se confunde con la foto
+   se falla. */
+.panelbar {
+  display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none;
+  border-top: 0;
+  background: rgba(0, 0, 0, 0.86);
+  backdrop-filter: saturate(170%) blur(22px);
+  -webkit-backdrop-filter: saturate(170%) blur(22px);
+  padding: 0 10px 2px;
+  flex: 0 0 auto;
+}
+.panelbar::-webkit-scrollbar { display: none; }
+.panelbar__tab {
+  flex: 0 0 auto; position: relative;
+  min-width: 0; min-height: 44px; padding: 0 11px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  color: rgba(235, 235, 245, 0.5);
+  transition: color 0.15s;
+}
+.panelbar__tab.is-active { color: #fff; }
+.panelbar__tab::after {
+  content: ''; width: 18px; height: 3px; border-radius: 2px;
+  background: var(--accent); opacity: 0; transition: opacity 0.15s;
+}
+.panelbar__tab.is-active::after { opacity: 1; }
+.panels.is-collapsed .panelbar__tab.is-active::after { opacity: 0.4; }
+.panelbar__label { font-size: 14px; font-weight: 600; margin-top: 7px; }
+.panelbar__icon { display: none; }
+.panelbar__dot {
+  position: absolute; top: 8px; right: 3px;
+  width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  opacity: 0; transition: opacity 0.18s;
+}
+.panelbar__tab.is-modified .panelbar__dot { opacity: 1; }
+
+/* ── Deslizadores ───────────────────────────────────────────────────────── */
+
+.slider { padding: 7px 0; --pos: 0.5; --origin: 0.5; }
+.slider__head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.slider__label { font-size: 13px; color: var(--text-dim); }
+.slider__value {
+  font-size: 12px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums; font-feature-settings: 'tnum';
+}
+.slider.is-modified .slider__label { color: var(--text); }
+.slider.is-modified .slider__value { color: var(--accent); }
+
+.slider__track {
+  position: relative; height: 30px; display: flex; align-items: center;
+  flex: 1; min-width: 0;
+  --pos: 0.5; --origin: 0.5;
+}
+/* Marca del valor neutro: dice a dónde volver sin tener que recordarlo. */
+.slider__tick {
+  position: absolute; top: 50%; margin-top: -5px;
+  left: calc(var(--origin) * 100%);
+  width: 2px; height: 10px; margin-left: -1px; border-radius: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.slider__track::before {
+  content: ''; position: absolute; left: 0; right: 0; height: 4px;
+  border-radius: 2px;
+  /* Casi opaco: el raíl tiene que verse igual sobre un cielo que sobre una
+     sombra, o el deslizador no dice por dónde va. */
+  background: rgba(120, 120, 128, 0.36);
+  box-shadow: none;
+}
+/* Relleno desde el punto neutro: se lee de un vistazo cuánto te has desviado. */
+.slider__track::after {
+  content: ''; position: absolute; height: 4px; border-radius: 2px;
+  background: var(--accent);
+  left: calc(min(var(--pos), var(--origin)) * 100%);
+  right: calc(100% - max(var(--pos), var(--origin)) * 100%);
+}
+
+.slider__input, .wheel__lum, .cam__ev {
+  position: relative; z-index: 1;
+  width: 100%; height: 30px; margin: 0;
+  background: none; -webkit-appearance: none; appearance: none;
+}
+.slider__input::-webkit-slider-thumb, .wheel__lum::-webkit-slider-thumb, .cam__ev::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #fff; border: 0;
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.45), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+}
+.slider__input::-moz-range-thumb, .wheel__lum::-moz-range-thumb, .cam__ev::-moz-range-thumb {
+  width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 0;
+}
+.slider__input::-moz-range-track, .cam__ev::-moz-range-track { height: 3px; background: var(--line); border-radius: 2px; }
+.cam__ev::-webkit-slider-runnable-track { height: 3px; background: var(--line); border-radius: 2px; }
+
+/* ── Círculos y regla ────────────────────────────────────────────────────
+   En el teléfono, un panel con varios deslizadores se enseña como en Fotos:
+   arriba el nombre y el valor del elegido, una fila de círculos (uno por
+   ajuste, con su valor dentro y un aro amarillo que dice cuánto se ha
+   movido) y debajo una regla. Sigue siendo el mismo <input type=range> de
+   siempre —el arrastre nativo, el teclado y VoiceOver—, con aspecto de regla.
+   En la columna del Mac caben todos, así que no se aplica.                  */
+@media not all and (min-width: 900px) and (min-height: 560px) and (orientation: landscape) {
+  .panel--rueda { display: grid; gap: 2px; }
+  .panel--rueda > .herramientas { order: 2; }
+  .panel--rueda > .slider { display: none; }
+  .panel--rueda > .slider.is-elegido { display: contents; }
+  .panel--rueda > .slider.is-elegido > .slider__head { order: 1; justify-content: center; gap: 10px; padding-top: 4px; }
+  .panel--rueda > .slider.is-elegido > .slider__track { order: 3; }
+  .panel--rueda > .mono { order: 4; }
+  .panel--rueda > .panel__foot { order: 5; }
+  .panel--rueda .slider__label {
+    font-size: 12px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .panel--rueda .slider.is-modified .slider__label { color: var(--text-dim); }
+  .panel--rueda .slider__value { font-size: 14px; font-weight: 600; color: #fff; }
+  .panel--rueda .slider.is-modified .slider__value { color: var(--accent); }
+  /* La regla: marcas cada 8 px, más largas cada 40, que se desvanecen en los
+     extremos; el tramo movido en amarillo tenue y el valor, una raya amarilla. */
+  .panel--rueda .slider__track { height: 44px; }
+  .panel--rueda .slider__track::before {
+    height: 22px; border-radius: 0;
+    background:
+      repeating-linear-gradient(90deg, rgba(235, 235, 245, 0.55) 0 1px, transparent 1px 40px),
+      repeating-linear-gradient(90deg, rgba(235, 235, 245, 0.26) 0 1px, transparent 1px 8px);
+    background-position: 0 0, 0 5px;
+    background-size: 100% 22px, 100% 12px;
+    background-repeat: repeat-x;
+    -webkit-mask: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+    mask: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  }
+  .panel--rueda .slider__track::after { height: 12px; background: rgba(255, 214, 10, 0.32); border-radius: 2px; }
+  .panel--rueda .slider__input::-webkit-slider-thumb {
+    width: 4px; height: 36px; border-radius: 2px;
+    background: var(--accent); box-shadow: 0 0 8px rgba(0, 0, 0, 0.55);
+  }
+  .panel--rueda .slider__input::-moz-range-thumb {
+    width: 4px; height: 36px; border-radius: 2px; background: var(--accent);
+  }
+
+  /* Película: un solo carrusel de borde a borde, como los filtros de Fotos,
+     con el nombre de cada familia encima de su tramo. */
+  .filmpicker { display: flex; gap: 18px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .filmpicker::-webkit-scrollbar { display: none; }
+  .filmpicker__group { flex: 0 0 auto; display: grid; gap: 6px; align-content: start; }
+  .filmpicker__kind { margin: 0; padding-left: 2px; }
+  .filmpicker__row { overflow: visible; }
+}
+
+.herramientas {
+  display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none;
+  padding: 4px calc(50% - 28px) 2px;
+  overscroll-behavior-x: contain;
+}
+.herramientas::-webkit-scrollbar { display: none; }
+.herramienta {
+  flex: 0 0 auto; width: 56px; padding: 0;
+  display: grid; justify-items: center; gap: 4px;
+  color: #fff;
+}
+.herramienta__circulo {
+  position: relative; width: 46px; height: 46px;
+  display: grid; place-items: center; border-radius: 50%;
+  transition: transform 0.22s var(--spring);
+}
+.herramienta.is-elegida .herramienta__circulo { transform: scale(1.12); }
+.herramienta__aro {
+  position: absolute; inset: 0; border-radius: 50%;
+  --ini: 0; --largo: 0;
+  background: conic-gradient(from calc(var(--ini) * 1turn), var(--accent) 0 calc(var(--largo) * 1turn), rgba(235, 235, 245, 0.24) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+}
+.herramienta.is-elegida .herramienta__aro {
+  background: conic-gradient(from calc(var(--ini) * 1turn), var(--accent) 0 calc(var(--largo) * 1turn), rgba(255, 214, 10, 0.4) 0);
+}
+.herramienta__valor {
+  font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: rgba(235, 235, 245, 0.6); letter-spacing: -0.01em;
+}
+.herramienta.is-modified .herramienta__valor { color: #fff; }
+.herramienta.is-elegida .herramienta__valor { color: var(--accent); }
+.herramienta__nombre {
+  font-size: 10px; color: var(--text-dim);
+  max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.herramienta.is-elegida .herramienta__nombre { color: #fff; font-weight: 600; }
+
+/* ── Selector de emulsión ───────────────────────────────────────────────── */
+
+.filmpicker { display: grid; gap: 8px; margin-bottom: 4px; }
+.filmpicker__kind {
+  font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-faint); margin-bottom: 4px;
+}
+.filmpicker__row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.filmpicker__row::-webkit-scrollbar { display: none; }
+
+.filmcard { flex: 0 0 auto; width: 68px; display: grid; justify-items: center; gap: 3px; }
+.filmcard__frame {
+  width: 64px; height: 64px; border-radius: 8px; overflow: hidden;
+  background: var(--bg-input);
+  transition: box-shadow 0.15s, transform 0.12s var(--ease);
+}
+.filmcard__thumb { width: 100%; height: 100%; display: block; object-fit: cover; }
+.filmcard.is-active .filmcard__frame { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent); }
+.filmcard__name {
+  font-size: 9.5px; text-align: center; line-height: 1.18; color: var(--text-dim);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.filmcard.is-active .filmcard__name { color: var(--accent); font-weight: 600; }
+
+
+/* ── HSL ────────────────────────────────────────────────────────────────── */
+
+.hsl__bands { display: flex; gap: 7px; margin-bottom: 6px; }
+.hsl__band {
+  flex: 1; height: 34px; border-radius: 8px; position: relative;
+  background: hsl(var(--hue) 72% 52%);
+  border: 2px solid transparent;
+  transition: border-color 0.15s, transform 0.12s var(--ease);
+}
+.hsl__band.is-active { border-color: #fff; transform: scale(1.06); }
+.hsl__band.is-modified::after {
+  content: ''; position: absolute; top: 3px; right: 3px;
+  width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Curvas ─────────────────────────────────────────────────────────────── */
+
+.curve { display: grid; gap: 8px; }
+.curve__tabs { display: flex; gap: 6px; }
+.curve__tab {
+  flex: 1; min-height: 34px; border-radius: 8px;
+  background: var(--bg-input); border: 1px solid var(--line);
+  color: var(--text-faint); font-size: 12px; font-weight: 600;
+}
+.curve__tab.is-active { color: var(--tint); border-color: var(--tint); background: rgba(255, 255, 255, 0.05); }
+.curve__stage {
+  aspect-ratio: 1; max-height: 46vh; margin: 0 auto; width: min(100%, 300px);
+  background: var(--bg-input); border-radius: var(--radius-sm);
+  border: 1px solid var(--line); overflow: hidden;
+}
+.curve__canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.curve__hint { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.curve__hint > span { font-size: 11px; color: var(--text-faint); }
+
+/* ── Ruedas de etalonaje ────────────────────────────────────────────────── */
+
+.wheels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.wheel { display: grid; justify-items: center; gap: 5px; --lum-pos: 0.5; }
+.wheel__stage { width: 100%; max-width: 104px; aspect-ratio: 1; }
+.wheel__disc { width: 100%; height: 100%; display: block; touch-action: none; border-radius: 50%; }
+.wheel__label { font-size: 11px; color: var(--text-dim); }
+.wheel.is-modified .wheel__label { color: var(--accent); }
+.wheel__lum { width: 100%; height: 26px; }
+.wheel__lum::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 2px;
+  background: linear-gradient(to right, #000, #808080, #fff);
+}
+
+/* ── Mono y geometría ───────────────────────────────────────────────────── */
+
+.switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 46px; }
+.switch__label { font-size: 14px; }
+.switch__input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch__track {
+  width: 50px; height: 30px; border-radius: 999px; background: var(--line);
+  position: relative; transition: background 0.18s; flex: 0 0 auto;
+}
+.switch__knob {
+  position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+  border-radius: 50%; background: #fff; transition: transform 0.18s var(--ease);
+}
+.switch__input:checked + .switch__track { background: var(--accent); }
+.switch__input:checked + .switch__track .switch__knob { transform: translateX(20px); }
+.mono__mix { display: grid; gap: 0; padding-top: 4px; }
+
+.seg { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+.seg::-webkit-scrollbar { display: none; }
+.seg__item {
+  flex: 0 0 auto; min-height: 36px; padding: 0 13px; border-radius: 8px;
+  background: var(--bg-input); border: 1px solid var(--line);
+  color: var(--text-dim); font-size: 12.5px;
+}
+.seg__item.is-active { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.geo__actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+/* ── Biblioteca ─────────────────────────────────────────────────────────
+   La de Fotos: título grande, botones de cristal, la cuadrícula de borde a
+   borde con dos píxeles de junta y los meses como títulos. La cuadrícula pasa
+   por debajo de la cabecera y de la cápsula, que la dejan ver desenfocada.  */
+
+.view--library {
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(var(--tab-h) + 12px);
+}
+.lib__bar {
+  position: sticky; top: 0; z-index: 3;
+  display: grid; gap: 10px;
+  padding: calc(10px + var(--arriba)) 16px 12px;
+  background: linear-gradient(rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.72) 62%, rgba(0, 0, 0, 0));
+}
+.lib__fila { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.lib__cabeza { display: grid; min-width: 0; }
+.lib__title { font-size: 34px; line-height: 1.2; font-weight: 700; letter-spacing: 0.01em; }
+.lib__sub { font-size: 15px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib__sub:empty { display: none; }
+.lib__baractions { display: flex; gap: 8px; padding-bottom: 4px; flex: 0 0 auto; }
+.btn--icono { width: 38px; padding: 0; }
+.btn__icono { display: grid; place-items: center; }
+.btn__icono svg { width: 20px; height: 20px; display: block; }
+
+.lib__foot {
+  display: grid; justify-items: center; gap: 10px;
+  padding: 26px 16px 18px; text-align: center;
+}
+.lib__totales { font-size: 15px; font-weight: 600; }
+.lib__totales:empty { display: none; }
+
+.usage { width: min(100%, 360px); display: grid; gap: 6px; }
+.usage__track { height: 4px; border-radius: 2px; background: var(--bg-input); overflow: hidden; }
+.usage__fill { height: 100%; background: var(--tint); transition: width 0.4s var(--ease); }
+.usage__row { display: grid; gap: 2px; justify-items: center; }
+.usage__text, .usage__mode { font-size: 12px; color: var(--text-faint); }
+.usage__mode { color: var(--text-dim); display: flex; align-items: baseline; gap: 2px; flex-wrap: wrap; justify-content: center; }
+.usage__mode .linkbtn { min-height: 0; padding: 0; font-size: 12px; color: var(--tint); }
+
+.lib__aviso {
+  margin: 0 16px 10px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 12px;
+  border-radius: 14px; background: rgba(10, 132, 255, 0.14);
+  border: 0.5px solid rgba(10, 132, 255, 0.45);
+  font-size: 13px; line-height: 1.35;
+}
+.lib__aviso[hidden] { display: none; }
+.lib__aviso .btn { flex: 0 0 auto; min-height: 34px; padding: 0 14px; font-size: 13px; border-radius: 999px; }
+
+/* ── Menú de importación ────────────────────────────────────────────────── */
+
+.imp {
+  position: fixed; inset: 0; z-index: 95;
+  background: rgba(0, 0, 0, 0.6);
+}
+.imp[hidden] { display: none; }
+/* El panel se coloca con inset, no con un alto en porcentaje dentro de una
+   rejilla centrada: ahí el alto no limitaba a su contenido, y con muchas fotos
+   la cuadrícula crecía y empujaba el botón Importar fuera de la pantalla del
+   iPhone. Así la cuadrícula es la que se desplaza y el pie queda siempre a la
+   vista. */
+.imp__panel {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+  padding-top: var(--arriba);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.imp__bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
+}
+.imp__titulo { font-size: 19px; font-weight: 700; margin-right: auto; }
+.imp__fuentes { display: flex; gap: 8px; flex-wrap: wrap; }
+.imp__fuentes[hidden] { display: none; }
+.imp__fuentes .btn { min-height: 38px; padding: 0 14px; font-size: 13.5px; }
+.imp__cerrar { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  /* En el teléfono, los botones de origen en su propia fila, a lo ancho. */
+  .imp__bar { flex-wrap: wrap; }
+  .imp__bar .imp__fuentes { order: 3; flex: 1 1 100%; }
+  .imp__bar .imp__fuentes .btn { flex: 1; }
+}
+.imp__tools {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; border-bottom: 1px solid var(--line);
+}
+.imp__tools[hidden] { display: none; }
+.imp__resumen { font-size: 12.5px; color: var(--text-dim); }
+.imp__selbtns { display: flex; gap: 6px; }
+.imp__selbtns .btn { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.imp__grid {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  /* Filas a la altura de su casilla: con alto limitado y casillas que
+     recortan su contenido, las filas automáticas se encogían para caber y las
+     miniaturas quedaban en tiras. Así la cuadrícula se desplaza. */
+  grid-auto-rows: max-content;
+  align-content: start; gap: 6px; padding: 8px 10px 16px;
+}
+.imp__grid[hidden] { display: none; }
+.imp__grupo {
+  grid-column: 1 / -1;
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 10px 2px 2px; font-size: 12px; color: var(--text-dim);
+}
+.imp__grupotit { font-weight: 600; color: var(--text); word-break: break-all; }
+.imp__grupo .linkbtn { min-height: 0; font-size: 11.5px; }
+.imp__item {
+  position: relative; display: block; text-align: left;
+  border-radius: 8px; overflow: hidden;
+  background: var(--bg-raised);
+  border: 2px solid transparent;
+  opacity: 0.55; transition: opacity 0.12s, border-color 0.12s;
+}
+.imp__item.is-selected { opacity: 1; border-color: var(--accent); }
+.imp__mini { display: grid; place-items: center; aspect-ratio: 1; background: #000; }
+.imp__mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.imp__mini img:not([src]) { visibility: hidden; }
+.imp__icono { font-size: 13px; font-weight: 600; color: var(--text-faint); letter-spacing: 0.04em; }
+.imp__check {
+  position: absolute; right: 6px; top: 6px;
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85); background: rgba(0, 0, 0, 0.35);
+}
+.imp__item.is-selected .imp__check {
+  background: var(--accent); border-color: var(--accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.5l4 4 8-9' fill='none' stroke='%23111' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 16px; background-position: center; background-repeat: no-repeat;
+}
+.imp__badges { position: absolute; left: 5px; top: 6px; display: grid; gap: 3px; justify-items: start; }
+.imp__badge { padding: 2px 6px; border-radius: 4px; font-size: 9.5px; background: rgba(0, 0, 0, 0.7); color: #fff; }
+.imp__badge--dup { color: var(--accent); }
+.imp__nombre {
+  display: block; padding: 4px 6px 5px;
+  font-size: 10.5px; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.imp__vacio {
+  flex: 1; display: grid; place-content: center; justify-items: center; gap: 12px;
+  padding: 24px; text-align: center;
+  margin: 14px; border: 2px dashed var(--line); border-radius: 18px;
+}
+.imp__vacio[hidden] { display: none; }
+.imp__vaciotit { font-size: 16px; font-weight: 600; }
+.imp__vacio .muted { max-width: 440px; font-size: 13px; }
+body.is-dropping .imp__vacio { border-color: var(--accent); background: rgba(232, 177, 74, 0.06); }
+.imp__pie {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border-top: 1px solid var(--line);
+}
+.imp__destino { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: 12.5px; color: var(--text-dim); }
+.imp__destino .linkbtn { min-height: 0; font-size: 12.5px; color: var(--accent); }
+.imp__sub { flex: 1 1 220px; min-height: 36px; font-size: 14px; max-width: 360px; }
+.imp__acciones { display: flex; gap: 8px; margin-left: auto; }
+.imp__acciones .btn { min-height: 40px; }
+.imp__progreso {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-raised); border-top: 1px solid var(--line);
+}
+.imp__progreso[hidden] { display: none; }
+.imp__barra { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--bg-input); overflow: hidden; }
+.imp__relleno { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.imp__progtexto { font-size: 12.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.imp.is-busy .imp__grid, .imp.is-busy .imp__tools { pointer-events: none; opacity: 0.6; }
+@media (min-width: 820px) {
+  .imp__panel {
+    margin: auto;
+    width: min(1180px, calc(100% - 64px)); height: min(860px, calc(100% - 64px));
+    border-radius: 18px; border: 1px solid var(--line); overflow: hidden;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  }
+  .imp__grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 10px 16px 18px; }
+}
+
+.gallery {
+  display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: 2px;
+}
+.gallery__mes {
+  grid-column: 1 / -1;
+  padding: 18px 16px 8px;
+  font-size: 20px; font-weight: 700; letter-spacing: 0.01em;
+}
+.gallery__mes:first-child { padding-top: 2px; }
+.tile {
+  position: relative; aspect-ratio: 1; overflow: hidden;
+  padding: 0; border-radius: 0;
+  background: var(--bg-raised); display: block;
+  /* Mantener pulsado es nuestro (las opciones), no el menú de imagen de iOS. */
+  -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
+}
+.tile__img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.15s; }
+.tile:active .tile__img { opacity: 0.82; }
+/* Duración del vídeo abajo a la derecha y la emulsión abajo a la izquierda,
+   en letra blanca con sombra y sin caja, como las marcas de Fotos. */
+.tile__badges { position: absolute; left: 6px; right: 6px; bottom: 4px; display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; pointer-events: none; }
+.tile__badge {
+  font-size: 11px; font-weight: 600; color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), 0 0 1px rgba(0, 0, 0, 0.6);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.tile__badge--film { order: -1; font-size: 10px; }
+/* Editada en el laboratorio: un medio círculo delante, el icono del
+   laboratorio, la distingue de la emulsión con la que se hizo la foto. */
+.tile__badge--edit::before { content: '◑ '; }
+.tile__info {
+  position: absolute; right: 5px; top: 5px;
+  padding: 1px 5px; border-radius: 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em; color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+}
+/* Marca de selección de Fotos: círculo azul con borde blanco abajo a la
+   derecha. Sin seleccionar no se ve nada: la foto entera. */
+.tile__check {
+  position: absolute; right: 5px; bottom: 5px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1.5px solid #fff; background: var(--tint); color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  opacity: 0; transform: scale(0.6);
+  transition: opacity 0.15s, transform 0.18s var(--spring);
+}
+.tile__check svg { width: 13px; height: 13px; stroke-width: 3.2; }
+.tile.is-selected .tile__check { opacity: 1; transform: none; }
+.tile.is-selected .tile__img { opacity: 0.78; }
+.view--library.is-selecting .tile__badges { visibility: hidden; }
+.view--library.is-selecting .tile__more { display: none; }
+/* La barra de selección flota sobre la cuadrícula: la última fila tiene que
+   poder subir por encima de ella. */
+.view--library.is-selecting { padding-bottom: calc(var(--tab-h) + 40px); }
+
+/* Las opciones de cada foto se abren manteniendo pulsado, como en Fotos. Con
+   ratón no hay pulsación larga que valga: el botón aparece al pasar por encima. */
+.tile__more {
+  position: absolute; right: 4px; top: 4px; width: 30px; height: 30px;
+  display: grid; place-items: center; border-radius: 50%;
+  color: #fff; font-size: 15px; line-height: 1;
+  background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  opacity: 0; transition: opacity 0.15s;
+}
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover .tile__more, .tile__more:focus-visible { opacity: 1; }
+}
+/* En el teléfono no está: invisible, se tocaría sin querer en la esquina. */
+@media (hover: none) {
+  .tile__more { display: none; }
+}
+.tile:has(.tile__info) .tile__more { top: 24px; }
+
+.gallery__empty {
+  display: grid; gap: 10px; padding: 70px 28px 40px;
+  text-align: center; justify-items: center;
+}
+.gallery__emptyicon svg { width: 54px; height: 54px; color: var(--text-faint); stroke-width: 1.4; }
+.gallery__emptytitle { font-size: 20px; font-weight: 700; }
+.gallery__empty p { max-width: 34ch; }
+.gallery__emptyactions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.gallery__emptyactions .btn { border-radius: 999px; }
+
+/* Todo · Fotos · Vídeos: control segmentado de cristal. */
+.chiprow--filters {
+  justify-self: start; gap: 2px; padding: 3px;
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+}
+.chiprow--filters .chip {
+  min-height: 30px; padding: 0 14px; border: 0;
+  background: transparent; color: rgba(235, 235, 245, 0.8); font-size: 13px;
+}
+.chiprow--filters .chip.is-active {
+  background: rgba(255, 255, 255, 0.2); color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+@media (min-width: 820px) {
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+  .gallery__mes { padding-left: 20px; }
+  .lib__bar { padding-left: 20px; padding-right: 20px; }
+}
+
+/* ── Visor a pantalla completa ──────────────────────────────────────────
+   Arranca limpio, con la foto sobre negro y nada más. Un toque saca los tres
+   botones que hacen falta y otro los quita.                                 */
+
+.viewer {
+  /* Por encima de la barra de pestañas (40) y de las hojas (100 las cubre a su
+     vez), porque mientras se mira una foto no hay nada más que hacer. */
+  position: fixed; inset: 0; z-index: 90;
+  background: #000;
+  display: grid;
+}
+body.is-viewing { overflow: hidden; }
+
+.viewer__stage {
+  position: absolute; inset: 0;
+  display: grid; place-items: center;
+  touch-action: pan-y;
+}
+.viewer__media {
+  /* Ocupa la escena entera y la foto se encaja dentro con object-fit. Antes
+     era max-width/max-height al 100 % dentro de una rejilla centrada, y el alto
+     de una fila automática no limita a su contenido: en una pantalla ancha la
+     foto se ajustaba al ancho y se salía por arriba y por abajo, como ampliada.
+     En el teléfono no se notaba porque manda el ancho. */
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  display: block; object-fit: contain;
+  -webkit-touch-callout: default;
+}
+.viewer__loading { display: grid; place-items: center; }
+.viewer__missing { color: var(--text-dim); padding: 24px; text-align: center; }
+
+.viewer__top, .viewer__bottom {
+  position: absolute; left: 0; right: 0; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  transition: opacity 0.22s var(--ease), transform 0.24s var(--ease);
+}
+.viewer__top {
+  top: 0; justify-content: space-between;
+  padding: calc(8px + var(--arriba)) 12px 18px;
+  background: linear-gradient(rgba(0, 0, 0, 0.55), transparent);
+}
+.viewer__bottom {
+  bottom: 0; justify-content: center;
+  padding: 24px 16px var(--cap-bottom);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.45));
+}
+/* La barra de Fotos: una cápsula de cristal con los iconos repartidos. */
+.viewer__actions {
+  display: flex; align-items: center; justify-content: space-between;
+  width: min(100%, 360px); min-height: var(--cap-h); padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--glass);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+  box-shadow: var(--glass-shine), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.viewer.is-clean .viewer__top { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+.viewer.is-clean .viewer__bottom { opacity: 0; transform: translateY(10px); pointer-events: none; }
+
+.viewer__btn {
+  width: 44px; height: 44px; border-radius: 50%; flex: 0 0 auto;
+  display: grid; place-items: center; color: #fff;
+}
+.viewer__btn svg { width: 20px; height: 20px; }
+.viewer__counter {
+  flex: 0 0 auto; min-width: 44px;
+  font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.8);
+  font-variant-numeric: tabular-nums; text-align: center;
+  padding: 6px 10px; border-radius: 999px;
+  background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+}
+.viewer__counter:empty { visibility: hidden; }
+.viewer__action {
+  width: 50px; height: 50px; border-radius: 50%;
+  display: grid; place-items: center; flex: 0 0 auto;
+  color: #fff;
+}
+.viewer__action:active { background: rgba(255, 255, 255, 0.12); }
+.viewer__action--guardar { order: -1; }
+.viewer__action--danger { order: 1; }
+.viewer__icon { display: grid; place-items: center; }
+.viewer__icon svg { width: 24px; height: 24px; display: block; }
+.viewer__caption {
+  display: grid; justify-items: center; gap: 0; text-align: center;
+  min-width: 0; flex: 1 1 auto;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.viewer__dims { font-size: 17px; font-weight: 600; }
+.viewer__meta {
+  font-size: 12px; color: rgba(255, 255, 255, 0.72);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Barra de selección ─────────────────────────────────────────────────
+   Ocupa el sitio de la cápsula de secciones, que se aparta mientras se
+   selecciona: Guardar a la izquierda, el recuento en medio y pegar ajustes y
+   eliminar a la derecha, como la barra de Fotos.                            */
+
+.selbar {
+  position: fixed; z-index: 30;
+  left: max(12px, calc(50% - 260px)); right: max(12px, calc(50% - 260px));
+  bottom: var(--cap-bottom);
+  min-height: var(--cap-h);
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--glass-strong);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-edge);
+  box-shadow: var(--glass-shine), 0 10px 30px rgba(0, 0, 0, 0.5);
+  animation: selbar-in 0.24s var(--spring);
+}
+@keyframes selbar-in { from { opacity: 0; transform: translateY(14px) scale(0.96); } }
+/* Los botones viven en .selbar__actions, pero se reparten por toda la barra. */
+.selbar__actions { display: contents; }
+.selbar__info { order: 1; flex: 1 1 auto; min-width: 0; display: grid; justify-items: center; gap: 0; }
+.selbar__count { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.selbar__links { display: flex; gap: 12px; }
+.selbar__info .linkbtn { min-height: 20px; font-size: 12px; padding: 0; }
+.selbar__btn {
+  width: 48px; min-height: 48px; padding: 0; flex: 0 0 auto;
+  border-radius: 50%; background: transparent; color: var(--tint);
+}
+.selbar__btn .btn__icono svg { width: 23px; height: 23px; }
+.selbar__btn--guardar { order: 0; }
+.selbar__btn:not(.selbar__btn--guardar) { order: 2; }
+.selbar__btn--eliminar { color: var(--danger); }
+.selbar__btn:disabled { opacity: 0.3; }
+body:has(.view--library.is-active.is-selecting) .tabbar { opacity: 0; pointer-events: none; }
+
+/* ── Hojas modales ──────────────────────────────────────────────────────── */
+
+.sheet-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0, 0, 0, 0); transition: background 0.22s;
+}
+.sheet-backdrop.is-open { background: rgba(0, 0, 0, 0.55); }
+.sheet {
+  width: min(560px, 100%);
+  max-height: 86vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  background: var(--bg-panel);
+  border-radius: 18px 18px 0 0;
+  border-top: 1px solid var(--line);
+  padding: 8px 18px calc(20px + env(safe-area-inset-bottom));
+  /* Columna que no crece con el contenido: un campo de texto con su ancho
+     natural ensanchaba la hoja más allá de la pantalla. */
+  display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr);
+  transform: translateY(100%); transition: transform 0.26s var(--ease);
+}
+.sheet-backdrop.is-open .sheet { transform: none; }
+.sheet--dialog {
+  align-self: center; margin-bottom: 0; border-radius: 16px;
+  transform: none; max-width: 340px; padding: 22px;
+}
+.sheet__grab {
+  width: 36px; height: 4px; border-radius: 2px; background: var(--line);
+  margin: 4px auto 6px;
+}
+.sheet__title { font-size: 17px; font-weight: 700; }
+.sheet__subtitle {
+  font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-faint); margin-top: 4px;
+}
+.sheet__message { color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+.sheet__hint { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.sheet__actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.sheet__actions--stack { flex-direction: column; }
+.sheet__actions--stack .btn { width: 100%; }
+.sheet__actions--pair { margin-top: 0; }
+.sheet__actions--pair .btn { flex: 1; min-width: 0; }
+.sheet__row { display: flex; gap: 8px; align-items: center; }
+.sheet__field { display: grid; gap: 4px; }
+.sheet__field label { font-size: 12px; color: var(--text-dim); }
+
+.field {
+  flex: 1; min-width: 0; min-height: 44px; padding: 0 12px;
+  background: var(--bg-input); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); font-size: 16px; /* 16px evita el zoom de iOS */
+}
+
+.meta { display: grid; gap: 4px; padding: 4px 0; }
+.meta__row { display: flex; justify-content: space-between; gap: 14px; font-size: 13px; }
+.meta__row dt { color: var(--text-faint); }
+.meta__row dd { color: var(--text); text-align: right; }
+
+.presetlist { display: grid; gap: 6px; }
+.presetrow { display: flex; gap: 8px; align-items: center; }
+.presetrow__apply {
+  flex: 1; min-height: 44px; padding: 0 14px; text-align: left;
+  background: var(--bg-input); border: 1px solid var(--line);
+  border-radius: var(--radius-sm); font-size: 14px;
+}
+.presetrow__del { width: 44px; height: 44px; color: var(--danger); font-size: 15px; }
+
+/* ── Ocupado y avisos ───────────────────────────────────────────────────── */
+
+.busy {
+  position: fixed; inset: 0; z-index: 120;
+  display: grid; place-items: center; background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+}
+.busy__box {
+  display: grid; justify-items: center; gap: 12px;
+  padding: 24px 32px; border-radius: var(--radius);
+  background: var(--bg-panel); border: 1px solid var(--line);
+}
+.busy__text { font-size: 13px; color: var(--text-dim); }
+.spinner {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--line); border-top-color: var(--accent);
+  animation: spin 0.85s linear infinite;
+}
+
+.toast {
+  position: fixed; left: 50%; z-index: 140;
+  bottom: calc(var(--tab-h) + 14px);
+  transform: translate(-50%, 20px);
+  max-width: min(90vw, 420px);
+  padding: 11px 18px; border-radius: 999px;
+  background: rgba(28, 30, 36, 0.96);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  font-size: 13px; text-align: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s, transform 0.24s var(--ease);
+}
+.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.toast.is-error { border-color: rgba(239, 68, 68, 0.5); color: #ffb4b4; }
+/* Con la barra de selección a la vista, el aviso sube por encima: si no, tapa
+   justo los botones con los que se acaba de hacer algo. */
+body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-h) + 14px); }
+
+/* ── Pantallas grandes ──────────────────────────────────────────────────── */
+
+@media (min-width: 820px) {
+  .panelbody { max-height: min(44vh, 460px); }
+  .filmcard { width: 96px; }
+  .filmcard__frame { width: 90px; height: 90px; }
+}
+
+/* ── Escritorio: los ajustes en una columna al lado de la foto ───────────
+   En un Mac la pantalla es ancha y baja, y el panel de debajo tapaba la mitad
+   inferior de la foto. Aquí va en una columna a la derecha, opaca —ya no está
+   encima de nada—, con las pestañas arriba en dos filas para verlas todas, y la
+   foto se queda con el resto. Misma consulta que ESCRITORIO en utils/dom.js. */
+@media (min-width: 900px) and (min-height: 560px) and (orientation: landscape) {
+  .view--lab { --side-w: clamp(320px, 26vw, 400px); }
+  /* Con aire alrededor, como en cualquier revelador de escritorio: la foto
+     encajada no llega a tocar los bordes ni la columna de ajustes. */
+  .lab__frame {
+    top: calc(60px + var(--arriba));
+    left: 24px; right: calc(var(--side-w) + 24px);
+    bottom: calc(var(--tab-h) + 20px);
+  }
+  .view--lab { --tira-h: 84px; }
+  .tira {
+    top: auto; bottom: var(--tab-h); right: var(--side-w);
+    border-bottom: 0; border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 8px 14px;
+  }
+  .view--lab.has-strip .lab__frame {
+    top: calc(60px + var(--arriba));
+    bottom: calc(var(--tab-h) + var(--tira-h) + 16px);
+  }
+  .panels {
+    top: calc(58px + var(--arriba)); bottom: var(--tab-h);
+    left: auto; right: 0; width: var(--side-w);
+    background: var(--bg-raised);
+    border-top: 0; border-left: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .panels__grab { display: none; }
+  .panelbar {
+    order: -1;
+    flex-wrap: wrap; overflow: visible;
+    padding: 6px;
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    border-top: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .panelbar__tab { flex: 1 0 18%; min-width: 0; }
+  .panelbody {
+    flex: 1; max-height: none;
+    padding: 8px 16px 16px;
+    background: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+    text-shadow: none;
+  }
+  .lab__clip { display: inline-flex; min-height: 34px; padding: 0 12px; font-size: 13px; }
+  .lab__id { display: grid; }
+  /* En la columna caben todos los deslizadores a la vez: los círculos sobran. */
+  .herramientas { display: none; }
+  .lab__export { padding: 0 16px 0 12px; }
+  .lab__exporttxt { display: inline; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,18 @@
+Decodificador de RAW: LibRaw compilado a WebAssembly, SIN hilos.
+
+Paquete:  libraw-wasm-nothread@1.6.0-nothread.1 (npm), licencia ISC
+          https://www.npmjs.com/package/libraw-wasm-nothread
+Fork de:  libraw-wasm@1.6.0 (https://github.com/ybouane/LibRaw-Wasm)
+LibRaw:   https://www.libraw.org (LGPL 2.1 / CDDL 1.0)
+
+Por qué la versión sin hilos: la de hilos importa su memoria como compartida,
+y Safari sólo permite memoria compartida en páginas con aislamiento de origen
+cruzado (cabeceras COOP/COEP), que GitHub Pages no deja poner. Ésta define su
+propia memoria sin compartir y funciona en cualquier sitio.
+
+Copiado tal cual de dist/ del paquete, quitando sólo la línea sourceMappingURL.
+Huellas SHA-256:
+  4f04a164dc5c337b29c38e850311d427f631585b7c4893c874faad0946182af6  index.js
+  4389ef92ef836a9fa6c51d325f53fec7a1195a1cea6ee893419194c37a82519a  worker.js
+  952ad840b341a420d0433979820917bca3716c3d51eefd091c7a1011c84995f4  libraw.wasm
+  89ed72df6b5aadc6a6db4a0e45dd4e06602c4b56173d299f36064b3d9b2abff2  LICENSE

@@ -1,0 +1,21 @@
+Decodificador de HEIF (HEIC del iPhone, HIF de Sony y Fujifilm): libheif
+compilado a WebAssembly, con libde265 para el HEVC de dentro.
+
+Paquete:  libheif-js@1.23.2 (npm), licencia LGPL-3.0
+          https://www.npmjs.com/package/libheif-js
+          https://github.com/catdad-experiments/libheif-js
+          integridad npm: sha512-qvHIXtggEsw1lCNCWBYKloL2Z36DJBm0R9ThGiH2JnhKYdeZFLPFkP30Lw4yMskxxhx0bKg1gLrBHX1D2w2pSw==
+libheif:  1.23.2, https://github.com/strukturag/libheif (LGPL-3.0)
+libde265: 1.0.15, https://github.com/strukturag/libde265 (LGPL-3.0)
+
+Se usa sólo cuando el navegador no sabe abrir el archivo (Chrome y Firefox no
+abren ningún HEIF; Safari abre los HEIC del iPhone). Va en su propio worker
+(worker.js, propio de esta app) y se carga como archivos aparte: cumpliendo la
+LGPL, cualquiera puede sustituir libheif.js y libheif.wasm por otra
+compilación de las mismas bibliotecas sin tocar el resto de la aplicación.
+
+Copiado tal cual de libheif-wasm/ del paquete.
+Huellas SHA-256:
+  f148d9ff173e5a6d6781e80dccb8336f54bfbb032392ceb2d37e0e92923c4bf3  libheif.js
+  e4aa8333fbe55ec7c6c776f735236f40bed9103188498f8131d4e52b73cdfee8  libheif.wasm
+  fa81ce652315b013359d6e8e4744335f31a50c7c192907176d3632f78a3b4596  LICENSE
