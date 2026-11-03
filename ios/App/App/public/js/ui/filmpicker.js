@@ -1,18 +1,20 @@
 /**
- * filmpicker.js — Selector de emulsión con previsualización real.
+ * filmpicker.js — Selector de emulsión: una fila de nombres.
  *
- * Cada tarjeta muestra la imagen actual revelada con esa emulsión, no una
- * muestra genérica: elegir película deja de ser adivinar. Las miniaturas se
- * generan con un único renderer diminuto y bajo IntersectionObserver, así que
- * sólo se calcula lo que está en pantalla.
+ * Sin recuadros encima del nombre. Las muestras de color no decían nada (dos
+ * negativos Kodak salen casi iguales a 40 px) y las miniaturas reveladas
+ * tapaban media pantalla de la foto justo mientras se elige, que es cuando
+ * más hay que verla. Al tocar un nombre la emulsión se aplica a la imagen de
+ * verdad, que enseña más que cualquier miniatura.
+ *
+ * Es el mismo componente en la cámara y en el laboratorio, como el selector
+ * de modos de la Cámara del iPhone: el nombre activo en amarillo con un punto
+ * debajo, y la familia (Negativo color, Cine…) en pequeño delante de su tramo.
+ * En el escritorio, con columna propia, los grupos van uno debajo de otro.
  */
 
 import { el, haptic } from '../utils/dom.js';
 import { FILMS, filmsByKind, getFilm } from '../data/films.js';
-import { defaultParams, applyFilmLook } from '../data/params.js';
-import { Renderer } from '../engine/renderer.js';
-
-const PREVIEW_SIZE = 132;
 
 export class FilmPicker {
   /**
@@ -20,155 +22,58 @@ export class FilmPicker {
    */
   constructor(onPick) {
     this.onPick = onPick;
-    this.selected = 'neutral';
-    this.cards = new Map();
-    this.source = null;
-    this._renderer = null;
-    this._canvas = null;
-    this._queue = [];
-    this._working = false;
+    this.selected = null;
+    this.botones = new Map();
 
-    this.root = el('div', { class: 'filmpicker' });
-    this._build();
-
-    this._io = new IntersectionObserver((entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) this._enqueue(e.target.dataset.film);
-      }
-    }, { root: this.root, rootMargin: '160px' });
-
-    for (const card of this.cards.values()) this._io.observe(card.node);
-  }
-
-  _build() {
-    for (const group of filmsByKind()) {
-      const items = group.items.map((f) => this._card(f));
-      this.root.append(
-        el('div', { class: 'filmpicker__group' },
-          el('h4', { class: 'filmpicker__kind', text: group.kind }),
-          el('div', { class: 'filmpicker__row' }, items)));
+    this.root = el('div', { class: 'filmpicker', role: 'listbox', 'aria-label': 'Emulsión' });
+    for (const grupo of filmsByKind()) {
+      this.root.append(el('div', { class: 'filmpicker__group', role: 'group', 'aria-label': grupo.kind },
+        el('span', { class: 'filmpicker__kind', 'aria-hidden': 'true', text: grupo.kind }),
+        grupo.items.map((f) => this._boton(f))));
     }
   }
 
-  _card(film) {
-    const canvas = el('canvas', { class: 'filmcard__thumb', width: PREVIEW_SIZE, height: PREVIEW_SIZE });
-    const g = canvas.getContext('2d');
-    // Muestra de color mientras llega la previsualización real.
-    const grad = g.createLinearGradient(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
-    grad.addColorStop(0, film.swatch[0]);
-    grad.addColorStop(1, film.swatch[1]);
-    g.fillStyle = grad;
-    g.fillRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
-
-    const node = el('button', {
-      type: 'button',
-      class: 'filmcard' + (film.id === this.selected ? ' is-active' : ''),
-      dataset: { film: film.id },
-      'aria-pressed': film.id === this.selected,
-      onclick: () => { haptic(); this.select(film.id); this.onPick(film.id); },
-    },
-      el('div', { class: 'filmcard__frame' }, canvas),
-      el('span', { class: 'filmcard__name', text: film.name }));
-
-    this.cards.set(film.id, { node, canvas, film, rendered: false });
-    return node;
+  _boton(film) {
+    const b = el('button', {
+      type: 'button', class: 'filmname', role: 'option',
+      dataset: { film: film.id }, 'aria-selected': 'false',
+      title: [film.brand, film.iso ? 'ISO ' + film.iso : null].filter(Boolean).join(' · '),
+      text: film.name,
+      onclick: () => {
+        if (film.id === this.selected) return;
+        haptic();
+        this.select(film.id);
+        this.onPick(film.id);
+      },
+    });
+    this.botones.set(film.id, b);
+    return b;
   }
 
+  /** Marca la emulsión activa y la trae a la vista si estaba fuera. */
   select(id) {
     this.selected = id;
-    for (const [key, c] of this.cards) {
+    let activo = null;
+    for (const [key, b] of this.botones) {
       const on = key === id;
-      c.node.classList.toggle('is-active', on);
-      c.node.setAttribute('aria-pressed', String(on));
-      if (on) c.node.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', String(on));
+      if (on) activo = b;
     }
+    if (activo) requestAnimationFrame(() => activo.scrollIntoView?.({ block: 'nearest', inline: 'center', behavior: 'smooth' }));
   }
 
-  /** Descripción de la emulsión activa, para el pie del panel. */
+  /** Descripción de la emulsión activa, para quien la quiera enseñar. */
   describe(id) {
     const f = getFilm(id);
     return { name: f.name, brand: f.brand, kind: f.kind, note: f.note, iso: f.iso };
   }
 
-  /**
-   * Fija la imagen sobre la que se calculan las previsualizaciones.
-   * @param {ImageBitmap|HTMLCanvasElement|HTMLVideoElement} source
-   */
-  setSource(source) {
-    this.source = source;
-    for (const c of this.cards.values()) c.rendered = false;
-    this._queue = [];
-    // Vuelve a encolar lo que esté visible.
-    for (const c of this.cards.values()) {
-      const r = c.node.getBoundingClientRect();
-      const p = this.root.getBoundingClientRect();
-      if (r.right > p.left - 160 && r.left < p.right + 160) this._enqueue(c.film.id);
-    }
-  }
-
-  _enqueue(id) {
-    const card = this.cards.get(id);
-    if (!card || card.rendered || !this.source) return;
-    if (!this._queue.includes(id)) this._queue.push(id);
-    this._pump();
-  }
-
-  async _pump() {
-    if (this._working) return;
-    this._working = true;
-    try {
-      while (this._queue.length && this.source) {
-        const id = this._queue.shift();
-        await this._renderCard(id);
-        // Cede el hilo para que el desplazamiento no se note pesado.
-        await new Promise((r) => requestAnimationFrame(r));
-      }
-    } finally {
-      this._working = false;
-    }
-  }
-
-  async _renderCard(id) {
-    const card = this.cards.get(id);
-    if (!card || card.rendered || !this.source) return;
-    try {
-      if (!this._renderer) {
-        this._canvas = document.createElement('canvas');
-        this._renderer = new Renderer(this._canvas);
-      }
-      const src = this.source;
-      const sw = src.width || src.videoWidth;
-      const sh = src.height || src.videoHeight;
-      if (!sw || !sh) return;
-
-      // Recorte cuadrado central: todas las tarjetas comparables.
-      const side = Math.min(sw, sh);
-      const params = applyFilmLook(defaultParams(), card.film);
-      params.geometry.crop = {
-        x: (sw - side) / 2 / sw,
-        y: (sh - side) / 2 / sh,
-        w: side / sw,
-        h: side / sh,
-      };
-      // El grano no se lee a este tamaño y sólo añade ruido visual.
-      params.effects.grain = 0;
-
-      this._renderer.setSource(src, sw, sh);
-      this._renderer.render(params, { seed: 3 });
-
-      const g = card.canvas.getContext('2d');
-      g.drawImage(this._canvas, 0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
-      card.rendered = true;
-    } catch {
-      // Si el contexto se pierde, la tarjeta se queda con su muestra de color.
-    }
-  }
+  /** Ya no hay miniaturas que revelar; se mantiene por compatibilidad. */
+  setSource() {}
 
   destroy() {
-    this._io?.disconnect();
-    this._renderer?.dispose();
-    this._renderer = null;
-    if (this._canvas) this._canvas.width = this._canvas.height = 0;
+    this.botones.clear();
   }
 }
 

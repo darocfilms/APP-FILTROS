@@ -380,6 +380,9 @@ class Library extends EventTarget {
       fuente: meta.fuente || null,
       thumbProvisional: !!meta.thumbProvisional,
       dimsAprox: !!meta.dimsAprox,
+      // Hecha con la cámara en modo RAW: PNG sin pérdida con la emulsión como
+      // ajuste. No es un RAW de sensor (`raw`), que pide LibRaw para abrirse.
+      capturaRaw: !!meta.capturaRaw,
     };
 
     if (this.carpeta && await this._accesoCarpeta()) {

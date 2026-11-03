@@ -7,7 +7,11 @@
 // los workers antes de que nadie cree uno.
 import { alojada } from './utils/alojada.js';
 import { el, clear, toast, haptic } from './utils/dom.js';
-import { saveFiles, canShareFiles, isIOS, isNativeApp, isMacApp } from './utils/share.js';
+import {
+  saveFiles, canShareFiles, shareNow, downloadNow, uniqueNames, isIOS, isNativeApp, isMacApp,
+} from './utils/share.js';
+import { galeriaNativa, guardarEnGaleria, describirFalloGaleria } from './utils/galeria.js';
+import { ajustes } from './store/ajustes.js';
 import { library } from './store/library.js';
 import { importarArchivo, refinarMiniaturas } from './store/importar.js';
 import { archivosSoltados } from './store/preview.js';
@@ -136,6 +140,8 @@ class App {
     } else if (accion === 'exportar') {
       if (this.current === 'lab' && this.views.lab.item) this.views.lab._openExport();
       else toast('Abre una foto en el laboratorio para exportarla');
+    } else if (accion === 'ajustes') {
+      this.abrirAjustes();
     }
   }
 
@@ -223,6 +229,143 @@ class App {
   }
 
   /* ─────────────────────────── Guardar fuera ─────────────────────────── */
+
+  /** Adónde va lo que se guarda en un toque, dicho como lo entiende quien lo usa. */
+  get destinoGuardar() {
+    if (galeriaNativa()) return 'Fotos';
+    if (isMacApp()) return 'Imágenes › Laboratorio';
+    if (isIOS) return 'Fotos (con la hoja de iOS)';
+    return 'Descargas';
+  }
+
+  /**
+   * Guardar en un toque: sin hojas ni menús propios, directo a la galería.
+   *
+   *  - App nativa: a Fotos con el plugin de la galería. Ni hoja del sistema.
+   *  - App de Mac: a Imágenes › Laboratorio › Exportadas (main.js avisa).
+   *  - Navegador de ordenador: descarga directa.
+   *  - Safari en iPhone: la web no puede escribir en Fotos; lo más directo
+   *    es abrir la hoja de iOS en el acto, donde «Guardar imagen» es un
+   *    toque. Sólo se puede mientras dure la activación del toque que lo
+   *    pidió: si preparar el archivo la ha agotado, queda la hoja de
+   *    siempre (`presentSave`), que pide un toque más.
+   *
+   * Con «Guardar directamente en la galería» apagado en Ajustes, se usa la
+   * hoja de siempre, que deja elegir qué hacer con el archivo.
+   *
+   * @param {Blob[]} blobs
+   * @param {string[]} names
+   * @param {{title?:string, detail?:string}} [meta]
+   * @returns {Promise<string>} qué ha pasado: 'galeria', 'downloaded', 'shared', 'cancelled', 'hoja' o 'error'
+   */
+  async guardar(blobs, names, meta = {}) {
+    const list = Array.isArray(blobs) ? blobs : [blobs];
+    const labels = uniqueNames(Array.isArray(names) ? names : [names]);
+    const n = list.length;
+    const varias = n > 1;
+    if (!ajustes.get('guardarEnGaleria')) { this.presentSave(list, labels, meta); return 'hoja'; }
+
+    if (galeriaNativa()) {
+      try {
+        if (varias) this.setBusy(true, `Guardando ${n} en Fotos…`);
+        for (const b of list) await guardarEnGaleria(b);
+        toast(varias ? `${n} guardadas en Fotos` : 'Guardada en Fotos');
+        haptic(12);
+        return 'galeria';
+      } catch (err) {
+        toast(describirFalloGaleria(err), { error: true, ms: 5200 });
+        return 'error';
+      } finally {
+        if (varias) this.setBusy(false);
+      }
+    }
+
+    if (isMacApp() || !isIOS) {
+      for (const [i, b] of list.entries()) downloadNow(b, labels[i]);
+      toast(isMacApp()
+        ? (varias ? `${n} guardadas en Imágenes › Laboratorio` : 'Guardada en Imágenes › Laboratorio')
+        : (varias ? `${n} descargadas` : 'Descargada'));
+      return 'downloaded';
+    }
+
+    // Safari en iPhone. `userActivation` dice si el toque sigue valiendo; sin
+    // él (iOS antiguo) no hay forma de saberlo y se prueba igualmente.
+    const vigente = navigator.userActivation ? navigator.userActivation.isActive : true;
+    const files = list.map((b, i) => new File([b], labels[i], { type: b.type }));
+    if (vigente && canShareFiles(files)) {
+      const r = await shareNow(files, meta.title || (varias ? `${n} archivos` : labels[0]));
+      if (r === 'shared') { toast(varias ? `${n} guardadas` : 'Guardada'); return r; }
+      if (r === 'cancelled') return r;
+    }
+    this.presentSave(list, labels, meta);
+    return 'hoja';
+  }
+
+  /* ─────────────────────────────── Ajustes ───────────────────────────── */
+
+  /**
+   * La hoja de Ajustes: guardar directo en la galería (de fábrica, sí) y el
+   * formato de la cámara. Se abre con la rueda de la biblioteca o con ⌘, en
+   * la app de Mac.
+   */
+  abrirAjustes() {
+    const nativa = galeriaNativa();
+    const detalleGaleria = nativa
+      ? 'Cada foto o vídeo que hagas se copia en Fotos, y «Guardar» la manda allí con un toque, sin menús.'
+      : isMacApp()
+      ? '«Guardar» deja la foto en Imágenes › Laboratorio › Exportadas con un toque, sin preguntar.'
+      : isIOS
+      ? '«Guardar» abre en el acto la hoja de iOS: toca «Guardar imagen». Safari no deja que una web escriba en Fotos por su cuenta; la app de Laboratorio, sí.'
+      : '«Guardar» descarga la foto con un toque, sin preguntar.';
+
+    const interruptor = (clave, titulo, detalle) => {
+      const input = el('input', {
+        type: 'checkbox', role: 'switch', class: 'interruptor__input', dataset: { ajuste: clave },
+        checked: ajustes.get(clave),
+      });
+      input.addEventListener('change', () => { ajustes.set(clave, input.checked); haptic(); });
+      return el('label', { class: 'ajuste' },
+        el('span', { class: 'ajuste__texto' },
+          el('span', { class: 'ajuste__titulo', text: titulo }),
+          el('span', { class: 'ajuste__detalle', text: detalle })),
+        el('span', { class: 'interruptor' }, input, el('span', { class: 'interruptor__pista', 'aria-hidden': 'true' })));
+    };
+
+    const detalleFormato = el('span', { class: 'ajuste__detalle' });
+    const seg = el('div', { class: 'ajuste__seg', role: 'radiogroup', 'aria-label': 'Formato de la cámara' });
+    const pintarFormato = () => {
+      const f = ajustes.get('formato');
+      for (const b of seg.children) {
+        b.classList.toggle('is-active', b.dataset.formato === f);
+        b.setAttribute('aria-checked', String(b.dataset.formato === f));
+      }
+      detalleFormato.textContent = f === 'raw'
+        ? 'Sin pérdida y sin hornear: la emulsión, la exposición y el encuadre quedan como ajustes que se cambian en el laboratorio.'
+        : 'Calidad máxima (100 %), con la emulsión revelada en la foto. Ocupa menos que el RAW.';
+    };
+    for (const [k, t] of [['jpeg', 'JPEG'], ['raw', 'RAW']]) {
+      seg.append(el('button', {
+        type: 'button', role: 'radio', class: 'ajuste__opcion', dataset: { formato: k }, text: t,
+        onclick: () => { ajustes.set('formato', k); pintarFormato(); haptic(); },
+      }));
+    }
+    pintarFormato();
+
+    const hoja = this.sheet('Ajustes', [
+      el('div', { class: 'ajustes' },
+        interruptor('guardarEnGaleria', 'Guardar directamente en la galería', detalleGaleria),
+        el('div', { class: 'ajuste ajuste--seg' },
+          el('span', { class: 'ajuste__texto' },
+            el('span', { class: 'ajuste__titulo', text: 'Formato de la cámara' }),
+            detalleFormato),
+          seg)),
+      el('p', { class: 'sheet__hint', text: 'La cámara arranca siempre en la calidad máxima: el sensor completo, sin recortar.' }),
+      el('div', { class: 'sheet__actions' },
+        el('button', { type: 'button', class: 'btn btn--primary', text: 'Hecho', onclick: () => hoja.close() })),
+    ]);
+    hoja.node.classList.add('sheet--ajustes');
+    return hoja;
+  }
 
   /**
    * Presenta archivos YA preparados para sacarlos del dispositivo.

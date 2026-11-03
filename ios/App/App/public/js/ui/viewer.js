@@ -51,7 +51,7 @@ export class Viewer {
     }, el('span', { class: 'viewer__icon', html: icono }), el('span', { class: 'visually-hidden', text: nombre }));
     this.actions = el('div', { class: 'viewer__actions', role: 'toolbar', 'aria-label': 'Acciones de la foto' },
       accion('Laboratorio', ICONO.editar, (it) => this.hooks.onEdit?.(it), ' viewer__action--editar'),
-      accion('Guardar', ICONO.compartir, (it) => this.hooks.onSave?.(it), ' viewer__action--guardar'),
+      accion('Guardar', ICONO.guardar, (it) => this.hooks.onSave?.(it), ' viewer__action--guardar'),
       accion('Borrar', ICONO.eliminar, (it) => this.hooks.onDelete?.(it), ' viewer__action--danger'));
 
     this.bottom = el('div', { class: 'viewer__bottom' }, this.actions);
@@ -193,7 +193,7 @@ export class Viewer {
     const look = editada ? describeEdits(item.params) : item.filmName;
     clear(this.caption).append(
       el('span', { class: 'viewer__dims', text: dia }),
-      el('span', { class: 'viewer__meta', text: [hora, item.raw ? 'RAW' : `${item.width}×${item.height}`, look].filter(Boolean).join(' · ') }));
+      el('span', { class: 'viewer__meta', text: [hora, item.raw || item.capturaRaw ? 'RAW' : `${item.width}×${item.height}`, look].filter(Boolean).join(' · ') }));
     this.counter.textContent = this.items.length > 1 ? `${this.index + 1} / ${this.items.length}` : '';
   }
 

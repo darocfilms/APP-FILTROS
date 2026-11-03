@@ -1,0 +1,56 @@
+LABORATORIO PARA iPHONE — instalarlo con Xcode
+==============================================
+
+Lo que hace falta
+-----------------
+- Un Mac con Xcode (gratis en la App Store del Mac; la versión más reciente).
+- Tu iPhone con iOS 15 o posterior y su cable.
+- Tu Apple ID (vale la gratuita; no hace falta pagar el programa de
+  desarrolladores).
+
+Pasos
+-----
+1. Descomprime Laboratorio-Xcode.zip. Deja la carpeta tal cual: el proyecto
+   busca el plugin de Fotos en «node_modules», a su lado.
+
+2. Abre  ios/App/App.xcodeproj  (doble clic). La primera vez Xcode descarga
+   Capacitor y SDWebImage (barra de progreso arriba: «Resolving Package
+   Graph»). Espera a que termine; necesita internet.
+
+3. Añade tu Apple ID: Xcode › Settings… › Accounts › «+» › Apple ID.
+
+4. En la columna izquierda, toca el proyecto «App» › objetivo «App» ›
+   pestaña «Signing & Capabilities»:
+     - Deja marcado «Automatically manage signing».
+     - En «Team» elige tu nombre (Personal Team).
+     - Si dice que el Bundle Identifier no está disponible, cámbialo por
+       otro único, por ejemplo  com.tunombre.laboratorio
+
+5. Conecta el iPhone por cable, desbloquéalo y toca «Confiar en este
+   ordenador». Arriba en Xcode, junto al botón ▶, elige tu iPhone.
+
+6. En el iPhone (iOS 16 o posterior): Ajustes › Privacidad y seguridad ›
+   Modo de desarrollador › activar. Se reinicia y pide confirmarlo.
+
+7. En Xcode pulsa ▶ (Product › Run). Se compila y se instala.
+
+8. La primera vez el iPhone no la abre hasta que confíes en ti mismo:
+   Ajustes › General › VPN y gestión de dispositivos › tu Apple ID ›
+   «Confiar». Después ábrela desde la pantalla de inicio.
+
+Qué trae la app (y Safari no)
+-----------------------------
+- «Guardar» va directo a Fotos con un toque, sin menús. Y cada foto o vídeo
+  que hagas con la cámara se copia solo a Fotos (Ajustes de Laboratorio ›
+  «Guardar directamente en la galería», activado de fábrica). La primera vez
+  iOS pregunta si Laboratorio puede añadir fotos: di que sí.
+- Funciona sin conexión: la web va dentro de la app.
+
+Bueno saber
+-----------
+- Con una Apple ID gratuita la instalación caduca a los 7 días: vuelve a
+  pulsar ▶ en Xcode con el iPhone conectado y se renueva (tus fotos de la
+  biblioteca se conservan). Con el programa de desarrolladores de Apple
+  dura un año y se puede pasar a TestFlight o a la App Store.
+- Si cambias el Bundle Identifier, para iOS es otra app: la biblioteca de
+  la anterior no se traslada.

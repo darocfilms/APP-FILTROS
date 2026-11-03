@@ -236,14 +236,6 @@ const antes = await medir({ antes: true, ev: 2 });
 check('el «antes» es el revelado neutro, no la luz lineal en bruto',
   Math.abs(antes.mediana - neutro.mediana) < 4, `antes ${antes.mediana} · neutro ${neutro.mediana}`);
 
-console.log('\n── Las miniaturas del selector de emulsión ──');
-await page.waitForTimeout(2000);
-const tarjetas = await page.evaluate(() => {
-  const fp = window.__lab.views.lab.panels.filmPicker;
-  return [...fp.cards.values()].filter((c) => c.rendered).length;
-});
-check('se revelan a partir del RAW', tarjetas > 0, tarjetas + ' tarjetas');
-
 console.log('\n── Exportar a resolución completa ──');
 // El mismo camino que el botón Exportar a «Original», sin la hoja de compartir.
 const exportado = await page.evaluate(async () => {

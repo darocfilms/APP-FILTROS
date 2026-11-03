@@ -17,7 +17,7 @@ const SUITES = [
   ['engine', 'motor de color, geometría, histograma y orientación'],
   ['flow', 'importar → editar → exportar → persistencia'],
   ['camera', 'captura de foto, grabación y estilos'],
-  ['picker', 'miniaturas del selector de emulsión'],
+  ['picker', 'selector de emulsión: nombres sin recuadros y catálogo sin las familias retiradas'],
   ['wheel', 'ruedas de etalonaje'],
   ['context', 'pérdida y recuperación del contexto WebGL'],
   ['layout', 'reparto de pantalla: la imagen manda'],

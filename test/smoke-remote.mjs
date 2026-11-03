@@ -78,7 +78,7 @@ const engine = await page.evaluate(async (base) => {
   const arriba = [...r.ctx.readPixels(null, 32, canvas.height - 2, 1, 1)].slice(0, 3);
 
   // Una emulsión con carácter fuerte debe cambiar el resultado.
-  r.render(applyFilmLook(defaultParams(), getFilm('velvia50')), { seed: 1 });
+  r.render(applyFilmLook(defaultParams(), getFilm('portra400')), { seed: 1 });
   const conPelicula = [...r.ctx.readPixels(null, 32, canvas.height - 2, 1, 1)].slice(0, 3);
 
   r.dispose();

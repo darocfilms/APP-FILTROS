@@ -54,44 +54,36 @@ const painted = (sel) => page.evaluate((s) => {
   return { w: Math.round(w), h: Math.round(h), vw: innerWidth, vh: innerHeight };
 }, sel);
 
-console.log('\n── Cámara: la imagen cubre la pantalla ──');
+console.log('\n── Cámara: arranca con el sensor completo ──');
 const camState = await page.evaluate(() => {
   const v = window.__lab.views.camera;
-  const c = document.querySelector('.cam__canvas');
-  return {
-    aspect: v.aspect,
-    crop: v.params.geometry.crop,
-    fit: getComputedStyle(c).objectFit,
-    lienzo: c.width / c.height,
-    pantalla: innerWidth / innerHeight,
-  };
+  return { aspect: v.aspect, crop: { ...v.params.geometry.crop } };
 });
-check('el encuadre por defecto es el de la pantalla', camState.aspect === 'screen');
-check('lo capturado tiene la proporción de la pantalla',
-  Math.abs(camState.lienzo - camState.pantalla) < 0.02,
-  'lienzo ' + camState.lienzo.toFixed(3) + ' vs pantalla ' + camState.pantalla.toFixed(3));
+check('el encuadre por defecto es «Máx», la calidad máxima', camState.aspect === 'full');
+check('y no recorta nada del sensor',
+  camState.crop.w === 1 && camState.crop.h === 1, JSON.stringify(camState.crop));
 
-const cubre = await page.evaluate(() => {
-  const c = document.querySelector('.cam__canvas');
-  const r = c.getBoundingClientRect();
-  return {
-    w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight,
-    fit: getComputedStyle(c).objectFit,
-  };
-});
-check('la imagen cubre la pantalla entera, sin bandas',
-  cubre.w >= cubre.vw - 1 && cubre.h >= cubre.vh - 1 && cubre.fit === 'cover',
-  `${cubre.w}×${cubre.h} sobre ${cubre.vw}×${cubre.vh}, object-fit: ${cubre.fit}`);
-
-// «Máx» debe seguir existiendo para quien quiera el sensor íntegro.
+// «Pantalla» sigue ahí para quien quiera llenar el visor.
 await page.locator('.camtool[data-tool="size"]').click();
 await page.waitForTimeout(400);
-await page.locator('.chip[data-aspect="full"]').click();
-await page.waitForTimeout(500);
-const full = await page.evaluate(() => window.__lab.views.camera.params.geometry.crop);
-check('el encuadre «Máx» no recorta nada',
-  full.w === 1 && full.h === 1, JSON.stringify(full));
+const primero = await page.evaluate(() => document.querySelector('.campanel .chip')?.dataset.aspect);
+check('«Máx» es la primera opción de Dimensiones', primero === 'full', primero);
 await page.locator('.chip[data-aspect="screen"]').click();
+await page.waitForTimeout(500);
+const camPantalla = await page.evaluate(() => {
+  const c = document.querySelector('.cam__canvas');
+  const r = c.getBoundingClientRect();
+  return { lienzo: c.width / c.height, pantalla: innerWidth / innerHeight,
+           w: Math.round(r.width), h: Math.round(r.height), vw: innerWidth, vh: innerHeight,
+           fit: getComputedStyle(c).objectFit };
+});
+check('con «Pantalla», lo capturado tiene la proporción de la pantalla',
+  Math.abs(camPantalla.lienzo - camPantalla.pantalla) < 0.02,
+  'lienzo ' + camPantalla.lienzo.toFixed(3) + ' vs pantalla ' + camPantalla.pantalla.toFixed(3));
+check('y la imagen cubre la pantalla entera, sin bandas',
+  camPantalla.w >= camPantalla.vw - 1 && camPantalla.h >= camPantalla.vh - 1 && camPantalla.fit === 'cover',
+  `${camPantalla.w}×${camPantalla.h} sobre ${camPantalla.vw}×${camPantalla.vh}, object-fit: ${camPantalla.fit}`);
+await page.locator('.chip[data-aspect="full"]').click();
 await page.waitForTimeout(400);
 await page.locator('.campanel__close').click();
 await page.waitForTimeout(400);
@@ -101,9 +93,9 @@ console.log('\n── Cámara: los ajustes son ventanas flotantes ──');
 // lee aquí, y lo que oye quien no ve el icono.
 const grupos = await page.evaluate(() =>
   [...document.querySelectorAll('.camtool')].map((b) => b.getAttribute('aria-label')));
-check('quedan tres mandos y ninguno más', grupos.length === 3, grupos.join(' · '));
-check('los tres son Filtros, Dimensiones y Flash',
-  ['Filtros', 'Dimensiones', 'Flash'].every((n) => grupos.includes(n)), grupos.join(' · '));
+check('quedan cuatro mandos y ninguno más', grupos.length === 4, grupos.join(' · '));
+check('son Filtros, Exposición, Dimensiones y Flash',
+  ['Filtros', 'Exposición', 'Dimensiones', 'Flash'].every((n) => grupos.includes(n)), grupos.join(' · '));
 check('sin espejo, sin guías y sin biblioteca en la fila',
   !grupos.some((g) => /Voltear|Guías|Biblioteca/i.test(g)), grupos.join(' · '));
 // Iconos dibujados y sin recuadro que los agrupe.
@@ -123,8 +115,8 @@ const pinta = await page.evaluate(() => {
 });
 check('la fila no tiene recuadro flotante',
   pinta.fondo === 'rgba(0, 0, 0, 0)' && (!pinta.velo || pinta.velo === 'none'), JSON.stringify(pinta));
-check('los tres iconos van dibujados, sin texto debajo',
-  pinta.dibujados === 3 && !pinta.conTexto, pinta.dibujados + ' svg');
+check('los cuatro iconos van dibujados, sin texto debajo',
+  pinta.dibujados === 4 && !pinta.conTexto, pinta.dibujados + ' svg');
 check('y se despegan de la imagen con sombra, no con fondo',
   /drop-shadow/.test(pinta.sombra), pinta.sombra);
 check('sin etiqueta, el área táctil sigue siendo de dedo',
@@ -141,14 +133,14 @@ const cambiar = await page.evaluate(() => {
 });
 check('cambiar de cámara está junto al disparador',
   cambiar && cambiar.alLado && !cambiar.enLaFila && cambiar.ancho >= 44, JSON.stringify(cambiar));
-// Exposición y zoom salen de la fila: son barras sobre la imagen.
-check('la exposición y el zoom ya no son ventanas',
-  !grupos.some((g) => /Exposición|Zoom/i.test(g))
-  && await page.locator('.cam__rail--left').count() === 1
-  && await page.locator('.cam__rail--right').count() === 1,
+// El zoom va en sus botones, encima de FOTO · VÍDEO; ya no hay barras.
+check('el zoom va en botones y no hay barras laterales',
+  !grupos.some((g) => /Zoom/i.test(g))
+  && await page.locator('.cam__zooms .zoompill').count() >= 2
+  && await page.locator('.cam__rail').count() === 0,
   grupos.join(' · '));
 
-for (const [tool, titulo] of [['film', 'Filtros'], ['size', 'Dimensiones']]) {
+for (const [tool, titulo] of [['film', 'Filtros'], ['ev', 'Exposición'], ['size', 'Dimensiones']]) {
   await page.locator(`.camtool[data-tool="${tool}"]`).click();
   await page.waitForTimeout(350);
   const abierto = await page.evaluate(() => {

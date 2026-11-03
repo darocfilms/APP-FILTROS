@@ -13,15 +13,23 @@ dentro. **No hace falta Node ni terminal** — se descarga, se abre y se le da a
 
 ## 1. Descargar el proyecto
 
-En GitHub, botón verde **Code → Download ZIP**, y descomprime.
-O desde la terminal: `git clone https://github.com/darocfilms/APP-FILTROS.git`
+**[Laboratorio-Xcode.zip](https://github.com/darocfilms/APP-FILTROS/releases/download/ios/Laboratorio-Xcode.zip)**
+— descomprímelo y deja la carpeta tal cual. Lleva el proyecto con la app web
+dentro y, a su lado, el plugin que guarda en Fotos (`node_modules/…`), que el
+proyecto busca ahí. Un Mac de GitHub lo compila desde ese mismo .zip antes de
+publicarlo (`.github/workflows/ios.yml`), y dentro va un LEEME con estos pasos.
+
+El «Download ZIP» del repositorio ya **no basta**: no trae `node_modules`. Si
+prefieres el repositorio, clónalo y ejecuta `npm install && npm run ios` antes
+de abrir Xcode (o `sh ios/hacer-zip.sh`, que hace ese mismo .zip).
 
 ## 2. Abrir en Xcode
 
 Doble clic en **`ios/App/App.xcodeproj`**.
 
-La primera vez Xcode descarga Capacitor, el puente entre la app web y el iPhone.
-Tarda un minuto: espera a que arriba desaparezca *Resolving Package Graph*.
+La primera vez Xcode descarga Capacitor, el puente entre la app web y el iPhone,
+y SDWebImage, que usa el plugin de Fotos. Tarda un minuto: espera a que arriba
+desaparezca *Resolving Package Graph*.
 
 ## 3. Firmar con tu Apple ID
 
@@ -58,9 +66,11 @@ Lo que no se puede probar sin un iPhone de verdad:
 
 1. **Cámara** — pide permiso una vez y se ve en directo con la copia 2383.
 2. **Foto** — dispara y aparece en la Biblioteca.
-3. **Guardar en Fotos** — desde el visor, botón Guardar. Si sale la hoja de
-   compartir, elige *Guardar imagen*. Si sale la imagen con *"Mantén pulsada…"*,
-   mantenla pulsada y elige *Añadir a Fotos*.
+3. **Guardar en Fotos** — la primera foto que hagas pide permiso para *añadir*
+   a Fotos (sólo añadir: la app no ve tu galería). Dile que sí: desde ahí cada
+   foto de la cámara se copia sola a Fotos, y en el visor el botón Guardar la
+   manda allí con un toque, sin hojas ni menús («Guardada en Fotos»). Se apaga
+   en Biblioteca → rueda de Ajustes → *Guardar directamente en la galería*.
 4. **Vídeo** — graba unos segundos y comprueba que tiene sonido.
 5. **HIF de Sony** — importa un `.HIF` desde **Archivos** y ábrelo en el
    laboratorio: arriba tiene que decir *HIF*.

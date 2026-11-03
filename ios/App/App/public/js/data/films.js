@@ -106,9 +106,9 @@ export const FILMS = [
   /* ─────────────────────────── Referencia ──────────────────────────── */
   film({
     id: 'neutral',
-    name: 'Neutro digital',
+    name: 'Sin emulsión',
     brand: 'Referencia',
-    kind: 'Digital',
+    kind: 'Referencia',
     iso: null,
     note: 'Sin emulsión: la imagen tal y como la entrega la cámara. Punto de partida para etalonar desde cero.',
     swatch: ['#8a8a8a', '#c9c9c9'],
@@ -265,70 +265,6 @@ export const FILMS = [
     },
   }),
 
-  /* ───────────────────────────── Diapositiva ───────────────────────── */
-  film({
-    id: 'velvia50',
-    name: 'Velvia 50',
-    brand: 'Fujifilm',
-    kind: 'Diapositiva',
-    iso: 50,
-    note: 'Saturación extrema y latitud mínima: o expones bien o no hay foto. Verdes y magentas legendarios.',
-    swatch: ['#1f7a4c', '#b8246b'],
-    curves: {
-      r: ch(1.55, 2.30, 1.20, { w: -0.30 }),
-      g: ch(1.58, 2.35, 1.18, { y: +0.004, w: -0.32 }),
-      b: ch(1.52, 2.25, 1.22, { y: -0.006, w: -0.26 }),
-    },
-    matrix: [[1.22, -0.14, -0.08], [-0.10, 1.20, -0.10], [-0.08, -0.16, 1.24]],
-    look: {
-      contrast: 0.10, saturation: 0.30, temp: -80, tint: 6,
-      grade: { shadows: { h: 250, s: 0.05, l: -0.015 }, highs: { h: 330, s: 0.03, l: 0 } },
-      effects: { grain: 0.06, grainSize: 0.8, grainRough: 0.3, grainChroma: 0.1 },
-    },
-  }),
-
-  film({
-    id: 'provia100f',
-    name: 'Provia 100F',
-    brand: 'Fujifilm',
-    kind: 'Diapositiva',
-    iso: 100,
-    note: 'La diapositiva sensata: contraste alto pero color fiel. Cuando quieres transparencia sin el drama de la Velvia.',
-    swatch: ['#4e8fc0', '#d8d2c4'],
-    curves: {
-      r: ch(1.34, 2.00, 1.34, { w: -0.18 }),
-      g: ch(1.34, 2.00, 1.34, { w: -0.18 }),
-      b: ch(1.36, 1.95, 1.32, { y: +0.004, w: -0.20 }),
-    },
-    matrix: [[1.12, -0.08, -0.04], [-0.06, 1.11, -0.05], [-0.04, -0.08, 1.12]],
-    look: {
-      contrast: 0.04, saturation: 0.10, temp: -40,
-      grade: { shadows: { h: 225, s: 0.035, l: -0.008 } },
-      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12 },
-    },
-  }),
-
-  film({
-    id: 'kodachrome64',
-    name: 'Kodachrome 64',
-    brand: 'Kodak',
-    kind: 'Diapositiva',
-    iso: 64,
-    note: 'El proceso K-14 murió en 2010 y con él estos rojos. Sombras densas casi azuladas y una nitidez que aún duele.',
-    swatch: ['#c0392b', '#1c3f5c'],
-    curves: {
-      r: ch(1.44, 2.10, 1.28, { y: +0.014, w: -0.24 }),
-      g: ch(1.40, 2.20, 1.32, { y: -0.004, w: -0.20 }),
-      b: ch(1.42, 2.45, 1.30, { y: -0.016, w: -0.16 }),
-    },
-    matrix: [[1.18, -0.12, -0.06], [-0.06, 1.12, -0.06], [-0.04, -0.14, 1.18]],
-    look: {
-      contrast: 0.06, saturation: 0.14, vibrance: 0.06, temp: 60,
-      grade: { shadows: { h: 218, s: 0.09, l: -0.018 }, highs: { h: 30, s: 0.04, l: 0 } },
-      effects: { grain: 0.10, grainSize: 0.9, grainRough: 0.4, grainChroma: 0.1 },
-    },
-  }),
-
   /* ────────────────────────────── Cine ─────────────────────────────── */
   film({
     id: 'vision3_250d',
@@ -474,26 +410,6 @@ export const FILMS = [
   }),
 
   film({
-    id: 'astia100f',
-    name: 'Astia 100F',
-    brand: 'Fujifilm',
-    kind: 'Diapositiva',
-    iso: 100,
-    note: 'La diapositiva suave de Fuji: la fidelidad de piel de una Provia sin su dureza. Cuando quieres transparencia pero la escena ya tiene bastante contraste.',
-    swatch: ['#dcc4b8', '#8fb6c4'],
-    curves: {
-      r: ch(1.20, 1.70, 1.48, { y: +0.004, w: -0.08 }),
-      g: ch(1.20, 1.70, 1.50, { w: -0.06 }),
-      b: ch(1.21, 1.68, 1.48, { y: +0.002, w: -0.08 }),
-    },
-    matrix: [[1.07, -0.05, -0.02], [-0.04, 1.07, -0.03], [-0.02, -0.05, 1.07]],
-    look: {
-      contrast: 0.02, saturation: 0.05, vibrance: 0.08, temp: -20,
-      effects: { grain: 0.08, grainSize: 0.9, grainRough: 0.35, grainChroma: 0.12 },
-    },
-  }),
-
-  film({
     id: 'c200',
     name: 'Fujicolor C200',
     brand: 'Fujifilm',
@@ -632,30 +548,6 @@ export const FILMS = [
       effects: { grain: 0.14, grainSize: 1.5, grainRough: 0.4, grainChroma: 0.35, diffusion: 0.16 },
     },
   }),
-
-  /* ───────────────────────────── Creativa ──────────────────────────── */
-  film({
-    id: 'lomopurple',
-    name: 'LomoChrome Purple',
-    brand: 'Lomography',
-    kind: 'Creativa',
-    iso: 400,
-    note: 'Heredera de la película infrarroja Aerochrome: el verde se convierte en púrpura y el cielo se vuelve irreal.',
-    swatch: ['#9b59b6', '#f0d9a8'],
-    curves: {
-      r: ch(1.08, 1.50, 1.60, { y: +0.006 }),
-      g: ch(1.05, 1.55, 1.65, { y: -0.006 }),
-      b: ch(1.10, 1.45, 1.58, { y: +0.010 }),
-    },
-    // Intercambio de canales: el verde alimenta rojo y azul (→ púrpura) pero las
-    // filas siguen sumando 1, así que los grises no se tiñen.
-    matrix: [[0.55, 0.75, -0.30], [0.10, 0.30, 0.60], [0.35, 0.75, -0.10]],
-    look: {
-      saturation: 0.12, vibrance: 0.08, temp: -60,
-      grade: { shadows: { h: 270, s: 0.06, l: 0 }, highs: { h: 50, s: 0.05, l: 0 } },
-      effects: { grain: 0.24, grainSize: 1.2, grainRough: 0.55, grainChroma: 0.35 },
-    },
-  }),
 ];
 
 export const FILM_BY_ID = new Map(FILMS.map((f) => [f.id, f]));
@@ -664,10 +556,18 @@ export function getFilm(id) {
   return FILM_BY_ID.get(id) || FILM_BY_ID.get('neutral');
 }
 
-/** Emulsiones agrupadas por tipo, en el orden del catálogo. */
-export function filmsByKind() {
+/**
+ * Emulsiones agrupadas por tipo, en el orden del catálogo.
+ *
+ * El neutro no sale en los selectores: no es una película, es la ausencia de
+ * una. Sigue en el catálogo porque es el punto de partida del laboratorio y
+ * lo que devuelve `getFilm` con un identificador que ya no existe (las fotos
+ * hechas con una diapositiva o la LomoChrome, que se han retirado).
+ */
+export function filmsByKind({ conNeutro = false } = {}) {
   const groups = new Map();
   for (const f of FILMS) {
+    if (f.neutral && !conNeutro) continue;
     if (!groups.has(f.kind)) groups.set(f.kind, []);
     groups.get(f.kind).push(f);
   }

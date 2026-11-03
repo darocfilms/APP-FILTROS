@@ -16,10 +16,15 @@
 import { el, clear, toast, haptic } from '../utils/dom.js';
 import { Renderer, renderToBlob } from '../engine/renderer.js';
 import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
-import { rangeTrack, verticalRail } from '../ui/controls.js';
-import { getFilm, FILMS, filmsByKind } from '../data/films.js';
+import { rangeTrack } from '../ui/controls.js';
+import { dial, decimal } from '../ui/dial.js';
+import { FilmPicker } from '../ui/filmpicker.js';
+import { getFilm } from '../data/films.js';
 import { library, makeThumb } from '../store/library.js';
+import { refreshThumb } from '../store/develop.js';
+import { ajustes, EVENTO_AJUSTES } from '../store/ajustes.js';
 import { isNativeApp, isMacApp } from '../utils/share.js';
+import { galeriaNativa, guardarEnGaleria, describirFalloGaleria } from '../utils/galeria.js';
 import { ICONO } from '../ui/iconos.js';
 
 /**
@@ -59,6 +64,10 @@ const ICONOS = {
   // color, que es exactamente lo que hay dentro.
   film: svg('<circle cx="12" cy="8.6" r="5.1"/><circle cx="7.9" cy="15.2" r="5.1"/>'
     + '<circle cx="16.1" cy="15.2" r="5.1"/>'),
+  // El símbolo de compensación de exposición de cualquier cámara: un círculo
+  // partido con el más en la mitad clara y el menos en la oscura.
+  ev: svg('<circle cx="12" cy="12" r="8.6"/><path d="M5.9 18.1 18.1 5.9"/>'
+    + '<path d="M8.6 6.6v4.2M6.5 8.7h4.2"/><path d="M13.3 15.3h4.2"/>'),
   // Cuatro esquinas de encuadre: se lee como «marco» sin explicarlo.
   size: svg('<path d="M4 8.5V5.8A1.8 1.8 0 0 1 5.8 4H8.5"/><path d="M15.5 4h2.7A1.8 1.8 0 0 1 20 5.8v2.7"/>'
     + '<path d="M20 15.5v2.7a1.8 1.8 0 0 1-1.8 1.8h-2.7"/><path d="M8.5 20H5.8A1.8 1.8 0 0 1 4 18.2v-2.7"/>'),
@@ -87,21 +96,58 @@ function previewBudget() {
  * Encuadres.
  *
  * El primero, «Máx», no recorta nada: muestra y captura exactamente lo que
- * entrega la cámara. Es el valor por defecto justamente por eso — imponer 4:3
- * a un dispositivo que sólo ofrece 16:9 tiraría los laterales, que es lo
- * contrario de aprovechar el sensor.
+ * entrega la cámara. Es con el que arranca, porque la cámara empieza en la
+ * calidad máxima: imponer la proporción de la pantalla (o 4:3 a un dispositivo
+ * que sólo ofrece 16:9) tiraría parte del sensor, que es lo contrario de
+ * aprovecharlo. «Pantalla» llena el visor a cambio de esos píxeles.
  *
  * Los demás son recortes sobre ESE fotograma, nunca una petición distinta al
  * sistema: así el encuadre es una decisión reversible sobre la toma máxima y no
  * información descartada antes de llegar.
  */
 const ASPECTS = [
-  { key: 'screen', label: 'Pantalla', ratio: 'screen', note: 'Llena la pantalla; se captura justo lo que ves' },
   { key: 'full', label: 'Máx', ratio: null, note: 'Todo lo que entrega la cámara, sin recortar' },
+  { key: 'screen', label: 'Pantalla', ratio: 'screen', note: 'Llena la pantalla; se captura justo lo que ves' },
   { key: '4:3', label: '4:3', ratio: 3 / 4, note: 'Clásico de fotografía' },
   { key: '1:1', label: '1:1', ratio: 1, note: 'Cuadrado' },
   { key: '16:9', label: '16:9', ratio: 9 / 16, note: 'Panorámico' },
 ];
+
+/**
+ * Calidad del JPEG de la cámara: la máxima. A 100 el archivo pesa más que a
+ * 95, pero es lo que se pide a una cámara que arranca en calidad máxima, y el
+ * espacio lo da la carpeta local, no la memoria.
+ */
+const JPEG_CALIDAD = 1;
+
+/** Botones de zoom, como en la Cámara del iPhone. El 0,5 sólo con gran angular. */
+const ZOOM_BOTONES = [0.5, 1, 2, 4];
+
+/** Marcas de la regla de zoom (escala logarítmica). */
+function marcasZoom(min, max) {
+  const mayores = [0.5, 1, 2, 3, 4, 6, 10].map((v) => ({ v, texto: decimal(v) }));
+  const menores = [];
+  for (let v = 0.5; v < 1; v += 0.1) menores.push(+v.toFixed(2));
+  for (let v = 1; v < 2; v += 0.1) menores.push(+v.toFixed(2));
+  for (let v = 2; v < 4; v += 0.2) menores.push(+v.toFixed(2));
+  for (let v = 4; v <= 10; v += 0.5) menores.push(+v.toFixed(2));
+  return { mayores, menores: menores.filter((v) => v >= min && v <= max) };
+}
+
+/** Marcas de la regla de exposición: un número por diafragma, raya cada tercio. */
+function marcasEV() {
+  const mayores = [-3, -2, -1, 0, 1, 2, 3].map((v) => ({ v, texto: v > 0 ? '+' + v : v < 0 ? '−' + -v : '0' }));
+  const menores = [];
+  for (let i = -9; i <= 9; i++) menores.push(i / 3);
+  return { mayores, menores };
+}
+
+/** «+0,7», «−1,3» o «0»: como lo escribe una cámara. */
+export function textoEV(v) {
+  const r = Math.round(v * 10) / 10;
+  if (Math.abs(r) < 0.05) return '0';
+  return (r > 0 ? '+' : '−') + decimal(Math.abs(r));
+}
 
 const MIME_CANDIDATES = [
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
@@ -157,6 +203,26 @@ export function describeSaveError(err) {
   return 'No se pudo guardar: ' + msg;
 }
 
+/**
+ * El fotograma tal cual, en PNG: sin pérdida, sin recorte y sin revelar.
+ * Es el archivo del modo RAW (ver `setRaw`).
+ */
+async function sinPerdida(fuente) {
+  const lienzo = fuente instanceof HTMLCanvasElement ? fuente : document.createElement('canvas');
+  if (lienzo !== fuente) {
+    lienzo.width = fuente.width;
+    lienzo.height = fuente.height;
+    lienzo.getContext('2d').drawImage(fuente, 0, 0);
+  }
+  try {
+    const blob = await new Promise((r) => lienzo.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('No se pudo codificar el RAW: la imagen es demasiado grande');
+    return blob;
+  } finally {
+    if (lienzo !== fuente) lienzo.width = lienzo.height = 0;
+  }
+}
+
 function pickMime() {
   if (typeof MediaRecorder === 'undefined') return null;
   return MIME_CANDIDATES.find((m) => {
@@ -171,9 +237,9 @@ export class CameraView {
     // película, y el visor debe enseñar desde el primer momento a qué se parece
     // lo que se va a capturar.
     this.params = applyFilmLook(defaultParams(), getFilm(DEFAULT_FILM));
-    /** Familia de emulsiones visible en la tira; se fija al abrir el panel. */
-    this.stripKind = null;
     this.mode = 'photo';
+    /** Disparar en RAW: el fotograma sin pérdida y la emulsión como ajuste. */
+    this.raw = ajustes.get('formato') === 'raw';
     this.facing = 'environment';
     this.stream = null;
     this.renderer = null;
@@ -182,7 +248,7 @@ export class CameraView {
     this.chunks = [];
     this.recStart = 0;
     this.busy = false;
-    this.aspect = 'screen';
+    this.aspect = 'full';
     this.openPanelKey = null;
     this.paused = false;
     /** Factor de zoom pedido por el usuario, 1 = sin acercar. */
@@ -222,7 +288,8 @@ export class CameraView {
         // los mandos. Un solo gesto para llegar al encuadre limpio.
         if (e.target !== this.stage && e.target !== this.canvas) return;
         if (this.pinching) return;
-        if (this.openPanelKey) this.openPanel(null);
+        if (this.zoomCtl.classList.contains('is-regla')) this.cerrarDialZoom();
+        else if (this.openPanelKey) this.openPanel(null);
         else this.toggleImmersive();
       },
     }, this.canvas, this.badge, this.recPill, this.resLabel,
@@ -233,14 +300,18 @@ export class CameraView {
     /* ── Ventanas flotantes de ajustes ─────────────────────────────────── */
     this.panelHost = el('div', { class: 'cam__panelhost' });
 
-    // Sólo abren ventana los ajustes que son una LISTA de opciones. La
-    // exposición y el zoom son un valor continuo que se busca mirando la
-    // imagen, y para eso una ventana estorba justo lo que hay que mirar: van
-    // en las barras verticales de los lados.
+    // La exposición tiene su botón, con el símbolo de cualquier cámara, y abre
+    // una regla rotulada: «EXPOSICIÓN», el valor en grande y hacia dónde
+    // aclara y oscurece. Las barras verticales sin escala de antes no decían
+    // qué eran ni cuánto se había movido. El zoom va en sus botones (abajo).
     this.tools = [
       {
         key: 'film', icon: ICONOS.film, label: 'Filtros',
         build: () => this._filmPanel(),
+      },
+      {
+        key: 'ev', icon: ICONOS.ev, label: 'Exposición',
+        build: () => this._evPanel(),
       },
       {
         key: 'size', icon: ICONOS.size, label: 'Dimensiones',
@@ -258,7 +329,10 @@ export class CameraView {
           type: 'button', class: 'camtool', dataset: { tool: t.key },
           'aria-expanded': 'false', 'aria-label': t.label,
           onclick: () => this.openPanel(this.openPanelKey === t.key ? null : t.key),
-        }, el('span', { class: 'camtool__icon', html: t.icon }));
+        }, el('span', { class: 'camtool__icon', html: t.icon }),
+          // La exposición enseña su valor en el propio botón cuando no es 0:
+          // así se ve siempre que la foto va a salir más clara o más oscura.
+          t.key === 'ev' ? (this.evValorTool = el('span', { class: 'camtool__valor' })) : null);
         this.toolButtons.set(t.key, btn);
         return btn;
       }),
@@ -280,9 +354,24 @@ export class CameraView {
           dataset: { mode: k }, onclick: () => this.setMode(k),
         }, label)));
 
+    // RAW arriba a la derecha, como en la Cámara del iPhone: tachado cuando
+    // está apagado y en amarillo cuando está puesto.
+    this.rawBtn = el('button', {
+      type: 'button', class: 'cam__raw', 'aria-label': 'RAW', 'aria-pressed': String(this.raw),
+      onclick: () => this.setRaw(!this.raw),
+    }, 'RAW');
+    this._pintarRaw();
+    this._onAjustes = (e) => {
+      if (e.detail?.clave === 'formato') { this.raw = ajustes.get('formato') === 'raw'; this._pintarRaw(); this._updateResLabel(); }
+    };
+    window.addEventListener(EVENTO_AJUSTES, this._onAjustes);
+
+    this._buildZoom();
+
     this.hud = el('div', { class: 'cam__hud' },
       this.panelHost,
       toolRow,
+      this.zoomCtl,
       this.modeSwitch,
       el('div', { class: 'cam__bar' },
         // La última foto, como en la Cámara del iPhone: un toque la abre en
@@ -297,15 +386,13 @@ export class CameraView {
           onclick: () => this.flip(),
         })));
 
-    this._buildRails();
-
     this.showChrome = el('button', {
       type: 'button', class: 'cam__reveal', 'aria-label': 'Mostrar los mandos',
       onclick: () => this.toggleImmersive(),
     }, '⤡');
 
     const root = el('section', { class: 'view view--camera', id: 'view-camera' },
-      this.stage, this.evRail.node, this.zoomRail.node, this.hud, this.showChrome);
+      this.stage, this.rawBtn, this.hud, this.showChrome);
 
     // El encuadre "Pantalla" depende del tamaño de la ventana: al girar el
     // teléfono hay que recalcular el recorte o dejaría de llenarla.
@@ -350,28 +437,10 @@ export class CameraView {
   }
 
   _filmPanel() {
-    // Con veintitantas emulsiones una tira única obliga a desplazarse a ciegas
-    // hasta el final para llegar a las copias de cine. Los grupos las ponen
-    // todas a dos toques: familia y emulsión.
-    this.filmKinds = filmsByKind();
-    const activa = getFilm(this.params.film.id);
-    if (!this.filmKinds.some((g) => g.kind === this.stripKind)) {
-      this.stripKind = this.filmKinds.some((g) => g.kind === activa.kind)
-        ? activa.kind
-        : this.filmKinds[0].kind;
-    }
-    this.kindRow = el('div', { class: 'campanel__chips' },
-      this.filmKinds.map((g) => el('button', {
-        type: 'button',
-        class: 'chip' + (g.kind === this.stripKind ? ' is-active' : ''),
-        dataset: { kind: g.kind },
-        'aria-pressed': g.kind === this.stripKind,
-        text: g.kind,
-        onclick: () => this.setStripKind(g.kind),
-      })));
-
-    this.filmStrip = el('div', { class: 'strip' });
-    this._buildStrip();
+    // Una fila de nombres, sin recuadros: tocar uno lo aplica al visor, que
+    // enseña la emulsión mejor que cualquier muestra de color.
+    this.filmPicker = new FilmPicker((id) => this.setFilm(id));
+    this.filmPicker.select(this.params.film.id);
     const strength = el('input', {
       type: 'range', class: 'slider__input', min: 0, max: 1, step: 0.01,
       value: this.params.film.strength, 'aria-label': 'Intensidad de la emulsión',
@@ -382,43 +451,170 @@ export class CameraView {
       readout.textContent = Math.round(this.params.film.strength * 100) + '%';
     });
     return el('div', { class: 'campanel__body' },
-      this.kindRow,
-      this.filmStrip,
+      this.filmPicker.root,
       el('div', { class: 'campanel__row' },
         el('span', { class: 'campanel__label', text: 'Intensidad' }),
         rangeTrack(strength), readout));
   }
 
   /**
-   * Las dos barras de los lados: exposición a la izquierda, zoom a la derecha.
-   *
-   * Van sobre la imagen y no dentro de una ventana porque son ajustes que se
-   * buscan MIRANDO el encuadre: taparlo con un panel para decidir cuánta luz
-   * quieres es esconder justo el dato. Y van una a cada lado porque el pulgar
-   * llega a su lado de la pantalla sin cambiar de mano.
+   * La exposición: una regla rotulada, con el valor en grande encima y qué
+   * pasa hacia cada lado escrito debajo. Se ve la imagen mientras se mueve,
+   * porque la ventana sólo ocupa la franja de abajo.
    */
-  _buildRails() {
-    this.evRail = verticalRail({
-      min: -3, max: 3, step: 0.05, origin: 0,
-      value: this.params.light.exposure,
-      label: 'Compensación de exposición',
-      format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1) + ' EV',
-      onInput: (v) => { this.params.light.exposure = v; },
+  _evPanel() {
+    const valor = el('output', { class: 'evpanel__valor' });
+    const cero = el('button', {
+      type: 'button', class: 'evpanel__cero', text: 'Volver a 0',
+      onclick: () => { this.setExposure(0); this.evDial.set(0); haptic(); },
     });
-    this.evRail.node.classList.add('cam__rail', 'cam__rail--left');
+    this._pintarEvPanel = () => {
+      const v = this.params.light.exposure;
+      valor.textContent = textoEV(v) + ' EV';
+      valor.classList.toggle('is-cero', textoEV(v) === '0');
+      cero.hidden = textoEV(v) === '0';
+    };
+    this.evDial = dial({
+      min: -3, max: 3, value: this.params.light.exposure, paso: 0.1, px: 46,
+      marcas: marcasEV, etiqueta: 'Exposición',
+      formato: (v) => textoEV(v) + ' EV',
+      alCambiar: (v) => this.setExposure(v),
+    });
+    this._pintarEvPanel();
+    return el('div', { class: 'campanel__body evpanel' },
+      valor,
+      this.evDial.node,
+      el('div', { class: 'evpanel__pie' },
+        el('span', { text: '← Más oscura' }), cero, el('span', { text: 'Más clara →' })));
+  }
 
-    // La escala del zoom es logarítmica: de 1× a 2× se nota lo mismo que de 5×
-    // a 10×, y en lineal el primer tramo —el que más se usa— quedaría
-    // aplastado contra el extremo de abajo.
-    this.zoomRail = verticalRail({
-      min: 0.5, max: this.zoomMax, scale: 'log', origin: 1,
-      value: this.effectiveZoom,
-      label: 'Zoom',
-      format: (v) => v.toFixed(1).replace(/\.0$/, '') + '×',
-      onInput: (v) => this.setEffectiveZoom(v),
+  setExposure(v) {
+    this.params.light.exposure = Math.round(v * 100) / 100;
+    this._pintarEvPanel?.();
+    this._pintarEvTool();
+  }
+
+  /** El botón de exposición en amarillo y con su valor cuando no es 0. */
+  _pintarEvTool() {
+    const t = textoEV(this.params.light.exposure);
+    const btn = this.toolButtons?.get('ev');
+    btn?.classList.toggle('is-on', t !== '0');
+    if (this.evValorTool) this.evValorTool.textContent = t === '0' ? '' : t;
+    btn?.setAttribute('aria-label', t === '0' ? 'Exposición' : `Exposición ${t} EV`);
+  }
+
+  /* ─────────────────────────── Zoom: botones y regla ─────────────────── */
+
+  /**
+   * Los botones 0,5 · 1× · 2 · 4 encima de FOTO · VÍDEO, como en la Cámara
+   * del iPhone. El activo dice el zoom exacto («2,6×»). Arrastrarlos de lado
+   * (o mantenerlos pulsados) despliega la regla para afinar entre medias, y
+   * se recoge sola al poco de soltar.
+   */
+  _buildZoom() {
+    this.zoomPills = el('div', { class: 'cam__zooms', role: 'group', 'aria-label': 'Zoom' });
+    this.zoomValor = el('span', { class: 'cam__zoomvalor', 'aria-hidden': 'true' });
+    this.zoomDial = dial({
+      min: 0.5, max: this.zoomMax, value: this.effectiveZoom, escala: 'log', px: 78,
+      marcas: marcasZoom, etiqueta: 'Zoom',
+      formato: (v) => decimal(v) + '×',
+      alCambiar: (v) => { this.setEffectiveZoom(v); this._mantenerDial(); },
     });
-    this.zoomRail.node.classList.add('cam__rail', 'cam__rail--right');
-    this._syncZoomRail();
+    this.zoomCtl = el('div', { class: 'cam__zoom' },
+      this.zoomPills,
+      el('div', { class: 'cam__zoomdial' }, this.zoomValor, this.zoomDial.node));
+
+    // Arrastrar los botones mueve la regla: el dedo no tiene que soltarse y
+    // volver a buscarla.
+    let g = null;
+    this.zoomPills.addEventListener('pointerdown', (ev) => {
+      g = { x0: ev.clientX, id: ev.pointerId, regla: false };
+      this._zoomDedo = true;
+      g.largo = setTimeout(() => { if (g && !g.regla) this._abrirDial(g); }, 450);
+    });
+    this.zoomPills.addEventListener('pointermove', (ev) => {
+      if (!g || ev.pointerId !== g.id) return;
+      if (!g.regla && Math.abs(ev.clientX - g.x0) > 8) this._abrirDial(g);
+      if (g.regla) { ev.preventDefault(); this.zoomDial.arrastre.mover(ev.clientX); }
+    });
+    const soltar = (ev) => {
+      if (!g || ev.pointerId !== g.id) return;
+      clearTimeout(g.largo);
+      this._zoomDedo = false;
+      if (g.regla) {
+        this.zoomDial.arrastre.terminar();
+        // El clic que sigue al arrastre no es un toque en un botón.
+        this._zoomTragar = true;
+        setTimeout(() => { this._zoomTragar = false; }, 80);
+        this._mantenerDial();
+      }
+      g = null;
+    };
+    this.zoomPills.addEventListener('pointerup', soltar);
+    this.zoomPills.addEventListener('pointercancel', soltar);
+    this.zoomDial.node.addEventListener('pointerup', () => this._mantenerDial());
+    this._pintarZoomPills();
+  }
+
+  _abrirDial(g) {
+    g.regla = true;
+    try { this.zoomPills.setPointerCapture(g.id); } catch { /* sintético */ }
+    this.zoomCtl.classList.add('is-regla');
+    this.zoomDial.arrastre.empezar(g.x0);
+    haptic();
+    this._mantenerDial();
+  }
+
+  /** La regla se recoge sola un rato después del último movimiento. */
+  _mantenerDial() {
+    clearTimeout(this._dialTimer);
+    this._dialTimer = setTimeout(() => {
+      // Con el dedo todavía encima no se recoge: se cuenta desde que se suelta.
+      if (this._zoomDedo || this.zoomDial.node.classList.contains('is-moviendo')) this._mantenerDial();
+      else this.cerrarDialZoom();
+    }, 1800);
+  }
+
+  cerrarDialZoom() {
+    clearTimeout(this._dialTimer);
+    this.zoomCtl?.classList.remove('is-regla');
+  }
+
+  /** Los botones que tienen sentido en este dispositivo y con esta cámara. */
+  get zoomBotones() {
+    return ZOOM_BOTONES.filter((v) => (v < 1 ? this.hasUltraWide : v <= this.zoomMax + 1e-6));
+  }
+
+  _pintarZoomPills() {
+    if (!this.zoomPills) return;
+    const z = this.effectiveZoom;
+    const botones = this.zoomBotones;
+    // Activo: el mayor botón que no pasa del zoom actual.
+    const activo = [...botones].reverse().find((v) => z >= v - 1e-3) ?? botones[0];
+    const firma = botones.join(',');
+    if (this.zoomPills.dataset.firma !== firma) {
+      this.zoomPills.dataset.firma = firma;
+      this.zoomPills.textContent = '';
+      for (const v of botones) {
+        this.zoomPills.append(el('button', {
+          type: 'button', class: 'zoompill', dataset: { zoom: String(v) },
+          onclick: () => {
+            if (this._zoomTragar) return;
+            haptic();
+            this.setEffectiveZoom(v);
+          },
+        }));
+      }
+    }
+    for (const b of this.zoomPills.children) {
+      const v = +b.dataset.zoom;
+      const on = v === activo;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = on ? decimal(z) + '×' : decimal(v);
+      b.setAttribute('aria-label', `Zoom ${decimal(v)}×`);
+    }
+    this.zoomValor.textContent = decimal(z) + '×';
   }
 
   /**
@@ -436,12 +632,13 @@ export class CameraView {
     this.setZoom(quiereUltra ? 1 : Math.max(1, v));
   }
 
-  /** Refleja en la barra el zoom real: también se llega ahí pellizcando. */
-  _syncZoomRail() {
-    if (!this.zoomRail) return;
-    // Sin gran angular la barra no debe prometer un 0,5× que no existe.
-    this.zoomRail.node.classList.toggle('is-noultra', !this.hasUltraWide);
-    this.zoomRail.set(this.effectiveZoom);
+  /** Refleja en botones y regla el zoom real: también se llega pellizcando. */
+  _syncZoom() {
+    if (!this.zoomDial) return;
+    // Sin gran angular la regla empieza en 1×: no promete un 0,5× que no hay.
+    this.zoomDial.setRange(this.hasUltraWide ? 0.5 : 1, this.zoomMax);
+    this.zoomDial.set(this.effectiveZoom);
+    this._pintarZoomPills();
   }
 
   /**
@@ -528,7 +725,8 @@ export class CameraView {
       const ultra = traseras.find((d) => /ultra|gran ?angular|0[.,]5/i.test(d.label));
       const principal = traseras.find((d) => d !== ultra);
       this.lenses = { ultra: ultra?.deviceId || null, wide: principal?.deviceId || null };
-      if (this.openPanelKey === 'zoom') this.openPanel('zoom');
+      // Con gran angular aparece el botón 0,5.
+      this._syncZoom();
     } catch {
       this.lenses = {};
     }
@@ -554,7 +752,7 @@ export class CameraView {
       this.lens = anterior;
       toast('No se pudo cambiar de objetivo', { error: true });
     }
-    this._syncZoomRail();
+    this._syncZoom();
   }
 
   /* ─────────────────────────────── Zoom ──────────────────────────────── */
@@ -572,9 +770,8 @@ export class CameraView {
     this.nativeZoomMax = (z && typeof z.max === 'number' && z.max > 1) ? z.max : 1;
     this.zoomMin = (z && typeof z.min === 'number') ? Math.max(1, z.min) : 1;
     // El techo real sólo se conoce con el flujo abierto, después de construir
-    // la barra: si no se le dice, seguiría prometiendo el techo de reserva.
-    this.zoomRail?.setRange(0.5, this.zoomMax);
-    this._syncZoomRail();
+    // la regla: si no se le dice, seguiría prometiendo el techo de reserva.
+    this._syncZoom();
     if (this.zoom !== 1) this._applyZoom();
   }
 
@@ -605,13 +802,11 @@ export class CameraView {
   }
 
   _showZoomBadge() {
-    this.badge.textContent = this.effectiveZoom.toFixed(1).replace(/\.0$/, '') + '×'
-      + (this.lens === 'ultra' ? ' · gran angular' : '')
-      + (this.zoom > this.zoomNativeLimit + 1e-3 ? ' · recorte' : '');
-    this.badge.classList.remove('is-hidden');
-    clearTimeout(this._badgeTimer);
-    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1400);
-    this._syncZoomRail();
+    // El número ya está en los botones; la insignia sólo dice lo que no se ve:
+    // que es la otra cámara o que a partir de ahí se recorta.
+    const extra = this.lens === 'ultra' ? 'Gran angular' : this.zoom > this.zoomNativeLimit + 1e-3 ? 'Zoom por recorte' : '';
+    if (extra) this._insignia(decimal(this.effectiveZoom) + '× · ' + extra, 1400);
+    this._syncZoom();
   }
 
   /* ─────────────────────────────── Flash ─────────────────────────────── */
@@ -639,12 +834,7 @@ export class CameraView {
   toggleFlash() {
     const on = this.flash !== 'on';
     this.setFlash(on);
-    this.badge.textContent = on
-      ? (this.canTorch ? 'Flash · linterna' : 'Flash · pantalla')
-      : 'Flash apagado';
-    this.badge.classList.remove('is-hidden');
-    clearTimeout(this._badgeTimer);
-    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1600);
+    this._insignia(on ? (this.canTorch ? 'Flash · linterna' : 'Flash · pantalla') : 'Flash apagado');
   }
 
   /** La linterna permanece encendida mientras se graba; en foto sólo dispara. */
@@ -785,55 +975,53 @@ export class CameraView {
     if (!w || !h) { this.resLabel.textContent = ''; return; }
     const mp = (w * h) / 1e6;
     const completo = this.aspect === 'full' ? ' · sensor completo' : '';
-    this.resLabel.textContent = `${w}×${h} · ${mp.toFixed(1)} Mpx${completo}`;
-  }
-
-  /** Cambia la familia visible en la tira sin tocar la emulsión activa. */
-  setStripKind(kind) {
-    this.stripKind = kind;
-    for (const b of this.kindRow?.children || []) {
-      const on = b.dataset.kind === kind;
-      b.classList.toggle('is-active', on);
-      b.setAttribute('aria-pressed', String(on));
-    }
-    this._buildStrip();
-    haptic();
-  }
-
-  _buildStrip() {
-    if (!this.filmStrip) return;
-    clear(this.filmStrip);
-    for (const f of FILMS) {
-      if (this.stripKind && f.kind !== this.stripKind) continue;
-      const btn = el('button', {
-        type: 'button',
-        class: 'strip__item' + (f.id === this.params.film.id ? ' is-active' : ''),
-        dataset: { film: f.id },
-        style: { '--c1': f.swatch[0], '--c2': f.swatch[1] },
-        onclick: () => this.setFilm(f.id),
-      }, el('span', { class: 'strip__swatch' }), el('span', { class: 'strip__name', text: f.name }));
-      this.filmStrip.append(btn);
-    }
-    // La emulsión puesta se busca sola: en un grupo de once no debería haber
-    // que desplazarse para ver cuál está activa.
-    const activa = this.filmStrip.querySelector('.is-active');
-    if (activa) requestAnimationFrame(() => activa.scrollIntoView({ inline: 'center', block: 'nearest' }));
+    const formato = this.mode === 'photo' ? (this.raw ? ' · RAW' : ' · JPEG 100 %') : '';
+    this.resLabel.textContent = `${w}×${h} · ${decimal(mp)} Mpx${completo}${formato}`;
   }
 
   setFilm(id) {
     const keepExposure = this.params.light.exposure;
     applyFilmLook(this.params, getFilm(id));
     this.params.light.exposure = keepExposure;
-    // La tira sólo existe mientras su ventana está abierta.
-    for (const b of this.filmStrip?.children || []) {
-      b.classList.toggle('is-active', b.dataset.film === id);
-      if (b.dataset.film === id) b.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-    }
-    this.badge.textContent = getFilm(id).name;
+    // El selector sólo existe mientras su ventana está abierta.
+    this.filmPicker?.select(id);
+    this._insignia(getFilm(id).name, 1800);
+    haptic();
+  }
+
+  /** Un aviso breve arriba del visor (zoom, emulsión, RAW, flash). */
+  _insignia(texto, ms = 1600) {
+    this.badge.textContent = texto;
     this.badge.classList.remove('is-hidden');
     clearTimeout(this._badgeTimer);
-    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), 1800);
+    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), ms);
+  }
+
+  /* ──────────────────────────────── RAW ──────────────────────────────── */
+
+  /**
+   * RAW encendido o apagado. Se recuerda (es el «Formato» de Ajustes).
+   *
+   * Lo que da una página web no es el RAW del sensor —Safari no entrega los
+   * datos del sensor, ni ProRAW—, sino el fotograma completo sin pérdida: se
+   * guarda en PNG, sin recortar, y la emulsión, la exposición y el encuadre
+   * van aparte como ajustes del laboratorio. Es lo que importa de un RAW: nada
+   * está horneado y todo se puede cambiar después sin perder calidad.
+   */
+  setRaw(on) {
+    this.raw = !!on;
+    ajustes.set('formato', this.raw ? 'raw' : 'jpeg');
+    this._pintarRaw();
+    this._updateResLabel();
+    this._insignia(this.raw ? 'RAW · sin pérdida y editable' : 'JPEG · calidad máxima');
     haptic();
+  }
+
+  _pintarRaw() {
+    if (!this.rawBtn) return;
+    this.rawBtn.classList.toggle('is-on', this.raw);
+    this.rawBtn.setAttribute('aria-pressed', String(this.raw));
+    this.rawBtn.title = this.raw ? 'RAW activado' : 'RAW desactivado';
   }
 
   setMode(mode) {
@@ -841,6 +1029,9 @@ export class CameraView {
     this.mode = mode;
     for (const b of this.modeSwitch.children) b.classList.toggle('is-active', b.dataset.mode === mode);
     this.shutter.classList.toggle('shutter--video', mode === 'video');
+    // El RAW es de las fotos: grabando no pinta nada.
+    this.rawBtn.hidden = mode === 'video';
+    this._updateResLabel();
     haptic();
   }
 
@@ -904,6 +1095,7 @@ export class CameraView {
   deactivate() {
     this.running = false;
     this.openPanel(null);
+    this.cerrarDialZoom();
     if (this.recorder) this._stopRecording(true);
     this._closeStream();
     // El renderer SOBREVIVE. Sólo se sueltan las texturas, que es lo que ocupa
@@ -1042,7 +1234,7 @@ export class CameraView {
       toast('No se pudo cambiar de cámara', { error: true });
       try { await this._openStream(); } catch { /* el mensaje ya está puesto */ }
     }
-    this._syncZoomRail();
+    this._syncZoom();
   }
 
   /**
@@ -1170,26 +1362,48 @@ export class CameraView {
       const params = cloneParams(this.params);
       // Lo guardado coincide con lo que se veía en el visor, espejo incluido.
       if (this.mirrored) params.geometry.flipH = !params.geometry.flipH;
-
-      const { blob, width, height } = await renderToBlob(bitmap, params, {
-        type: 'image/jpeg', quality: 0.95, seed: 1,
-      });
-
       const film = getFilm(params.film.id);
-      // La emulsión ya está grabada en los píxeles: se archiva como registro de
-      // cómo se reveló, no como ajustes activos, para que al reabrir la foto en
-      // el laboratorio no se aplique por segunda vez.
-      const item = await library.put(blob, {
-        kind: 'photo', width, height, filmId: film.id, filmName: film.name,
-        params: null, appliedParams: params, origin: 'camara',
-      });
-      const thumbSource = await createImageBitmap(blob, { resizeWidth: 480, resizeQuality: 'medium' })
-        .catch(() => null);
-      if (thumbSource) {
-        await library.putThumb(item.id, await makeThumb(thumbSource));
-        thumbSource.close?.();
+      const copiar = ajustes.get('guardarEnGaleria') && galeriaNativa();
+      let item, paraGaleria = null, ancho, alto;
+
+      if (this.raw) {
+        // RAW: el fotograma entero sin pérdida, y TODO lo demás —emulsión,
+        // exposición, encuadre, espejo— como ajustes editables del
+        // laboratorio. La biblioteca lo enseña revelado; el archivo, intacto.
+        const png = await sinPerdida(bitmap);
+        const c = params.geometry.crop || { w: 1, h: 1 };
+        ancho = Math.round(bitmap.width * c.w);
+        alto = Math.round(bitmap.height * c.h);
+        item = await library.put(png, {
+          kind: 'photo', width: bitmap.width, height: bitmap.height, filmId: film.id, filmName: film.name,
+          params, appliedParams: null, origin: 'camara', capturaRaw: true,
+        });
+        // A la galería va la foto como se veía; el RAW se queda aquí.
+        if (copiar) ({ blob: paraGaleria } = await renderToBlob(bitmap, params, { type: 'image/jpeg', quality: JPEG_CALIDAD, seed: 1 }));
+        await refreshThumb(item).catch(() => {});
+      } else {
+        const { blob, width, height } = await renderToBlob(bitmap, params, {
+          type: 'image/jpeg', quality: JPEG_CALIDAD, seed: 1,
+        });
+        ancho = width; alto = height;
+        // La emulsión ya está grabada en los píxeles: se archiva como registro
+        // de cómo se reveló, no como ajustes activos, para que al reabrir la
+        // foto en el laboratorio no se aplique por segunda vez.
+        item = await library.put(blob, {
+          kind: 'photo', width, height, filmId: film.id, filmName: film.name,
+          params: null, appliedParams: params, origin: 'camara',
+        });
+        const thumbSource = await createImageBitmap(blob, { resizeWidth: 480, resizeQuality: 'medium' })
+          .catch(() => null);
+        if (thumbSource) {
+          await library.putThumb(item.id, await makeThumb(thumbSource));
+          thumbSource.close?.();
+        }
+        if (copiar) paraGaleria = blob;
       }
-      toast(`Foto guardada · ${width}×${height} · ${film.name}`);
+      const que = this.raw ? 'RAW guardado' : 'Foto guardada';
+      if (paraGaleria) this._copiarAGaleria(paraGaleria, `${que} en Fotos · ${ancho}×${alto} · ${film.name}`);
+      else toast(`${que} · ${ancho}×${alto} · ${film.name}`);
       this.app.notifyCapture(item);
     } catch (err) {
       console.error(err);
@@ -1353,12 +1567,25 @@ export class CameraView {
       });
       // Miniatura: el propio lienzo con el último fotograma revelado.
       await library.putThumb(item.id, await makeThumb(this.canvas));
-      toast(`Vídeo guardado · ${Math.round(durationMs / 1000)} s · ${film.name}`);
+      const texto = `Vídeo guardado · ${Math.round(durationMs / 1000)} s · ${film.name}`;
+      if (ajustes.get('guardarEnGaleria') && galeriaNativa()) this._copiarAGaleria(blob, texto.replace('guardado', 'guardado en Fotos'));
+      else toast(texto);
       this.app.notifyCapture(item);
     } catch (err) {
       console.error(err);
       toast(describeSaveError(err), { error: true, ms: 5200 });
     }
+  }
+
+  /**
+   * Copia la toma a Fotos (sólo en la app nativa, con «Guardar directamente
+   * en la galería» activado). No retiene el disparador: la foto ya está a
+   * salvo en la biblioteca y lo de Fotos termina por detrás.
+   */
+  _copiarAGaleria(blob, textoHecho) {
+    guardarEnGaleria(blob)
+      .then(() => toast(textoHecho))
+      .catch((err) => toast(describirFalloGaleria(err) + ' La foto está en la biblioteca.', { error: true, ms: 5200 }));
   }
 
   /* ──────────────────────────────── Varios ───────────────────────────── */

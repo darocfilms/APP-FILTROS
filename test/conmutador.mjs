@@ -245,7 +245,8 @@ try {
   check('cuadrícula de tres columnas, de borde a borde y con junta fina',
     lib.columnas === 3 && lib.borde === 0 && lib.junta <= 2 && lib.cuadradas, `${lib.columnas} col · junta ${lib.junta}px`);
   check('separada por meses', lib.meses.length === 2, lib.meses.join(' · '));
-  check('botones de cristal arriba', lib.cristal === 2);
+  // Seleccionar, Importar y Ajustes.
+  check('botones de cristal arriba', lib.cristal === 3, lib.cristal + ' botones');
 
   // Pellizcar la cuadrícula: más columnas, y se recuerda.
   const pellizco = async (d0, d1) => {

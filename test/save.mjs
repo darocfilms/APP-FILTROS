@@ -47,6 +47,9 @@ await page.waitForTimeout(2500);
 /* Se simula la hoja de compartir y se registra CUÁNDO se llama, para poder
    comprobar que ocurre dentro del gesto y no después de trabajo asíncrono. */
 await page.addInitScript(() => {
+  // Safari en iPhone: la web no puede escribir en Fotos y lo más directo es la
+  // hoja de compartir. Es el caso difícil, el de la activación que caduca.
+  Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'iPhone', configurable: true });
   window.__shareLog = [];
   navigator.canShare = (d) => !!(d && d.files && d.files.length);
   navigator.share = async (d) => {
@@ -189,14 +192,11 @@ await tiles.nth(0).click();
 await tiles.nth(1).click();
 await page.waitForTimeout(300);
 await page.locator('.selbar__actions .btn', { hasText: 'Guardar' }).click();
-// Se prepara primero: la hoja aparece cuando los archivos ya están leídos.
-await page.waitForSelector('.sheet-backdrop', { timeout: 20_000 });
-await page.waitForTimeout(600);
-const titulo = await page.locator('.sheet__title').textContent();
-check('la hoja anuncia los archivos preparados', /2 archivos/.test(titulo), titulo);
-
-await page.locator('.sheet .btn--primary').click();
-await page.waitForTimeout(900);
+// Un toque: se preparan y se abre la hoja de iOS en el acto, sin hoja propia.
+await page.waitForFunction(() => window.__shareLog.length === 1, null, { timeout: 20_000 });
+await page.waitForTimeout(300);
+check('un toque y van directos, sin una hoja intermedia',
+  await page.locator('.sheet-backdrop').count() === 0);
 const log = await page.evaluate(() => window.__shareLog);
 check('se comparten los dos archivos', log.length === 1 && log[0].archivos.length === 2,
   JSON.stringify(log[0]?.archivos?.map((f) => f.name)));
@@ -223,21 +223,22 @@ await page.waitForTimeout(800);
 await page.locator('.lab__export').click();
 await page.waitForTimeout(600);
 await page.locator('.sheet .btn--primary', { hasText: 'Guardar en el dispositivo' }).click();
-// El revelado a resolución completa tarda lo suyo bajo SwiftShader, así que se
-// espera a que aparezca ESA hoja y no a que haya una cualquiera.
+// El revelado a resolución completa tarda lo suyo bajo SwiftShader. Si acaba
+// con el toque aún vigente, la hoja de iOS se abre en el acto; si lo ha
+// agotado, aparece la hoja propia que pide otro. Nunca se comparte sin él.
 await page.waitForFunction(
-  () => document.querySelector('.sheet__title')?.textContent?.includes('Listo para guardar'),
+  () => window.__shareLog.length > 0 || document.querySelector('.sheet__title')?.textContent?.includes('Listo para guardar'),
   null, { timeout: 90_000 });
-const listo = await page.locator('.sheet__title').textContent();
-check('tras revelar se ofrece una hoja nueva, no se comparte a ciegas',
-  /Listo para guardar/.test(listo) && (await page.evaluate(() => window.__shareLog.length)) === 0,
-  listo + ' · llamadas a compartir antes del toque: ' + (await page.evaluate(() => window.__shareLog.length)));
-await page.locator('.sheet .btn--primary').click();
-await page.waitForTimeout(900);
+await page.waitForTimeout(300);
+const directo = await page.evaluate(() => window.__shareLog.length);
+if (!directo) {
+  await page.locator('.sheet .btn--primary').click();
+  await page.waitForTimeout(900);
+}
 const log2 = await page.evaluate(() => window.__shareLog);
-check('el toque de esa hoja sí comparte, con activación viva',
+check('exportar comparte una vez, siempre con la activación viva',
   log2.length === 1 && log2[0].activo !== false,
-  'archivos=' + log2.length + ' activo=' + log2[0]?.activo);
+  (directo ? 'directo' : 'con la hoja de reserva') + ' · activo=' + log2[0]?.activo);
 
 console.log('\n── Reserva cuando no hay hoja del sistema ──');
 const fallback = await page.evaluate(async () => {
@@ -333,6 +334,136 @@ check('el visor sigue con la siguiente foto',
 await page.screenshot({ path: SHOT + '/visor-borrar.png' });
 await page.evaluate(() => window.__lab.views.library.viewer.close());
 await page.waitForTimeout(300);
+
+console.log('\n── Guardar en un toque desde el visor ──');
+await page.evaluate(() => { window.__shareLog.length = 0; });
+await page.locator('.tile').first().click();
+await page.waitForFunction(() => !!document.querySelector('.viewer__media'), null, { timeout: 20_000 });
+await page.waitForTimeout(400);
+await page.locator('.viewer__action--guardar').click();
+await page.waitForFunction(() => window.__shareLog.length === 1, null, { timeout: 20_000 });
+await page.waitForTimeout(400);
+const unToque = await page.evaluate(() => ({
+  log: window.__shareLog[0],
+  hojas: document.querySelectorAll('.sheet-backdrop').length,
+  visor: !document.querySelector('.viewer').hidden,
+}));
+check('«Guardar» abre la hoja de iOS en el acto, sin menús propios',
+  unToque.hojas === 0 && unToque.log?.archivos?.length === 1 && unToque.log.activo !== false, JSON.stringify(unToque.log));
+check('y el visor sigue abierto', unToque.visor);
+
+console.log('\n── Ajustes: guardar directamente en la galería ──');
+await page.evaluate(() => window.__lab.views.library.viewer.close());
+await page.waitForTimeout(300);
+await page.locator('.lib__ajustes').click();
+await page.waitForSelector('.sheet--ajustes');
+await page.waitForTimeout(300);
+const ajustes = await page.evaluate(() => {
+  const h = document.querySelector('.sheet--ajustes');
+  const i = h.querySelector('input[data-ajuste="guardarEnGaleria"]');
+  return { titulo: h.querySelector('.sheet__title').textContent, activado: i?.checked, rol: i?.getAttribute('role'),
+           texto: h.textContent, formato: h.querySelector('.ajuste__opcion.is-active')?.dataset.formato };
+});
+check('la rueda de la biblioteca abre los Ajustes', ajustes.titulo === 'Ajustes');
+check('«Guardar directamente en la galería» viene activado de fábrica',
+  ajustes.activado === true && ajustes.rol === 'switch' && /Guardar directamente en la galería/.test(ajustes.texto));
+check('el formato de la cámara está ahí, en JPEG de fábrica', ajustes.formato === 'jpeg');
+await page.screenshot({ path: SHOT + '/ajustes.png' });
+// Apagado, «Guardar» vuelve a la hoja que deja elegir.
+await page.locator('.sheet--ajustes .interruptor').click();
+await page.waitForTimeout(200);
+check('apagarlo se recuerda',
+  await page.evaluate(() => JSON.parse(localStorage.getItem('lab.ajustes.v1')).guardarEnGaleria) === false);
+await page.locator('.sheet--ajustes .btn--primary', { hasText: 'Hecho' }).click();
+await page.waitForTimeout(400);
+await page.evaluate(() => { window.__shareLog.length = 0; });
+await page.locator('.tile').first().click();
+await page.waitForFunction(() => !!document.querySelector('.viewer__media'), null, { timeout: 20_000 });
+await page.locator('.viewer__action--guardar').click();
+await page.waitForFunction(() => document.querySelector('.sheet__title')?.textContent?.includes('Listo para guardar'), null, { timeout: 20_000 });
+check('apagado, «Guardar» ofrece la hoja de siempre y no comparte solo',
+  await page.evaluate(() => window.__shareLog.length) === 0);
+await page.locator('.sheet .btn', { hasText: 'Cancelar' }).click();
+await page.waitForTimeout(400);
+await page.evaluate(async () => {
+  const { ajustes } = await import('./js/store/ajustes.js');
+  ajustes.set('guardarEnGaleria', true);
+  window.__lab.views.library.viewer.close();
+});
+await page.waitForTimeout(300);
+
+console.log('\n── En la app nativa: directo a Fotos ──');
+// Un iPhone con la app: el puente de Capacitor con el plugin de la galería.
+const nativa = await browser.newContext({
+  viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
+  permissions: ['camera', 'microphone'],
+});
+await nativa.addInitScript(() => {
+  Object.defineProperty(Navigator.prototype, 'platform', { get: () => 'iPhone', configurable: true });
+  window.__fotos = [];
+  window.__shareLog = [];
+  navigator.canShare = () => true;
+  navigator.share = async () => { window.__shareLog.push(1); };
+  const Media = {
+    savePhoto: async (o) => { window.__fotos.push({ tipo: 'foto', ruta: o.path.slice(0, 30), largo: o.path.length, album: o.albumIdentifier || null }); return { identifier: 'x' }; },
+    saveVideo: async (o) => { window.__fotos.push({ tipo: 'video', ruta: o.path.slice(0, 30), largo: o.path.length }); return { identifier: 'y' }; },
+  };
+  window.Capacitor = {
+    isNativePlatform: () => true, getPlatform: () => 'ios',
+    isPluginAvailable: (n) => n === 'Media', Plugins: { Media },
+  };
+});
+const pn = await nativa.newPage();
+pn.on('pageerror', (e) => errors.push('nativa: ' + e.message));
+await pn.goto(BASE, { waitUntil: 'networkidle' });
+await pn.waitForTimeout(3000);
+check('la app ve la galería', await pn.evaluate(async () => (await import('./js/utils/galeria.js')).galeriaNativa()));
+// Una foto con la cámara: se copia sola a Fotos.
+await pn.locator('.shutter').click();
+await pn.waitForFunction(() => window.__fotos.length === 1, null, { timeout: 90_000 });
+const copia = await pn.evaluate(() => window.__fotos[0]);
+check('cada foto de la cámara se copia sola a Fotos',
+  copia.tipo === 'foto' && copia.ruta.startsWith('data:image/jpeg;base64,') && copia.largo > 10_000, JSON.stringify(copia));
+check('sin álbum en iOS (permiso de sólo añadir)', copia.album === null);
+await pn.waitForTimeout(500);
+check('y lo dice', /en Fotos/.test(await pn.evaluate(() => document.getElementById('toast')?.textContent || '')),
+  await pn.evaluate(() => document.getElementById('toast')?.textContent || ''));
+// Desde la biblioteca, «Guardar» es un toque: ni hoja propia ni la de iOS.
+await pn.locator('.tabbar__tab[data-tab="library"]').click();
+await pn.waitForTimeout(1200);
+await pn.locator('.tile').first().click();
+await pn.waitForFunction(() => !!document.querySelector('.viewer__media'), null, { timeout: 20_000 });
+await pn.locator('.viewer__action--guardar').click();
+await pn.waitForFunction(() => window.__fotos.length === 2, null, { timeout: 20_000 });
+await pn.waitForTimeout(400);
+const nativo = await pn.evaluate(() => ({
+  hojas: document.querySelectorAll('.sheet-backdrop').length, compartir: window.__shareLog.length,
+  aviso: document.getElementById('toast')?.textContent, visor: !document.querySelector('.viewer').hidden,
+}));
+check('«Guardar» la manda a Fotos sin ninguna hoja', nativo.hojas === 0 && nativo.compartir === 0, JSON.stringify(nativo));
+check('avisa y deja el visor abierto', /Guardada en Fotos/.test(nativo.aviso) && nativo.visor, nativo.aviso);
+// Si el permiso se deniega, se dice cómo darlo.
+const denegado = await pn.evaluate(async () => {
+  window.Capacitor.Plugins.Media.savePhoto = async () => { throw new Error('Access to photos not allowed by user'); };
+  const r = await window.__lab.guardar([new Blob([new Uint8Array(100)], { type: 'image/jpeg' })], ['a.jpg']);
+  return { r, aviso: document.getElementById('toast')?.textContent };
+});
+check('sin permiso, explica dónde activarlo', denegado.r === 'error' && /Ajustes → Laboratorio → Fotos/.test(denegado.aviso), denegado.aviso);
+await nativa.close();
+
+console.log('\n── En el ordenador: descarga directa ──');
+const escritorio = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+const pd = await escritorio.newPage();
+pd.on('pageerror', (e) => errors.push('escritorio: ' + e.message));
+await pd.goto(BASE, { waitUntil: 'networkidle' });
+await pd.waitForTimeout(1500);
+const [descarga] = await Promise.all([
+  pd.waitForEvent('download', { timeout: 15_000 }),
+  pd.evaluate(() => window.__lab.guardar([new Blob([new Uint8Array(2000)], { type: 'image/jpeg' })], ['foto.jpg'])),
+]);
+check('«Guardar» descarga el archivo sin preguntar',
+  descarga.suggestedFilename() === 'foto.jpg' && await pd.locator('.sheet-backdrop').count() === 0, descarga.suggestedFilename());
+await escritorio.close();
 
 console.log('\n── Errores de consola ──');
 const real = errors.filter((e) => !/favicon|vibrate/i.test(e));

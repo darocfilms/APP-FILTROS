@@ -39,7 +39,7 @@ const browser = await chromium.launch({
 });
 
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, acceptDownloads: true });
   // La hoja de compartir se simula y se queda con los archivos, para poder
   // abrirlos y ver qué se habría guardado de verdad.
   await ctx.addInitScript(() => {
@@ -48,6 +48,17 @@ try {
     navigator.share = async (d) => { window.__shared.push(...d.files); };
   });
   const page = await ctx.newPage();
+  // En el ordenador «Guardar» descarga en un toque: se espera la descarga y se
+  // mide el archivo que llega, como si se abriera desde Descargas.
+  const descargar = async (accion) => {
+    const [d] = await Promise.all([page.waitForEvent('download', { timeout: 60_000 }), accion()]);
+    const bytes = fs.readFileSync(await d.path());
+    const medida = await page.evaluate(async ({ b64 }) => {
+      const blob = new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/jpeg' });
+      return window.__medir(blob);
+    }, { b64: bytes.toString('base64') });
+    return { name: d.suggestedFilename(), size: bytes.length, ...medida };
+  };
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -178,14 +189,11 @@ try {
   check('el visor la enseña revelada', enVisor.brillo > original[0].brillo + 15 && enVisor.w > enVisor.h,
     `${enVisor.w}×${enVisor.h}, brillo ${enVisor.brillo.toFixed(0)}`);
   check('y dice con qué', /Portra 400/.test(await page.locator('.viewer__meta').textContent()));
-  await page.locator('.viewer__action', { hasText: 'Guardar' }).click();
-  await page.waitForSelector('.sheet-backdrop', { timeout: 30_000 });
-  await page.locator('.sheet', { hasText: 'Listo para guardar' }).locator('.btn--primary').click();
-  await page.waitForTimeout(600);
-  const guardada = await page.evaluate(async () => {
-    const f = window.__shared.at(-1);
-    return { name: f.name, ...(await window.__medir(f)) };
-  });
+  const guardada = await descargar(() => page.locator('.viewer__action', { hasText: 'Guardar' }).click());
+  check('«Guardar» descarga en un toque, sin hoja intermedia',
+    await page.locator('.sheet-backdrop').count() === 0 && !(await page.evaluate(() => document.querySelector('.viewer').hidden)));
+  await page.evaluate(() => window.__lab.views.library.viewer.close());
+  await page.waitForTimeout(300);
   check('lo que se guarda es la editada, a resolución completa',
     guardada.w === 1200 && guardada.h === 900 && guardada.brillo > original[0].brillo + 15,
     `${guardada.name} · ${guardada.w}×${guardada.h} · brillo ${guardada.brillo.toFixed(0)}`);
@@ -194,14 +202,7 @@ try {
   await page.locator('.tile').first().locator('.tile__more').click();
   await page.waitForSelector('.sheet-backdrop');
   check('la ficha dice qué ajustes lleva', /Portra 400/.test(await page.locator('.meta').textContent()));
-  await page.locator('.sheet .btn', { hasText: 'Guardar el original' }).click();
-  await page.waitForSelector('.sheet-backdrop', { timeout: 20_000 });
-  await page.locator('.sheet', { hasText: 'Listo para guardar' }).locator('.btn--primary').click();
-  await page.waitForTimeout(600);
-  const delOriginal = await page.evaluate(async () => {
-    const f = window.__shared.at(-1);
-    return { size: f.size, ...(await window.__medir(f)) };
-  });
+  const delOriginal = await descargar(() => page.locator('.sheet .btn', { hasText: 'Guardar el original' }).click());
   check('y el original sigue a mano, tal como entró',
     delOriginal.size === fs.statSync(files[0]).size || delOriginal.w === 900,
     `${delOriginal.w}×${delOriginal.h} · ${delOriginal.size} bytes`);

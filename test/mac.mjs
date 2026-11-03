@@ -117,12 +117,13 @@ try {
   const menu = await app.evaluate(({ Menu }) => {
     const m = Menu.getApplicationMenu();
     const ver = (id) => { const it = m.getMenuItemById(id); return it ? `${it.label}|${it.accelerator || ''}` : null; };
-    return { arriba: m.items.map((i) => i.label), camara: ver('ver-camera'), lab: ver('ver-lab'), biblioteca: ver('ver-library'), importar: ver('importar'), exportar: ver('exportar') };
+    return { arriba: m.items.map((i) => i.label), camara: ver('ver-camera'), lab: ver('ver-lab'), biblioteca: ver('ver-library'), importar: ver('importar'), exportar: ver('exportar'), ajustes: ver('ajustes') };
   });
   check('Archivo, Edición, Ver, Ventana y Ayuda', ['Archivo', 'Edición', 'Ver', 'Ventana', 'Ayuda'].every((n) => menu.arriba.includes(n)), menu.arriba.join(' · '));
   check('las secciones en ⌘1, ⌘2 y ⌘3', menu.camara === 'Cámara|CmdOrCtrl+1' && menu.lab === 'Laboratorio|CmdOrCtrl+2' && menu.biblioteca === 'Biblioteca|CmdOrCtrl+3',
     [menu.camara, menu.lab, menu.biblioteca].join(' · '));
   check('importar (⌘O) y exportar (⌘E)', /CmdOrCtrl\+O$/.test(menu.importar) && /CmdOrCtrl\+E$/.test(menu.exportar));
+  check('Ajustes… en ⌘,', menu.ajustes === 'Ajustes…|CmdOrCtrl+,', menu.ajustes);
   const pulsar = (id) => app.evaluate(({ Menu }, i) => Menu.getApplicationMenu().getMenuItemById(i).click(), id);
   await pulsar('ver-library');
   await page.waitForTimeout(600);
@@ -132,6 +133,16 @@ try {
   check('Ver › Cambiar de sección abre el carrusel', await page.evaluate(() => document.querySelector('.carrusel').classList.contains('is-abierto')));
   await page.keyboard.press('Escape');
   await page.waitForTimeout(700);
+  await pulsar('ajustes');
+  await hasta(page, () => !!document.querySelector('.sheet--ajustes'), null, 5000);
+  const hojaAjustes = await page.evaluate(() => {
+    const h = document.querySelector('.sheet--ajustes');
+    return h ? { galeria: h.querySelector('input[data-ajuste="guardarEnGaleria"]')?.checked, texto: h.textContent } : null;
+  });
+  check('Laboratorio › Ajustes abre los Ajustes, con guardar directo activado',
+    hojaAjustes?.galeria === true && /Imágenes › Laboratorio › Exportadas/.test(hojaAjustes.texto), hojaAjustes ? 'activado' : 'no se abrió');
+  await page.evaluate(() => document.querySelector('.sheet--ajustes .btn--primary')?.click());
+  await page.waitForTimeout(500);
   await pulsar('importar');
   await page.waitForTimeout(500);
   check('Archivo › Importar abre el menú de importación', await page.evaluate(() => !document.querySelector('.imp').hidden));
@@ -186,6 +197,16 @@ try {
   check('sin diálogo, a la carpeta de Exportadas', guardadas.includes('prueba.jpg'), guardadas.join(', '));
   check('y la segunda no pisa la primera', guardadas.includes('prueba 2.jpg'), guardadas.join(', '));
   check('con los bytes de la foto', guardadas.includes('prueba.jpg') && fs.readFileSync(path.join(carpeta, 'prueba.jpg')).subarray(0, 2).toString('hex') === 'ffd8');
+  // «Guardar» de la biblioteca, en un toque: el mismo camino, sin hojas.
+  const directo = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 20; c.height = 20;
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg'));
+    const r = await window.__lab.guardar([blob], ['un-toque.jpg']);
+    return { r, hojas: document.querySelectorAll('.sheet-backdrop').length, aviso: document.getElementById('toast')?.textContent };
+  });
+  for (let i = 0; i < 40 && !fs.existsSync(path.join(carpeta, 'un-toque.jpg')); i++) await esperar(150);
+  check('«Guardar» de la app va en un toque a Exportadas, sin hojas',
+    directo.r === 'downloaded' && directo.hojas === 0 && fs.existsSync(path.join(carpeta, 'un-toque.jpg')), JSON.stringify(directo));
 
   const reales = errors.filter((x) => !/favicon|vibrate|Autofill|GPU stall/i.test(x));
   check('sin errores en la consola', reales.length === 0, reales.slice(0, 3).join(' | '));

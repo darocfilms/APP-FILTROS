@@ -69,7 +69,11 @@ export class LibraryView {
             el('button', {
               type: 'button', class: 'btn glass btn--icono', 'aria-label': 'Importar', title: 'Importar fotos, carpetas o discos',
               onclick: () => this.app.openImporter(),
-            }, el('span', { class: 'btn__icono', html: ICONO.anadir }), el('span', { class: 'visually-hidden', text: 'Importar' })))),
+            }, el('span', { class: 'btn__icono', html: ICONO.anadir }), el('span', { class: 'visually-hidden', text: 'Importar' })),
+            el('button', {
+              type: 'button', class: 'btn glass btn--icono lib__ajustes', 'aria-label': 'Ajustes', title: 'Ajustes',
+              onclick: () => this.app.abrirAjustes(),
+            }, el('span', { class: 'btn__icono', html: ICONO.ajustes }), el('span', { class: 'visually-hidden', text: 'Ajustes' })))),
         this.filterRow),
       // Fotos guardadas en una carpeta de Imágenes cuyo permiso caducó: sin
       // él no se pueden abrir, y el navegador sólo lo vuelve a dar tras un toque.
@@ -98,7 +102,9 @@ export class LibraryView {
       // Abierto sobre la cámara (la miniatura de la última foto), al cerrarlo
       // la cámara vuelve a encenderse donde se dejó.
       onClose: () => { if (this.app.current === 'camera' && !this._editando) this.app.views.camera.activate(); },
-      onSave: (item) => { this.viewer.close(); this._download(item); },
+      // Guardar es un toque y se queda en el visor: la foto va a la galería
+      // y se sigue mirando la siguiente, como al guardar en Fotos.
+      onSave: (item) => this._download(item),
       onDelete: (item) => this._deleteFromViewer(item),
     });
     // Va al body, no dentro de la vista: es una capa modal a pantalla completa,
@@ -161,7 +167,7 @@ export class LibraryView {
             onclick: () => { this.selection.clear(); this._paintSelection(); },
           }))),
       el('div', { class: 'selbar__actions' },
-        boton('Guardar', ICONO.compartir, () => this._saveSelection(), ' selbar__btn--guardar'),
+        boton('Guardar', ICONO.guardar, () => this._saveSelection(), ' selbar__btn--guardar'),
         this.pasteBtn = boton('Pegar ajustes', ICONO.pegar, () => this._pasteSelection()),
         boton('Eliminar', ICONO.eliminar, () => this._deleteSelection(), ' selbar__btn--eliminar')));
   }
@@ -209,11 +215,9 @@ export class LibraryView {
   }
 
   /**
-   * Prepara los archivos elegidos y los ofrece al sistema.
-   *
-   * Leer del disco va antes del toque que abre la hoja de compartir, así que se
-   * hace aquí y la hoja siguiente pide un toque nuevo: si se encadenaran, la
-   * activación habría caducado y en iPhone no se guardaría nada.
+   * Prepara los archivos elegidos y los guarda en un toque (app.guardar):
+   * directo a Fotos en la app, descargados en el ordenador. En Safari, si la
+   * preparación agota la activación del toque, una hoja pide otro.
    */
   async _saveSelection() {
     const ids = [...this.selection];
@@ -243,7 +247,7 @@ export class LibraryView {
     }
     if (missing) toast(`${missing} archivo(s) ya no están en la carpeta local`, { error: true });
     if (!blobs.length) return;
-    this.app.presentSave(blobs, names, {
+    await this.app.guardar(blobs, names, {
       title: blobs.length > 1 ? `${blobs.length} archivos` : names[0],
       detail: blobs.length > 1 ? `${blobs.length} archivos` : null,
     });
@@ -558,7 +562,7 @@ export class LibraryView {
       },
     }, img, badges,
       el('span', { class: 'tile__check', 'aria-hidden': 'true', html: ICONO.hecho }),
-      item.dimsAprox || item.raw ? el('span', { class: 'tile__info', text: 'RAW' }) : null,
+      item.dimsAprox || item.raw || item.capturaRaw ? el('span', { class: 'tile__info', text: 'RAW' }) : null,
       el('span', {
         class: 'tile__more', 'aria-label': 'Opciones',
         onclick: (e) => { e.stopPropagation(); this._actions(item); },
@@ -696,7 +700,10 @@ export class LibraryView {
       }
       const out = await fileForSaving(item, { original });
       if (!out) throw new Error('El archivo ya no está en la carpeta local');
-      this.app.presentSave([out.blob], [this._fileName(item, out)], {
+      // Preparado: el aviso de «trabajando» no debe quedarse debajo de la hoja
+      // del sistema mientras se elige qué hacer.
+      this.app.setBusy(false);
+      await this.app.guardar([out.blob], [this._fileName(item, out)], {
         detail: `${out.width || item.width}×${out.height || item.height}` + (out.edited ? ' · con los ajustes' : ''),
       });
     } catch (err) {

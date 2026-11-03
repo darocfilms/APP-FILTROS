@@ -7,7 +7,7 @@
  * almacenamiento real y no una caché que el navegador pueda desalojar.
  */
 
-const VERSION = 'lab-v2';
+const VERSION = 'lab-v3';
 const SHELL = [
   './',
   './index.html',
@@ -27,6 +27,7 @@ const SHELL = [
   './js/store/importar.js',
   './js/store/preview.js',
   './js/store/heif.js',
+  './js/store/ajustes.js',
   // El decodificador de RAW: sin él en la caché, un ARW no abre sin conexión.
   './js/vendor/libraw/index.js',
   './js/vendor/libraw/worker.js',
@@ -35,6 +36,7 @@ const SHELL = [
   './js/vendor/libheif/libheif.wasm',
   './js/vendor/libheif/worker.js',
   './js/ui/controls.js',
+  './js/ui/dial.js',
   './js/ui/crop.js',
   './js/ui/curve.js',
   './js/ui/filmpicker.js',
@@ -48,6 +50,7 @@ const SHELL = [
   './js/ui/wheel.js',
   './js/utils/alojada.js',
   './js/utils/dom.js',
+  './js/utils/galeria.js',
   './js/utils/share.js',
   './js/views/camera.js',
   './js/views/lab.js',

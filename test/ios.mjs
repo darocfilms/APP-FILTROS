@@ -79,5 +79,15 @@ const objetivo = [...pbx.matchAll(/IPHONEOS_DEPLOYMENT_TARGET = ([0-9.]+);/g)].m
 // WebGL2, que hace todo el revelado, llegó a iOS en la 15.
 check('pide iOS 15 o posterior', objetivo.length > 0 && objetivo.every((v) => v >= 15), objetivo.join(', '));
 
+// Guardar directo en Fotos lo hace el plugin de la galería: tiene que estar
+// registrado en la app y enlazado en el paquete de Swift, o «Guardar» volvería
+// a la hoja de compartir sin que nada lo avise.
+check('el plugin de Fotos está registrado en la app', (cfg.packageClassList || []).includes('MediaPlugin'), (cfg.packageClassList || []).join(', '));
+const spm = fs.readFileSync(path.join(ROOT, 'ios/App/CapApp-SPM/Package.swift'), 'utf8');
+const rutaPlugin = spm.match(/name: "CapacitorCommunityMedia", path: "([^"]+)"/)?.[1];
+check('y enlazado en el paquete de Swift, en una ruta que existe',
+  !!rutaPlugin && fs.existsSync(path.join(ROOT, 'ios/App/CapApp-SPM', rutaPlugin, 'Package.swift')), rutaPlugin || 'no está');
+check('el .zip de Xcode lleva el plugin al lado', /node_modules\/@capacitor-community/.test(fs.readFileSync(path.join(ROOT, 'ios/hacer-zip.sh'), 'utf8')));
+
 console.log('\nResultado: ' + (failures ? failures + ' fallo(s)' : 'todo correcto'));
 process.exit(failures ? 1 : 0);

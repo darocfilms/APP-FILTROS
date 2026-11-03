@@ -30,21 +30,39 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 await page.goto('http://localhost:8096', { waitUntil: 'networkidle' });
 await page.waitForTimeout(3000);
 
-console.log('\n── Estilos derivados de propiedades personalizadas ──');
-// La tira de emulsiones vive dentro de su ventana flotante: hay que abrirla.
+console.log('\n── Arranca en la calidad máxima ──');
+const calidad = await page.evaluate(() => {
+  const v = window.__lab.views.camera;
+  return { encuadre: v.aspect, recorte: { ...v.params.geometry.crop }, raw: v.raw,
+           etiqueta: document.querySelector('.cam__res').textContent };
+});
+check('el encuadre de arranque es «Máx»: el sensor completo',
+  calidad.encuadre === 'full' && calidad.recorte.w === 1 && calidad.recorte.h === 1, JSON.stringify(calidad.recorte));
+check('y lo dice arriba, con el JPEG al 100 %',
+  /sensor completo/.test(calidad.etiqueta) && /JPEG 100/.test(calidad.etiqueta), calidad.etiqueta);
+check('el RAW empieza apagado (JPEG de fábrica)', calidad.raw === false
+  && await page.locator('.cam__raw[aria-pressed="false"]').count() === 1);
+
+console.log('\n── Filtros: una fila de nombres, sin recuadros ──');
 await page.locator('.camtool[data-tool="film"]').click();
 await page.waitForTimeout(700);
-// Y dentro, cada familia tiene su tira: Portra es negativo color.
-await page.locator('.chip[data-kind="Negativo color"]').click();
-await page.waitForTimeout(300);
-const styles = await page.evaluate(() => {
-  const sw = document.querySelector('.strip__item[data-film="portra400"] .strip__swatch');
-  const bg = sw ? getComputedStyle(sw).backgroundImage : '';
-  return { gradient: bg, c1: sw ? getComputedStyle(sw.parentElement).getPropertyValue('--c1').trim() : '' };
+const selector = await page.evaluate(() => {
+  const p = document.querySelector('.campanel');
+  return {
+    nombres: [...p.querySelectorAll('.filmname')].map((b) => b.dataset.film),
+    recuadros: p.querySelectorAll('canvas, .strip__swatch, .filmcard__frame, img').length,
+    familias: [...p.querySelectorAll('.filmpicker__kind')].map((k) => k.textContent),
+    activo: p.querySelector('.filmname.is-active')?.dataset.film,
+    altura: Math.round(p.querySelector('.filmpicker').getBoundingClientRect().height),
+  };
 });
-check('las muestras de la tira tienen degradado', /linear-gradient\(.*rgb/.test(styles.gradient), styles.c1);
-// El mando de Filtros es un interruptor: dejarlo abierto haría que el siguiente
-// toque de esta prueba lo CERRARA en vez de abrirlo.
+check('sin muestras ni miniaturas encima del nombre', selector.recuadros === 0, selector.recuadros + ' recuadros');
+check('una sola fila, baja', selector.altura <= 60, selector.altura + ' px');
+check('marca la emulsión puesta', selector.activo === 'kodak2383', selector.activo);
+check('sin Digital, Diapositiva ni Creativa',
+  !selector.familias.some((k) => /Digital|Diapositiva|Creativa|Referencia/.test(k))
+  && !['neutral', 'velvia50', 'provia100f', 'kodachrome64', 'astia100f', 'lomopurple'].some((id) => selector.nombres.includes(id)),
+  selector.familias.join(' · '));
 await page.locator('.campanel__close').click();
 await page.waitForTimeout(300);
 
@@ -72,78 +90,112 @@ check('la cámara arranca con la copia de cine 2383 puesta',
 const enLab = await page.evaluate(() => window.__lab.views.lab.params.film.id);
 check('el laboratorio NO la impone a las fotos importadas', enLab === 'neutral', enLab);
 
-console.log('\n── Barras verticales de exposición y zoom ──');
-// Lo delgado tiene que ser la línea, no el objetivo: se mide la caja que se
-// toca, no la que se ve.
-const barras = await page.evaluate(() => {
-  const leer = (sel) => {
-    const n = document.querySelector(sel);
-    if (!n) return null;
-    const r = n.getBoundingClientRect();
-    const t = n.querySelector('.rail__track').getBoundingClientRect();
-    return {
-      caja: Math.round(r.width), linea: +t.width.toFixed(1),
-      alto: Math.round(r.height),
-      x: Math.round(r.left + r.width / 2), vw: innerWidth,
-      marca: !n.querySelector('.rail__tick').hidden,
-      rol: n.getAttribute('role'), etiqueta: n.getAttribute('aria-label'),
-    };
-  };
-  return { izq: leer('.cam__rail--left'), der: leer('.cam__rail--right') };
-});
-check('la exposición está a la izquierda',
-  barras.izq && barras.izq.x < barras.izq.vw / 3, JSON.stringify(barras.izq));
-check('el zoom está a la derecha',
-  barras.der && barras.der.x > barras.der.vw * 2 / 3, JSON.stringify(barras.der));
-for (const [lado, b] of [['exposición', barras.izq], ['zoom', barras.der]]) {
-  check(`la barra de ${lado} es una línea fina`, b.linea <= 4, b.linea + ' px de línea');
-  check(`pero se puede tocar sin mirar`, b.caja >= 44, b.caja + ' px de área táctil');
-  check(`y es vertical`, b.alto > b.caja * 2, b.alto + '×' + b.caja);
-  check(`marca su valor neutro`, b.marca === true);
-  check(`se anuncia como deslizador`, b.rol === 'slider' && !!b.etiqueta, b.etiqueta);
-}
+console.log('\n── Zoom: botones 0,5 · 1× · 2 · 4 y regla ──');
+const botones = await page.evaluate(() => [...document.querySelectorAll('.cam__zooms .zoompill')]
+  .map((b) => ({ v: b.dataset.zoom, t: b.textContent, on: b.classList.contains('is-active') })));
+check('botones de zoom encima de FOTO · VÍDEO',
+  botones.map((b) => b.v).join(',') === '1,2,4', botones.map((b) => b.t).join(' '));
+check('el activo dice el aumento con su «×»', botones.find((b) => b.on)?.t === '1×');
+const zonas = await page.evaluate(() => ({
+  zoom: document.querySelector('.cam__zoom').getBoundingClientRect().bottom,
+  modos: document.querySelector('.cam__modes').getBoundingClientRect().top,
+  barras: document.querySelectorAll('.cam__rail').length,
+}));
+check('justo encima de los modos, y sin barras laterales', zonas.zoom <= zonas.modos + 1 && zonas.barras === 0, JSON.stringify(zonas));
 
-// Arrastrar de verdad: del centro hacia arriba sube la exposición.
-const antesEV = await page.evaluate(() => window.__lab.views.camera.params.light.exposure);
-const caja = await page.locator('.cam__rail--left').boundingBox();
-await page.mouse.move(caja.x + caja.width / 2, caja.y + caja.height / 2);
-await page.mouse.down();
-await page.mouse.move(caja.x + caja.width / 2, caja.y + caja.height * 0.2, { steps: 8 });
-await page.mouse.up();
-await page.waitForTimeout(300);
-const despuesEV = await page.evaluate(() => window.__lab.views.camera.params.light.exposure);
-check('arrastrar hacia arriba sube la exposición',
-  despuesEV > antesEV + 0.5, antesEV.toFixed(2) + ' → ' + despuesEV.toFixed(2) + ' EV');
-await page.evaluate(() => {
-  const v = window.__lab.views.camera;
-  v.params.light.exposure = 0;
-  v.evRail.set(0);
-});
-
-// Y el zoom se refleja en su barra aunque se cambie desde fuera (el pellizco).
-await page.evaluate(() => window.__lab.views.camera.setZoom(3));
+await page.locator('.zoompill[data-zoom="2"]').click();
 await page.waitForTimeout(400);
-const posBarra = await page.evaluate(() => {
-  const n = document.querySelector('.cam__rail--right');
-  return { pos: parseFloat(getComputedStyle(n).getPropertyValue('--pos')), zoom: window.__lab.views.camera.zoom };
-});
-check('la barra de zoom sigue al pellizco',
-  posBarra.zoom === 3 && posBarra.pos > 0.5, JSON.stringify(posBarra));
+const z2 = await page.evaluate(() => ({ z: window.__lab.views.camera.effectiveZoom,
+  activo: document.querySelector('.zoompill.is-active')?.textContent }));
+check('tocar «2» acerca a 2×', z2.z === 2 && z2.activo === '2×', JSON.stringify(z2));
 
-// El tramo por debajo de 1× es OTRA cámara. Sin gran angular no existe, y la
-// barra no puede prometerlo: arrastrar hasta el fondo tiene que quedarse en 1×.
+// Arrastrar los botones de lado despliega la regla en su sitio y la mueve.
+const cajaZoom = await page.locator('.cam__zooms').boundingBox();
+await page.mouse.move(cajaZoom.x + cajaZoom.width / 2, cajaZoom.y + cajaZoom.height / 2);
+await page.mouse.down();
+await page.mouse.move(cajaZoom.x + cajaZoom.width / 2 - 50, cajaZoom.y + cajaZoom.height / 2, { steps: 8 });
+const regla = await page.evaluate(() => ({
+  abierta: document.querySelector('.cam__zoom').classList.contains('is-regla'),
+  numeros: [...document.querySelectorAll('.cam__zoomdial .dial__num')].map((n) => n.textContent),
+  valor: document.querySelector('.cam__zoomvalor').textContent,
+  z: window.__lab.views.camera.effectiveZoom,
+}));
+await page.mouse.up();
+check('arrastrar los botones despliega la regla de zoom', regla.abierta, regla.numeros.join(' '));
+check('la regla está rotulada', ['1', '2', '3', '4'].every((n) => regla.numeros.includes(n)), regla.numeros.join(' '));
+check('y arrastrar a la izquierda acerca más', regla.z > 2.2, regla.z + '× · ' + regla.valor);
+check('el valor encima de la regla es el del zoom', regla.valor.replace(',', '.') === regla.z + '×', regla.valor);
+await page.waitForTimeout(2300);
+check('al soltar, la regla se recoge sola',
+  !(await page.evaluate(() => document.querySelector('.cam__zoom').classList.contains('is-regla'))));
+
+// El pellizco (o cualquier cambio desde fuera) se refleja en los botones.
+await page.evaluate(() => window.__lab.views.camera.setZoom(3));
+await page.waitForTimeout(300);
+check('los botones siguen al pellizco',
+  await page.evaluate(() => document.querySelector('.zoompill.is-active')?.textContent) === '3×');
+
+// Por debajo de 1× es OTRA cámara: sin gran angular no hay botón 0,5 ni la
+// regla baja de 1×.
 const fondo = await page.evaluate(() => {
   const v = window.__lab.views.camera;
   v.setEffectiveZoom(0.5);
   return { ultra: v.hasUltraWide, lente: v.lens, efectivo: v.effectiveZoom,
-           apagado: document.querySelector('.cam__rail--right').classList.contains('is-noultra') };
+           boton: !!document.querySelector('.zoompill[data-zoom="0.5"]'),
+           min: document.querySelector('.cam__zoomdial .dial').getAttribute('aria-valuemin') };
 });
-check('sin gran angular, la barra no baja de 1×',
+check('sin gran angular, el zoom no baja de 1×',
   fondo.ultra === false && fondo.efectivo === 1 && fondo.lente === 'wide', JSON.stringify(fondo));
-check('y el tramo que no existe se ve apagado', fondo.apagado === true);
-
+check('y no hay botón 0,5 ni regla por debajo de 1×', !fondo.boton && fondo.min === '1');
 await page.evaluate(() => window.__lab.views.camera.setZoom(1));
-await page.waitForTimeout(400);
+await page.waitForTimeout(300);
+
+console.log('\n── Exposición: botón propio y regla rotulada ──');
+await page.locator('.camtool[data-tool="ev"]').click();
+await page.waitForTimeout(500);
+const ev0 = await page.evaluate(() => {
+  const p = document.querySelector('.campanel');
+  return {
+    titulo: p.querySelector('.campanel__title').textContent,
+    valor: p.querySelector('.evpanel__valor').textContent,
+    numeros: [...p.querySelectorAll('.dial__num')].map((n) => n.textContent),
+    pie: p.querySelector('.evpanel__pie').textContent,
+    rol: p.querySelector('.dial').getAttribute('role'),
+  };
+});
+check('la ventana se llama Exposición', ev0.titulo === 'Exposición', ev0.titulo);
+check('enseña el valor en grande', ev0.valor === '0 EV', ev0.valor);
+check('la regla va de −3 a +3 con sus números', ['−3', '−2', '−1', '0', '+1', '+2', '+3'].every((n) => ev0.numeros.includes(n)), ev0.numeros.join(' '));
+check('y dice hacia dónde aclara y oscurece', /oscura/.test(ev0.pie) && /clara/.test(ev0.pie), ev0.pie);
+check('se anuncia como deslizador', ev0.rol === 'slider');
+// Arrastrar de verdad: la cinta hacia la izquierda trae los valores positivos.
+const cajaEV = await page.locator('.evpanel .dial__regla').boundingBox();
+await page.mouse.move(cajaEV.x + cajaEV.width / 2, cajaEV.y + cajaEV.height / 2);
+await page.mouse.down();
+await page.mouse.move(cajaEV.x + cajaEV.width / 2 - 32, cajaEV.y + cajaEV.height / 2, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(300);
+const ev1 = await page.evaluate(() => ({
+  ev: window.__lab.views.camera.params.light.exposure,
+  valor: document.querySelector('.evpanel__valor').textContent,
+  enBoton: document.querySelector('.camtool[data-tool="ev"] .camtool__valor').textContent,
+  cero: !document.querySelector('.evpanel__cero').hidden,
+}));
+check('arrastrar sube la exposición', ev1.ev > 0.4 && ev1.ev < 1.1, ev1.ev + ' EV');
+check('el valor se lee encima y en el propio botón', ev1.valor.startsWith('+') && ev1.enBoton.startsWith('+'), ev1.valor + ' / ' + ev1.enBoton);
+await page.locator('.evpanel__cero').click();
+await page.waitForTimeout(200);
+check('«Volver a 0» la deja en 0',
+  await page.evaluate(() => window.__lab.views.camera.params.light.exposure) === 0
+  && await page.locator('.camtool[data-tool="ev"] .camtool__valor').textContent() === '');
+// Tocar un número de la regla salta a él.
+await page.locator('.evpanel .dial__num', { hasText: '−1' }).click();
+await page.waitForTimeout(200);
+check('tocar un número de la regla salta a él',
+  await page.evaluate(() => window.__lab.views.camera.params.light.exposure) === -1);
+await page.evaluate(() => window.__lab.views.camera.setExposure(0));
+await page.locator('.campanel__close').click();
+await page.waitForTimeout(300);
 
 console.log('\n── Gran angular ──');
 const objetivos = await page.evaluate(() => {
@@ -171,7 +223,7 @@ check('y el zoom se compone sobre él', simulado.conZoom === 1, simulado.conZoom
 console.log('\n── Cambiar de cámara ──');
 check('el botón vive junto al disparador, no en la fila',
   await page.locator('.cam__bar .iconbtn[aria-label="Cambiar de cámara"]').count() === 1
-  && await page.locator('.cam__tools .camtool').count() === 3);
+  && await page.locator('.cam__tools .camtool').count() === 4);
 const antesCam = await page.evaluate(() => {
   const v = window.__lab.views.camera;
   v.zoom = 2.5; v.lens = 'ultra';
@@ -202,64 +254,43 @@ check('y vuelve a la trasera, sin espejo',
   JSON.stringify(vuelta));
 
 console.log('\n── Elegir emulsión desde la cámara ──');
-// La tira vive dentro de la ventana de Filtros, y ahora mismo está abierta otra.
 await page.locator('.camtool[data-tool="film"]').click();
 await page.waitForTimeout(600);
-await page.locator('.chip[data-kind="Diapositiva"]').click();
-await page.waitForTimeout(300);
-await page.locator('.strip__item[data-film="velvia50"]').click();
+await page.locator('.campanel .filmname[data-film="portra400"]').click();
 await page.waitForTimeout(500);
 const camFilm = await page.evaluate(() => ({
   id: window.__lab.views.camera.params.film.id,
-  sat: window.__lab.views.camera.params.color.saturation,
+  activo: document.querySelector('.campanel .filmname.is-active')?.dataset.film,
 }));
-check('la emulsión se aplica en directo', camFilm.id === 'velvia50' && camFilm.sat > 0.2, JSON.stringify(camFilm));
+check('la emulsión se aplica en directo', camFilm.id === 'portra400' && camFilm.activo === 'portra400', JSON.stringify(camFilm));
 
 console.log('\n── Todo el catálogo, al alcance del disparo ──');
-// Lo que se puede revelar después tiene que poder verse antes: si una familia
-// no se alcanza desde la cámara, esas emulsiones sólo existen en teoría.
+// Lo que se puede revelar después tiene que poder verse antes.
 const familias = await page.evaluate(async () => {
   const { filmsByKind } = await import('./js/data/films.js');
-  return filmsByKind().map((g) => ({ kind: g.kind, ids: g.items.map((f) => f.id) }));
+  return filmsByKind().flatMap((g) => g.items.map((f) => f.id));
 });
-let todas = true;
-const faltan = [];
-for (const g of familias) {
-  await page.locator(`.chip[data-kind="${g.kind}"]`).click();
-  await page.waitForTimeout(120);
-  const visibles = await page.evaluate(() =>
-    [...document.querySelectorAll('.strip__item')].map((b) => b.dataset.film));
-  const ok = g.ids.every((id) => visibles.includes(id)) && visibles.length === g.ids.length;
-  if (!ok) { todas = false; faltan.push(g.kind); }
-}
-check('cada familia enseña sus emulsiones y sólo las suyas',
-  todas, faltan.length ? 'fallan: ' + faltan.join(', ') : familias.length + ' familias');
+const enFila = await page.evaluate(() => [...document.querySelectorAll('.campanel .filmname')].map((b) => b.dataset.film));
+check('todas las emulsiones están en la fila, en el orden del catálogo',
+  enFila.join(',') === familias.join(','), enFila.length + ' emulsiones');
 
-// La copia de cine es el caso que lo motivó: al final del catálogo, en una
-// tira única quedaba fuera de la pantalla. Vive con el resto del cine.
-await page.locator('.chip[data-kind="Cine"]').click();
-await page.waitForTimeout(200);
-await page.locator('.strip__item[data-film="kodak2383"]').click();
+await page.locator('.campanel .filmname[data-film="kodak2383"]').click();
 await page.waitForTimeout(400);
 const copia = await page.evaluate(() => ({
   id: window.__lab.views.camera.params.film.id,
   naranjas: window.__lab.views.camera.params.hsl.sat[1],
   grano: window.__lab.views.camera.params.effects.grain,
 }));
-check('la copia de cine 2383 se elige antes de disparar, y con el resto del cine',
-  copia.id === 'kodak2383', copia.id);
+check('la copia de cine 2383 se elige antes de disparar', copia.id === 'kodak2383', copia.id);
 check('llega con los naranjas bajados y grano puesto',
   copia.naranjas < -0.2 && copia.grano > 0.2, JSON.stringify(copia));
-// Y al cambiar de emulsión la banda no se queda pegada.
-await page.locator('.strip__item[data-film="vision3_250d"]').click();
+await page.locator('.campanel .filmname[data-film="vision3_250d"]').click();
 await page.waitForTimeout(300);
 check('la banda de naranjas no se hereda a la siguiente emulsión',
   await page.evaluate(() => window.__lab.views.camera.params.hsl.sat[1]) === 0);
 
 // Y se vuelve a la que se va a usar para el resto de la prueba.
-await page.locator('.chip[data-kind="Diapositiva"]').click();
-await page.waitForTimeout(200);
-await page.locator('.strip__item[data-film="velvia50"]').click();
+await page.locator('.campanel .filmname[data-film="portra400"]').click();
 await page.waitForTimeout(400);
 
 console.log('\n── Disparar una foto ──');
@@ -276,7 +307,7 @@ const shot = await page.evaluate(async () => {
 check('la foto se guarda en la carpeta local', !!shot, shot ? `${shot.width}×${shot.height}, ${Math.round(shot.size / 1024)} KB` : 'ninguna');
 check('a resolución nativa del sensor, no la de previsualización',
   shot && shot.width >= 640, shot ? shot.width + ' px de ancho' : '');
-check('registra la emulsión usada', shot?.filmId === 'velvia50', shot?.filmName || '');
+check('registra la emulsión usada', shot?.filmId === 'portra400', shot?.filmName || '');
 check('no guarda ajustes activos (evita revelar dos veces)',
   shot && shot.params === null && !!shot.appliedParams);
 const thumbOk = await page.evaluate(async () => {
@@ -287,9 +318,48 @@ const thumbOk = await page.evaluate(async () => {
 });
 check('genera miniatura', thumbOk);
 
-console.log('\n── Grabar vídeo ──');
+console.log('\n── Disparar en RAW ──');
 await page.locator('.campanel__close').click();
 await page.waitForTimeout(300);
+await page.locator('.cam__raw').click();
+await page.waitForTimeout(300);
+const rawOn = await page.evaluate(() => ({
+  pulsado: document.querySelector('.cam__raw').getAttribute('aria-pressed'),
+  etiqueta: document.querySelector('.cam__res').textContent,
+  guardado: JSON.parse(localStorage.getItem('lab.ajustes.v1') || '{}').formato,
+}));
+check('el botón RAW se enciende y se recuerda', rawOn.pulsado === 'true' && rawOn.guardado === 'raw', JSON.stringify(rawOn));
+check('y la línea de arriba lo dice', /RAW/.test(rawOn.etiqueta), rawOn.etiqueta);
+const antesRaw = await page.evaluate(async () => (await (await import('./js/store/library.js')).library.list()).length);
+await page.locator('.shutter').click();
+await page.waitForFunction(() => !window.__lab.views.camera.busy, null, { timeout: 90000 });
+await page.waitForTimeout(600);
+const raw = await page.evaluate(async () => {
+  const { library } = await import('./js/store/library.js');
+  const items = await library.list();
+  const i = items[0];
+  const file = await library.getFile(i.id);
+  const thumb = await library.getThumbBlob(i.id);
+  const bmp = await createImageBitmap(file);
+  const out = { n: items.length, mime: i.mime, tipo: file.type, w: bmp.width, h: bmp.height, iw: i.width,
+    capturaRaw: i.capturaRaw, raw: i.raw, film: i.params?.film?.id, aplicado: i.appliedParams,
+    recorte: i.params?.geometry?.crop, thumb: thumb?.size || 0 };
+  bmp.close();
+  return out;
+});
+check('se guarda una foto más', raw.n === antesRaw + 1, raw.n + ' fotos');
+check('el archivo es PNG, sin pérdida', raw.mime === 'image/png' && raw.tipo === 'image/png', raw.mime);
+check('con el fotograma entero del sensor, sin recortar', raw.w === raw.iw && raw.w >= 640, raw.w + '×' + raw.h);
+check('marcado como RAW de la cámara (no un RAW de sensor para LibRaw)', raw.capturaRaw === true && raw.raw === false);
+check('la emulsión va como ajuste editable, no horneada',
+  raw.film === 'portra400' && raw.aplicado === null && !!raw.recorte, JSON.stringify({ film: raw.film, recorte: raw.recorte }));
+check('con su miniatura ya revelada', raw.thumb > 500, raw.thumb + ' B');
+await page.locator('.cam__raw').click();
+await page.waitForTimeout(300);
+check('y se vuelve a JPEG con otro toque',
+  await page.evaluate(() => !window.__lab.views.camera.raw && JSON.parse(localStorage.getItem('lab.ajustes.v1')).formato === 'jpeg'));
+
+console.log('\n── Grabar vídeo ──');
 await page.locator('.cam__mode[data-mode="video"]').click();
 await page.waitForTimeout(400);
 // Se cuenta cada fotograma que la grabación pide al lienzo: es la medida
@@ -344,15 +414,28 @@ console.log('\n── Reabrir la captura en el laboratorio ──');
 await page.evaluate(async () => {
   const { library } = await import('./js/store/library.js');
   const items = await library.list();
-  window.__lab.openInLab(items.find((i) => i.kind === 'photo'));
+  window.__lab.openInLab(items.find((i) => i.kind === 'photo' && !i.capturaRaw));
 });
 await page.waitForTimeout(3000);
 const reopened = await page.evaluate(() => ({
   film: window.__lab.views.lab.params.film.id,
   hasImage: window.__lab.views.lab.root.classList.contains('has-image'),
 }));
-check('se abre con ajustes limpios, sin duplicar la emulsión',
+check('el JPEG se abre con ajustes limpios, sin duplicar la emulsión',
   reopened.film === 'neutral' && reopened.hasImage, JSON.stringify(reopened));
+// El RAW, al contrario: la emulsión llega puesta y se puede cambiar o quitar.
+await page.evaluate(async () => {
+  const { library } = await import('./js/store/library.js');
+  const items = await library.list();
+  window.__lab.openInLab(items.find((i) => i.capturaRaw));
+});
+await page.waitForFunction(() => window.__lab.views.lab.item?.capturaRaw && !!window.__lab.views.lab.proxy, null, { timeout: 60000 });
+await page.waitForTimeout(800);
+const rawLab = await page.evaluate(() => ({
+  film: window.__lab.views.lab.params.film.id,
+  activo: document.querySelector('#view-lab .filmname.is-active')?.dataset.film || null,
+}));
+check('el RAW se abre con su emulsión como ajuste editable', rawLab.film === 'portra400', JSON.stringify(rawLab));
 
 await page.locator('.tabbar__tab[data-tab="camera"]').click();
 await page.waitForTimeout(2500);

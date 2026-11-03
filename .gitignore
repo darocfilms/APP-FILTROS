@@ -5,3 +5,4 @@ node_modules/
 test/capturas/
 dist/
 mac/salida/
+ios/salida/

@@ -346,6 +346,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
   padding: 6px 14px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(10px);
   font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
   transition: opacity 0.35s; pointer-events: none; z-index: 3;
 }
 .cam__badge.is-hidden { opacity: 0; }
@@ -382,75 +383,119 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 }
 .cam__message p { color: var(--text-dim); max-width: 32ch; }
 
-/* ── Barras verticales del visor ────────────────────────────────────────── */
+/* ── RAW ────────────────────────────────────────────────────────────────
+   Arriba a la derecha, como en la Cámara del iPhone: tachado si está apagado,
+   en amarillo si está puesto. Se lee sin icono porque «RAW» ya es la marca. */
 
-/* Lo delgado es la LÍNEA, no el objetivo: la caja mide 46 px para que el pulgar
-   la encuentre sin mirar, y dentro va un raíl de 3 px que casi no tapa nada.
-   Se colocan entre la insignia de arriba y los mandos de abajo, pegadas a cada
-   borde, donde el pulgar de esa mano llega sin recolocar el teléfono. */
-.cam__rail {
-  position: absolute; z-index: 5;
-  top: calc(96px + var(--arriba));
-  bottom: calc(var(--tab-h) + 178px);
-  min-height: 150px;
-  width: 46px;
-  touch-action: none;   /* el arrastre es del raíl, no del desplazamiento */
-  transition: opacity 0.24s var(--ease);
+.cam__raw {
+  position: absolute; z-index: 6;
+  top: calc(8px + var(--arriba)); right: 12px;
+  min-width: 52px; height: 30px; padding: 0 10px;
+  border-radius: 999px; border: 1.2px solid rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.32);
+  color: #fff; font-size: 12px; font-weight: 700; letter-spacing: 0.06em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  transition: color 0.15s, border-color 0.15s, opacity 0.24s;
 }
-.cam__rail--left { left: 0; }
-.cam__rail--right { right: 0; }
-/* Se esconden con el resto de los mandos: el encuadre limpio es limpio. */
-.view--camera.is-immersive .cam__rail { opacity: 0; pointer-events: none; }
+.cam__raw::after {
+  content: ''; position: absolute; left: 9px; right: 9px; top: 50%;
+  height: 1.5px; background: currentColor; transform: rotate(-24deg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.cam__raw.is-on { color: #000; background: var(--accent); border-color: var(--accent); text-shadow: none; }
+.cam__raw.is-on::after { display: none; }
+.cam__raw[hidden] { display: none; }
+.view--camera.is-immersive .cam__raw { opacity: 0; pointer-events: none; }
 
-.rail { --pos: 0.5; --origin: 0; }
-.rail__track {
+/* ── Zoom: botones y regla ──────────────────────────────────────────────
+   Los botones 0,5 · 1× · 2 · 4 en una cápsula de cristal encima de FOTO ·
+   VÍDEO. Al arrastrarlos la cápsula se convierte en la regla, en el mismo
+   sitio, con el valor encima: el dedo no tiene que ir a buscarla. */
+
+/* Misma altura con botones que con regla: al desplegarla no salta nada. */
+.cam__zoom { position: relative; display: grid; justify-items: center; height: 46px; }
+.cam__zooms {
+  display: flex; align-items: center; gap: 4px; padding: 4px;
+  border-radius: 999px; background: rgba(0, 0, 0, 0.32);
+  touch-action: none;
+}
+.zoompill {
+  min-width: 38px; height: 38px; padding: 0 6px; border-radius: 999px;
+  display: grid; place-items: center;
+  font-size: 11.5px; font-weight: 700; color: #fff;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.12);
+  transition: transform 0.15s var(--ease), color 0.15s;
+}
+.zoompill:not(.is-active) { transform: scale(0.82); }
+.zoompill.is-active { color: var(--accent); background: rgba(0, 0, 0, 0.55); font-size: 12.5px; }
+.cam__zoomdial {
+  display: none; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+  width: min(100%, 420px); justify-items: center;
+}
+.cam__zoomdial .cam__zoomvalor { position: absolute; bottom: calc(100% - 1px); }
+.cam__zoom.is-regla .cam__zooms { display: none; }
+.cam__zoom.is-regla .cam__zoomdial { display: grid; animation: campanel-in 0.18s var(--ease); }
+.cam__zoomvalor {
+  font-size: 13px; font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+/* ── Regla (dial.js) ───────────────────────────────────────────────────── */
+
+.dial { width: 100%; outline: none; }
+.dial:focus-visible .dial__regla { box-shadow: 0 0 0 2px var(--tint); }
+.dial__regla {
+  position: relative; height: 46px; overflow: hidden; border-radius: 12px;
+  touch-action: none; cursor: grab;
+  -webkit-mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+.dial.is-moviendo .dial__regla { cursor: grabbing; }
+.dial__cinta {
   position: absolute; top: 0; bottom: 0; left: 50%;
-  width: 3px; margin-left: -1.5px; border-radius: 2px;
-  background: rgba(255, 255, 255, 0.28);
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.55);
-}
-/* Relleno desde el valor neutro: de un vistazo se ve cuánto te has desviado y
-   hacia dónde, sin leer el número. */
-.rail__fill {
-  position: absolute; left: 0; right: 0; border-radius: 2px;
-  background: var(--accent);
-  bottom: calc(min(var(--pos), var(--origin)) * 100%);
-  top: calc((1 - max(var(--pos), var(--origin))) * 100%);
-}
-.rail__tick {
-  position: absolute; left: -3px; right: -3px; height: 2px; margin-top: -1px;
-  top: calc((1 - var(--origin)) * 100%);
-  background: rgba(255, 255, 255, 0.6); border-radius: 1px;
-}
-.rail__thumb {
-  position: absolute; left: 50%; width: 20px; height: 20px;
-  margin: -10px 0 0 -10px;
-  top: calc((1 - var(--pos)) * 100%);
-  border-radius: 50%; background: #fff;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
   transition: transform 0.12s var(--ease);
 }
-.rail.is-active .rail__thumb { transform: scale(1.25); }
+.dial.is-moviendo .dial__cinta { transition: none; }
+.dial__marca {
+  position: absolute; top: 8px; width: 1px; height: 9px; margin-left: -0.5px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.dial__marca--mayor { height: 15px; top: 5px; width: 1.5px; background: #fff; }
+.dial__num {
+  position: absolute; top: 19px; left: 50%; transform: translateX(-50%);
+  padding: 2px 4px;
+  font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.dial__marca.is-cerca .dial__num { color: var(--accent); }
+.dial__aguja {
+  position: absolute; left: 50%; top: 2px; width: 2px; height: 20px; margin-left: -1px;
+  border-radius: 1px; background: var(--accent);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
 
-/* El número sólo aparece mientras se mueve: el resto del tiempo estorba a la
-   imagen, que es lo que se está mirando para decidir. */
-.rail__value {
-  position: absolute; top: calc((1 - var(--pos)) * 100% - 13px);
-  padding: 3px 9px; border-radius: 999px;
-  background: rgba(0, 0, 0, 0.62); backdrop-filter: blur(10px);
-  font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap;
-  opacity: 0; pointer-events: none; transition: opacity 0.18s;
+/* ── Exposición ─────────────────────────────────────────────────────────── */
+
+.evpanel { justify-items: center; gap: 2px; }
+.evpanel__valor {
+  font-size: 22px; font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums; line-height: 1.1;
 }
-.cam__rail--left .rail__value { left: calc(100% - 4px); }
-.cam__rail--right .rail__value { right: calc(100% - 4px); }
-.rail.is-active .rail__value { opacity: 1; }
-/* Sin gran angular no hay nada por debajo de 1×: el tramo se apaga en vez de
-   prometer un objetivo que este teléfono no tiene. */
-.cam__rail.is-noultra .rail__track {
-  background: linear-gradient(to top,
-    rgba(255, 255, 255, 0.08) 0, rgba(255, 255, 255, 0.08) calc(var(--origin) * 100%),
-    rgba(255, 255, 255, 0.28) calc(var(--origin) * 100%));
+.evpanel__valor.is-cero { color: #fff; }
+.evpanel__pie {
+  width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+  font-size: 11px; color: var(--text-faint);
 }
+.evpanel__pie span:last-child { text-align: right; }
+.evpanel__cero {
+  min-height: 30px; padding: 0 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; color: #fff; background: rgba(255, 255, 255, 0.12);
+}
+.evpanel__cero[hidden] { visibility: hidden; display: block; }
 
 /* ── HUD flotante ───────────────────────────────────────────────────────── */
 
@@ -499,6 +544,15 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 /* Con ventana abierta o con el flash encendido, el icono se tiñe. Un recuadro
    de color volvería a meter la caja que se acaba de quitar. */
 .camtool.is-open, .camtool.is-on { color: var(--accent); }
+.camtool { position: relative; }
+/* El valor de la exposición, debajo de su icono, sólo cuando no es 0. */
+.camtool__valor {
+  position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
+  font-size: 10px; font-weight: 700; color: var(--accent);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+.camtool__valor:empty { display: none; }
 .camtool:active { transform: scale(0.88); }
 
 /* Destello de pantalla: la única luz que un navegador puede dar cuando no
@@ -556,31 +610,6 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 .chip__sub { font-size: 9px; opacity: 0.7; font-variant-numeric: tabular-nums; }
 .campanel__chips::-webkit-scrollbar { display: none; }
 .campanel__note { font-size: 11px; color: var(--text-faint); }
-
-/* ── Tira de emulsiones ─────────────────────────────────────────────────── */
-
-.strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; min-width: 0; }
-.strip::-webkit-scrollbar { display: none; }
-.strip__item {
-  flex: 0 0 auto; display: grid; justify-items: center; gap: 3px;
-  padding: 2px; width: 62px;
-}
-.strip__swatch {
-  width: 40px; height: 40px; border-radius: 11px;
-  background: linear-gradient(135deg, var(--c1), var(--c2));
-  border: 2px solid transparent;
-  transition: border-color 0.15s, transform 0.12s var(--ease);
-}
-.strip__item.is-active .strip__swatch { border-color: var(--accent); transform: scale(1.08); }
-/* Tres líneas justas y una altura fija: «Vision Premier 2383» y «…2393» sólo
-   se distinguen por el número, así que cortarlo deja dos botones idénticos.
-   La altura exacta evita además que asome media línea por abajo. */
-.strip__name {
-  font-size: 8.5px; color: rgba(255, 255, 255, 0.55); text-align: center;
-  line-height: 1.15; max-width: 60px; height: calc(3 * 1.15em);
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-}
-.strip__item.is-active .strip__name { color: var(--text); font-weight: 600; }
 
 .cam__modes { display: flex; justify-content: center; gap: 24px; }
 /* FOTO · VÍDEO como en la Cámara del iPhone: el modo activo en amarillo. */
@@ -895,7 +924,7 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
    veinte tarjetas ensancha la columna entera y el texto de al lado se sale por
    la derecha. `min-width: 0` deja que cada hijo se contenga y desplace lo suyo. */
 .panel, .panel > *, .filmpicker, .filmpicker > *, .hsl, .mono, .geo, .curve { min-width: 0; }
-.filmpicker__row, .strip, .seg, .chiprow, .panelbar { min-width: 0; }
+.seg, .chiprow, .panelbar { min-width: 0; }
 .panel__subtitle {
   font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--text-faint); margin: 10px 0 6px;
@@ -1043,13 +1072,6 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
     width: 4px; height: 36px; border-radius: 2px; background: var(--accent);
   }
 
-  /* Película: un solo carrusel de borde a borde, como los filtros de Fotos,
-     con el nombre de cada familia encima de su tramo. */
-  .filmpicker { display: flex; gap: 18px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-  .filmpicker::-webkit-scrollbar { display: none; }
-  .filmpicker__group { flex: 0 0 auto; display: grid; gap: 6px; align-content: start; }
-  .filmpicker__kind { margin: 0; padding-left: 2px; }
-  .filmpicker__row { overflow: visible; }
 }
 
 .herramientas {
@@ -1091,30 +1113,39 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 }
 .herramienta.is-elegida .herramienta__nombre { color: #fff; font-weight: 600; }
 
-/* ── Selector de emulsión ───────────────────────────────────────────────── */
+/* ── Selector de emulsión ───────────────────────────────────────────────
+   Una fila de nombres, sin recuadros: como los modos de la Cámara del iPhone,
+   el activo en amarillo con un punto debajo. La familia va delante de su
+   tramo, en pequeño, y no es un botón: sólo dice dónde empieza cada una. */
 
-.filmpicker { display: grid; gap: 8px; margin-bottom: 4px; }
+.filmpicker {
+  display: flex; align-items: baseline; gap: 22px;
+  overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  padding: 6px 6px 10px; min-width: 0;
+  /* Los nombres se desvanecen hacia los bordes: se ve que la fila sigue. */
+  -webkit-mask: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.filmpicker::-webkit-scrollbar { display: none; }
+.filmpicker__group { flex: 0 0 auto; display: flex; align-items: baseline; gap: 16px; }
 .filmpicker__kind {
-  font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-faint); margin-bottom: 4px;
+  font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-faint); white-space: nowrap; user-select: none;
 }
-.filmpicker__row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-.filmpicker__row::-webkit-scrollbar { display: none; }
-
-.filmcard { flex: 0 0 auto; width: 68px; display: grid; justify-items: center; gap: 3px; }
-.filmcard__frame {
-  width: 64px; height: 64px; border-radius: 8px; overflow: hidden;
-  background: var(--bg-input);
-  transition: box-shadow 0.15s, transform 0.12s var(--ease);
+.filmname {
+  position: relative; flex: 0 0 auto;
+  min-height: 34px; padding: 6px 0;
+  font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  transition: color 0.15s;
 }
-.filmcard__thumb { width: 100%; height: 100%; display: block; object-fit: cover; }
-.filmcard.is-active .filmcard__frame { box-shadow: 0 0 0 2px #000, 0 0 0 4px var(--accent); }
-.filmcard__name {
-  font-size: 9.5px; text-align: center; line-height: 1.18; color: var(--text-dim);
-  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+.filmname:active { color: #fff; }
+.filmname.is-active { color: var(--accent); font-weight: 600; }
+.filmname.is-active::after {
+  content: ''; position: absolute; left: 50%; bottom: 0;
+  width: 5px; height: 5px; margin-left: -2.5px; border-radius: 50%;
+  background: var(--accent);
 }
-.filmcard.is-active .filmcard__name { color: var(--accent); font-weight: 600; }
-
 
 /* ── HSL ────────────────────────────────────────────────────────────────── */
 
@@ -1209,10 +1240,22 @@ body.is-conmutando .tabbar:not(.is-arrastrando) { opacity: 0; pointer-events: no
 }
 .lib__fila { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .lib__cabeza { display: grid; min-width: 0; }
-.lib__title { font-size: 34px; line-height: 1.2; font-weight: 700; letter-spacing: 0.01em; }
+.lib__title {
+  font-size: 34px; line-height: 1.2; font-weight: 700; letter-spacing: 0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .lib__sub { font-size: 15px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lib__sub:empty { display: none; }
-.lib__baractions { display: flex; gap: 8px; padding-bottom: 4px; flex: 0 0 auto; }
+.lib__baractions { display: flex; gap: 6px; padding-bottom: 4px; flex: 0 0 auto; }
+/* Tres botones (Seleccionar, Importar y Ajustes) junto al título grande: en un
+   iPhone de 390 puntos caben justos si no sobra relleno. */
+/* En el teléfono, como las cabeceras de iOS con título grande: los botones en
+   su fila arriba a la derecha y el título debajo, a su tamaño. Junto a él no
+   caben Seleccionar, Importar y Ajustes sin encogerlo. */
+@media (max-width: 599px) {
+  .lib__fila { flex-direction: column; align-items: stretch; gap: 0; }
+  .lib__baractions { order: -1; align-self: flex-end; padding-bottom: 0; }
+}
 .btn--icono { width: 38px; padding: 0; }
 .btn__icono { display: grid; place-items: center; }
 .btn__icono svg { width: 20px; height: 20px; display: block; }
@@ -1656,6 +1699,54 @@ body:has(.view--library.is-active.is-selecting) .tabbar { opacity: 0; pointer-ev
 .sheet__field { display: grid; gap: 4px; }
 .sheet__field label { font-size: 12px; color: var(--text-dim); }
 
+/* ── Ajustes ────────────────────────────────────────────────────────────
+   Una lista agrupada como la de Ajustes del iPhone: cada fila con su título,
+   una línea que explica qué hace, y el interruptor o las opciones a la
+   derecha. */
+
+.ajustes {
+  display: grid; border-radius: 12px; overflow: hidden;
+  background: var(--bg-input);
+}
+.ajuste {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 14px; min-height: 56px; cursor: pointer;
+}
+.ajuste + .ajuste { border-top: 0.5px solid var(--line); }
+.ajuste--seg { cursor: default; flex-wrap: wrap; }
+.ajuste__texto { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.ajuste__titulo { font-size: 15px; font-weight: 600; }
+.ajuste__detalle { font-size: 12px; line-height: 1.4; color: var(--text-faint); }
+.ajuste__seg {
+  display: flex; padding: 2px; border-radius: 9px;
+  background: rgba(118, 118, 128, 0.24);
+}
+.ajuste__opcion {
+  min-width: 58px; min-height: 30px; padding: 0 12px; border-radius: 7px;
+  font-size: 13px; font-weight: 600; color: var(--text-dim);
+}
+.ajuste__opcion.is-active { background: #636366; color: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+
+/* El interruptor de iOS: verde encendido, gris apagado, con la bola que va. */
+.interruptor { position: relative; flex: 0 0 auto; width: 51px; height: 31px; }
+.interruptor__input {
+  position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; z-index: 1;
+}
+.interruptor__pista {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: rgba(120, 120, 128, 0.36);
+  transition: background 0.2s;
+}
+.interruptor__pista::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 27px; height: 27px; border-radius: 50%; background: #fff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25), 0 1px 1px rgba(0, 0, 0, 0.16);
+  transition: transform 0.22s var(--ease);
+}
+.interruptor__input:checked + .interruptor__pista { background: #30d158; }
+.interruptor__input:checked + .interruptor__pista::after { transform: translateX(20px); }
+.interruptor__input:focus-visible + .interruptor__pista { box-shadow: 0 0 0 2px var(--tint); }
+
 .field {
   flex: 1; min-width: 0; min-height: 44px; padding: 0 12px;
   background: var(--bg-input); border: 1px solid var(--line);
@@ -1718,8 +1809,6 @@ body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-
 
 @media (min-width: 820px) {
   .panelbody { max-height: min(44vh, 460px); }
-  .filmcard { width: 96px; }
-  .filmcard__frame { width: 90px; height: 90px; }
 }
 
 /* ── Escritorio: los ajustes en una columna al lado de la foto ───────────
@@ -1773,6 +1862,15 @@ body:has(.view--library.is-active.is-selecting) .toast { bottom: calc(var(--tab-
   .herramientas { display: none; }
   .lab__export { padding: 0 16px 0 12px; }
   .lab__exporttxt { display: inline; }
+  /* En la columna las emulsiones no tienen por qué ir en fila: cada familia
+     con su título y sus nombres debajo, todos a la vista. */
+  .panels .filmpicker {
+    display: grid; gap: 12px; overflow: visible; padding: 2px 0 6px;
+    -webkit-mask: none; mask: none;
+  }
+  .panels .filmpicker__group { display: flex; flex-wrap: wrap; gap: 2px 16px; }
+  .panels .filmpicker__kind { flex: 1 0 100%; margin-bottom: 2px; }
+  .panels .filmname { text-shadow: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

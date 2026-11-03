@@ -70,8 +70,9 @@ const diag = await page.evaluate(() => ({
 }));
 console.log('    diagnóstico: ' + JSON.stringify(diag));
 
+// Las que se ofrecen: todas menos el neutro, que no es una película.
 const FILM_COUNT = await page.evaluate(async () =>
-  (await import('./js/data/films.js')).FILMS.length);
+  (await import('./js/data/films.js')).FILMS.filter((f) => !f.neutral).length);
 
 check('la vista de laboratorio se activa', await page.locator('#view-lab.is-active').count() === 1);
 check('el laboratorio tiene imagen', await page.locator('.view--lab.has-image').count() === 1);
@@ -101,14 +102,14 @@ check('sin errores al recorrer paneles', errors.length === 0, errors.slice(0, 2)
 console.log('\n── Aplicar una emulsión desde el selector ──');
 await page.locator('.panelbar__tab[data-panel="film"]').click();
 await page.waitForTimeout(700);
-const cards = await page.locator('.filmcard').count();
+const cards = await page.locator('#view-lab .filmname').count();
 check('el selector muestra todas las emulsiones del catálogo', cards === FILM_COUNT, cards + ' de ' + FILM_COUNT);
-await page.locator('.filmcard[data-film="cinestill800t"]').click();
+await page.locator('#view-lab .filmname[data-film="cinestill800t"]').click();
 await page.waitForTimeout(900);
-// Sin ficha de texto, la tarjeta elegida es la que dice cuál está puesta.
+// Sin ficha de texto, el nombre elegido es el que dice cuál está puesta.
 const elegida = await page.evaluate(() => {
-  const c = document.querySelector('.filmcard.is-active');
-  return { id: c?.dataset.film, nombre: c?.textContent.trim(), marcada: c?.getAttribute('aria-pressed') };
+  const c = document.querySelector('#view-lab .filmname.is-active');
+  return { id: c?.dataset.film, nombre: c?.textContent.trim(), marcada: c?.getAttribute('aria-selected') };
 });
 check('se aplica CineStill 800T',
   elegida.id === 'cinestill800t' && /CineStill/.test(elegida.nombre) && elegida.marcada === 'true',

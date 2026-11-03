@@ -23,6 +23,11 @@ export const ICONO = {
   hecho: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', { grosor: 2.6 }),
 
   compartir: svg('<path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M8 10.5H6.5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H16"/>'),
+  // Guardar: la flecha que baja a la bandeja. «Compartir» sube; esto se queda.
+  guardar: svg('<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5"/><path d="M5 15.5v3a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-3"/>'),
+  // Rueda dentada: un anillo con ocho dientes.
+  ajustes: svg('<circle cx="12" cy="12" r="6.3"/><circle cx="12" cy="12" r="2.4"/>'
+    + '<path d="M19.4 12h2M17.2 17.2l1.4 1.4M12 19.4v2M6.8 17.2l-1.4 1.4M4.6 12h-2M6.8 6.8 5.4 5.4M12 4.6v-2M17.2 6.8l1.4-1.4"/>', { grosor: 2.2 }),
   info: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><circle cx="12" cy="7.8" r="0.4" fill="currentColor"/>'),
   editar: svg('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>'),
   eliminar: svg('<path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13a1 1 0 0 0 1 .9h7a1 1 0 0 0 1-.9l1-13"/>'),

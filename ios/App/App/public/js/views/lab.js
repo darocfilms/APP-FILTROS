@@ -544,7 +544,6 @@ export class LabView {
       this.crop.sourceAspect = sourceWidth / sourceHeight;
       this.panels.params = this.params;
       this.panels.syncAll();
-      this.panels.filmPicker?.setSource(bitmap);
 
       this.history = [];
       this.historyAt = -1;
@@ -1048,10 +1047,11 @@ export class LabView {
         toast(`Guardado en la biblioteca · ${width}×${height} · ${formatBytes(blob.size)}`);
         this.app.notifyCapture(item);
       } else {
-        // No se comparte aquí: el revelado que acaba de terminar ha consumido
-        // el tiempo de activación del toque. La hoja siguiente vuelve a pedir
-        // un toque, y desde ahí sí se puede abrir la del sistema.
-        this.app.presentSave([blob], [filename], {
+        // Directo a la galería (app.guardar). En Safari, si el revelado ha
+        // agotado la activación del toque, queda una hoja que pide otro. El
+        // aviso de «revelando» no se queda debajo de la hoja del sistema.
+        this.app.setBusy(false);
+        await this.app.guardar([blob], [filename], {
           title: 'Exportar de Laboratorio',
           detail: `${width}×${height}`
             + (scaled ? ' · reducido al máximo que admite el dispositivo' : ''),

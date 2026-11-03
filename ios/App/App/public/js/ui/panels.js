@@ -252,9 +252,8 @@ export class PanelStack {
       this.syncAll();
     });
     this.filmPicker.select(this.params.film.id);
-    // Sin ficha de texto: cada tarjeta ya enseña la emulsión aplicada a TU foto,
-    // que dice más que el párrafo, y el párrafo se comía media pantalla de la
-    // imagen justo mientras se elige.
+    // Sólo los nombres: al tocar uno se revela la foto con él, que dice más
+    // que una ficha o una miniatura, y nada tapa la imagen mientras se elige.
     return this.filmPicker.root;
   }
 

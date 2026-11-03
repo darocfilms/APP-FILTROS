@@ -1,0 +1,83 @@
+# App de iPhone: el proyecto de Xcode listo para instalar Laboratorio en un
+# iPhone con una Apple ID, en un .zip que sólo necesita Xcode. Antes de
+# publicarlo se descomprime en otra carpeta y se compila allí, para estar
+# seguros de que el .zip funciona por sí solo. Queda en la release «ios»:
+#   https://github.com/darocfilms/APP-FILTROS/releases/download/ios/Laboratorio-Xcode.zip
+name: App de iPhone
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'js/**'
+      - 'styles/**'
+      - 'icons/**'
+      - 'index.html'
+      - 'manifest.webmanifest'
+      - 'sw.js'
+      - 'build.mjs'
+      - 'ios/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-de-iphone
+  cancel-in-progress: true
+
+jobs:
+  xcode:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: El Xcode más reciente del Mac
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Preparar el .zip (web dentro del proyecto y plugin de Fotos al lado)
+        run: |
+          npm ci
+          sh ios/hacer-zip.sh
+
+      - name: Compilar desde el .zip descomprimido
+        run: |
+          mkdir -p "$RUNNER_TEMP/prueba"
+          cd "$RUNNER_TEMP/prueba"
+          unzip -q "$GITHUB_WORKSPACE/ios/salida/Laboratorio-Xcode.zip"
+          cd Laboratorio-Xcode
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO build | tail -40
+        # pipefail: si xcodebuild falla, el paso falla aunque `tail` no.
+        shell: bash -o pipefail {0}
+
+      - name: Publicar en la release «ios»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTAS="Laboratorio para iPhone: el proyecto de Xcode, listo para instalar en tu iPhone con tu Apple ID (vale la gratuita).
+
+          1. Descarga Laboratorio-Xcode.zip y descomprímelo.
+          2. Abre ios/App/App.xcodeproj con Xcode y espera a que descargue los paquetes.
+          3. Signing & Capabilities › Team: tu Apple ID.
+          4. Conecta el iPhone, actívale el Modo de desarrollador y pulsa ▶.
+
+          Los pasos completos están en LEEME.txt, dentro del .zip.
+
+          Versión del $(date -u +%Y-%m-%d), commit ${GITHUB_SHA::7}. Compilado en $(xcodebuild -version | head -1)."
+          gh release view ios >/dev/null 2>&1 || gh release create ios --title "Laboratorio para iPhone (Xcode)" --notes "$NOTAS"
+          gh release edit ios --notes "$NOTAS"
+          gh release upload ios ios/salida/Laboratorio-Xcode.zip --clobber

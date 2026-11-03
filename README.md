@@ -37,9 +37,17 @@ certificados).
 
 ### App nativa para iPhone (Xcode)
 
-`ios/` es un proyecto de Xcode completo, con la app web dentro: se abre en un
-Mac, se firma con un Apple ID y se instala en el iPhone sin instalar nada más.
-Los pasos, en **[XCODE.md](XCODE.md)**.
+**[Laboratorio-Xcode.zip](https://github.com/darocfilms/APP-FILTROS/releases/download/ios/Laboratorio-Xcode.zip)**
+es el proyecto de Xcode completo, con la app web dentro y el plugin que guarda
+en Fotos al lado: se descomprime en un Mac, se abre, se firma con un Apple ID
+(vale la gratuita) y se instala en el iPhone sin instalar nada más. Un Mac de
+GitHub lo compila desde el propio .zip antes de publicarlo
+(`.github/workflows/ios.yml`; `sh ios/hacer-zip.sh` lo hace en local). Los
+pasos, en **[XCODE.md](XCODE.md)** y en el LEEME que va dentro.
+
+Lo que la app nativa hace y Safari no: **guardar directo en Fotos**, sin hoja de
+compartir, con el plugin `@capacitor-community/media` y el permiso de *sólo
+añadir* de iOS.
 
 ### App para Mac
 
@@ -106,6 +114,11 @@ Floot compila y sube la app a las tiendas sin Xcode. Su proyecto
   resuelve: si la app se importa desde otra página, envuelve los workers de
   LibRaw y libheif en un worker de blob que importa el script verdadero, y no
   registra el service worker. Lo comprueba la suite `alojada`.
+- Guardar directo en Fotos lo hace el plugin `@capacitor-community/media`, que
+  el proyecto de Floot lleva como dependencia e importa en
+  `helpers/montarLaboratorio.tsx` (lo deja en `__laboratorioMedia`, donde lo
+  busca `js/utils/galeria.js`). Llega con la siguiente publicación de la app;
+  hasta entonces «Guardar» usa la hoja de compartir.
 
 ### Publicarla en internet
 
@@ -183,47 +196,65 @@ amarillo, el disparador blanco, la **miniatura de la última foto** a la
 izquierda (la abre en el visor sin salir de la cámara, que sigue encendida al
 cerrarlo) y cambiar de cámara a la derecha.
 
-La imagen ocupa la pantalla entera. Nada de la interfaz la recorta. Sólo abren
-**ventana flotante** los ajustes que son una LISTA de opciones; los que son un
-valor continuo van en dos barras sobre la propia imagen, y los que son un
-interruptor actúan de un toque.
+**Arranca en la calidad máxima**: el sensor completo, sin recortar («Máx»), y
+el JPEG al 100 %. La línea de arriba lo dice —«4032×3024 · 12,2 Mpx · sensor
+completo · JPEG 100 %»—, y a su derecha está el botón **RAW**.
 
-Lo que queda son **tres iconos sueltos**, sin caja que los agrupe y sin texto
-debajo: la barra translúcida ocupaba todo el ancho del visor para sostener tres
-símbolos, y lo que sobra aquí tapa el encuadre. Van dibujados en SVG y no como
-glifos de Unicode, que cambian de forma en cada sistema y alguno sale como una
-caja: tres círculos superpuestos para el color, cuatro esquinas de marco para el
-encuadre y el rayo del flash, tachado cuando está apagado. Lo que los separa de
-la foto es la sombra, no un fondo, y su nombre vive en `aria-label` para quien
-no ve el icono.
+La imagen ocupa la pantalla. Abren **ventana flotante** los ajustes que son una
+lista de opciones o un valor que se afina; los interruptores actúan de un toque.
+Son **cuatro iconos sueltos**, sin caja que los agrupe y sin texto debajo,
+dibujados en SVG (los glifos de Unicode cambian en cada sistema): tres círculos
+superpuestos para el color, el círculo partido con «+» y «−» de la exposición,
+cuatro esquinas de marco para el encuadre y el rayo del flash, tachado cuando
+está apagado. Su nombre vive en `aria-label` para quien no ve el icono.
 
 | Mando | Qué hace |
 |---|---|
-| **Filtros** | Ventana: las 26 emulsiones por familias e intensidad, en directo sobre el visor |
+| **Filtros** | Ventana: las emulsiones en una fila de nombres, e intensidad |
+| **Exposición** | Ventana: una regla de −3 a +3 diafragmas, con el valor en grande |
 | **Dimensiones** | Ventana: encuadre, con los megapíxeles que cuesta cada uno |
 | **Flash** | Un toque: encendido o apagado |
-| **Barra izquierda** | Exposición, en diafragmas reales |
-| **Barra derecha** | Zoom, con el 0,5× incluido si hay gran angular |
-| **Junto al disparador** | Ocultar los mandos, y cambiar de cámara |
+| **0,5 · 1× · 2 · 4** | Zoom: un toque salta; arrastrarlos de lado despliega la regla |
+| **RAW** | Un toque: fotos sin pérdida, con la emulsión editable |
+| **Junto al disparador** | La última foto, y cambiar de cámara |
 
-**Las barras de los lados.** La exposición y el zoom se buscan MIRANDO el
-encuadre, así que taparlo con una ventana para decidirlos esconde justo el dato
-que hace falta. Van en dos líneas de 3 px pegadas a cada borde —una a cada lado,
-donde el pulgar de esa mano llega sin recolocar el teléfono— con una marca en su
-valor neutro y el número flotando sólo mientras se arrastra. Lo delgado es la
-línea, no el objetivo: la caja que se toca mide 46 px.
+**Zoom y exposición, que se entiendan solos.** Antes eran dos barras verticales
+sin escala, una a cada lado: no decían qué eran ni cuánto se habían movido. Ahora
+son lo de la Cámara del iPhone:
 
-El zoom va en escala **logarítmica**, que es como se percibe: de 1× a 2× se nota
-lo mismo que de 5× a 10×, y en lineal el primer tramo —el que más se usa— queda
-aplastado contra el extremo. Por debajo de 1× no hay zoom sino otra cámara; si
-el dispositivo no tiene gran angular ese tramo se ve apagado en vez de prometer
-un objetivo que no existe.
+- **El zoom son botones** encima de FOTO · VÍDEO: 0,5 (sólo si hay gran
+  angular), 1×, 2 y 4. El activo dice el aumento exacto («2,6×»). Arrastrarlos de
+  lado, o mantenerlos pulsados, los convierte en una **regla** en el mismo sitio,
+  con el valor encima, para afinar entre medias; al soltar se recoge sola. El
+  pellizco sobre la imagen sigue funcionando y los botones lo siguen.
+- **La exposición tiene su botón** y abre una regla rotulada: «EXPOSICIÓN», el
+  valor en grande («+0,7 EV»), los números de −3 a +3 con una raya por tercio, y
+  debajo «← Más oscura» y «Más clara →». Las marcas enteras atraen un poco al
+  pasar (con un toque háptico), tocar un número salta a él y «Volver a 0» la
+  deja como estaba. Mientras no sea 0, el propio botón va en amarillo con su
+  valor debajo: se ve siempre que la foto va a salir más clara o más oscura.
 
-**Las 26, antes de disparar.** El catálogo entero está en el visor, no sólo en
-el laboratorio: una fila de familias arriba —negativo color, diapositiva, cine,
-blanco y negro…— y debajo la tira de esa familia. En una tira única, la copia de
-cine quedaba a diez dedos de desplazamiento a la derecha; así está a dos toques,
-y se ve la emulsión puesta antes de apretar el botón, que es cuando importa.
+La regla (`js/ui/dial.js`) es la misma en los dos. El zoom va en escala
+**logarítmica**, que es como se percibe: de 1× a 2× ocupa lo mismo que de 2× a
+4×. Por debajo de 1× no hay zoom sino otra cámara; sin gran angular ni hay
+botón 0,5 ni la regla baja de 1×.
+
+**RAW.** Safari no entrega los datos del sensor (ni ProRAW: eso es de la app
+Cámara de Apple), así que el RAW de Laboratorio es lo que importa de un RAW
+hecho con lo que la web sí da: el **fotograma completo sin pérdida**, en PNG,
+sin recortar y **sin hornear nada**. La emulsión, la exposición, el encuadre y
+el espejo van aparte, como ajustes del laboratorio: la biblioteca lo enseña
+revelado (con la marca RAW), y al abrirlo en el laboratorio todo se puede
+cambiar o quitar sin perder calidad. Ocupa más que el JPEG. Se recuerda, y es
+el «Formato de la cámara» de Ajustes.
+
+**Filtros: una fila de nombres.** Sin recuadros encima del nombre: las muestras
+de color no decían nada (dos negativos Kodak salen iguales a 40 px) y las
+miniaturas tapaban la foto justo mientras se elige. Como el selector de modos de
+la Cámara, el nombre activo va en amarillo con un punto debajo, y la familia
+—Negativo color, Cine, Blanco y negro, Instantánea— en pequeño delante de su
+tramo. Tocar un nombre lo aplica al visor, que enseña la emulsión mejor que
+cualquier muestra. Es el mismo selector que el del laboratorio.
 
 **Arranca con la copia de cine 2383 puesta.** Es una decisión de look y no de
 neutralidad: el visor enseña desde el primer momento aquello a lo que se va a
@@ -231,7 +262,7 @@ parecer la foto, con su cruce a cian en sombras y cálido en luces.
 
 **El 0,5× no es zoom**: es **otra cámara**, con su propio objetivo, y no hay
 restricción que lleve hasta ella — hay que pedirla por su identificador. Cruzar
-el 1× en la barra cambia de objetivo, que obliga a reabrir el flujo, así que
+el 1× en la regla cambia de objetivo, que obliga a reabrir el flujo, así que
 sólo se pide cuando el objetivo de destino es distinto del que ya está puesto.
 
 A partir de 1×, cuando el dispositivo expone el zoom del sensor se usa primero,
@@ -271,8 +302,8 @@ completa del sensor — pedir 16:9 parece "más grande" por el número, pero es 
 recorte que el sistema aplica antes de entregarte el fotograma, y esa parte no
 se recupera. A partir de ahí, cada encuadre recorta ese mismo fotograma:
 
-- **Pantalla** (por defecto) llena la pantalla y captura exactamente lo que ves.
-- **Máx** no recorta nada.
+- **Máx** (por defecto) no recorta nada: es la calidad máxima.
+- **Pantalla** llena la pantalla y captura exactamente lo que ves.
 - 4:3, 1:1 y 16:9, los clásicos.
 
 Llenar la pantalla cuesta megapíxeles, así que el panel los muestra **antes** de
@@ -303,7 +334,7 @@ Diez paneles de ajustes:
 
 | Panel | Contenido |
 |---|---|
-| **Película** | 26 emulsiones con previsualización real de tu propia foto, e intensidad. Sin ficha de texto: la tarjeta enseña la emulsión aplicada a TU foto, que dice más que el párrafo y no se come media pantalla de imagen |
+| **Película** | Las emulsiones en una fila de nombres, sin recuadros encima, e intensidad: tocar un nombre revela TU foto con él, que dice más que cualquier miniatura y no tapa la imagen. En el Mac, por familias en la columna |
 | **Luz** | Exposición, contraste, altas luces, sombras, blancos, negros, velado |
 | **Color** | Temperatura en kelvin, matiz, intensidad, saturación, rotación de tono, blanco y negro con mezclador de canal |
 | **HSL** | Tono, saturación y luminancia en ocho bandas de color |
@@ -447,8 +478,8 @@ entregar un JPEG en su lugar.
 
 ### Biblioteca
 
-Como Fotos: título grande con el recuento, botones de cristal (Seleccionar e
-Importar), Todo · Fotos · Vídeos en un control segmentado y la cuadrícula de
+Como Fotos: título grande con el recuento, botones de cristal (Seleccionar,
+Importar y la rueda de **Ajustes**), Todo · Fotos · Vídeos en un control segmentado y la cuadrícula de
 borde a borde, cuadrada y con junta de dos píxeles, **separada por meses**.
 **Pellizcar** cambia entre tres y cinco columnas (se recuerda). **Mantener
 pulsada** una foto abre sus opciones; con ratón, clic derecho o el ⋯ que
@@ -456,6 +487,29 @@ aparece al pasar por encima. Al seleccionar, cada foto lleva la marca azul de
 Fotos y la cápsula de secciones se cambia por la barra de selección: guardar,
 el recuento, pegar ajustes y eliminar. Al final de la cuadrícula, cuántas hay
 y el espacio que ocupan.
+
+**Guardar es un toque, sin menús.** En el visor, en la selección o al exportar
+del laboratorio: en la app del iPhone va directa a **Fotos** («Guardada en
+Fotos»), en la de Mac a Imágenes › Laboratorio › Exportadas, y en el navegador
+del ordenador se descarga. Guardar desde el visor no lo cierra: se sigue
+mirando. En Safari para iPhone una web no puede escribir en Fotos; lo más
+directo que hay es abrir la hoja de iOS en el acto, donde *Guardar imagen* es
+un toque, y eso es lo que hace mientras dure la activación del toque
+(`navigator.userActivation`); si preparar el archivo la ha agotado, aparece la
+hoja de siempre, que pide otro.
+
+**Ajustes** (la rueda de la cabecera, o ⌘, en la app de Mac):
+
+- **Guardar directamente en la galería** — activado de fábrica. Es el guardado
+  en un toque de arriba y, en la app nativa, que **cada foto o vídeo de la
+  cámara se copie solo a Fotos** al dispararlo (sin retener el disparador: si
+  Fotos falla, la foto sigue en la biblioteca y se dice cómo dar el permiso).
+  Apagado, «Guardar» vuelve a la hoja que deja elegir qué hacer con el archivo.
+- **Formato de la cámara** — JPEG (calidad máxima, con la emulsión revelada) o
+  RAW (sin pérdida, con la emulsión editable). Es el mismo botón RAW de la
+  cámara.
+
+Se guardan en el dispositivo (`js/store/ajustes.js`).
 
 Tocar una miniatura abre un **visor a pantalla completa**: la foto sobre negro y
 nada más, siempre entera. Arriba, como en Fotos, el día («Hoy», «Ayer») y la
@@ -561,17 +615,19 @@ con la selección abierta: ⌘A todo, ⌘C copia los ajustes de la única elegid
 Botón **Exportar** del laboratorio: tamaño (original, 4K, 2K, 1080, web),
 formato (JPEG, PNG, WebP) y calidad. Dos destinos:
 
-- **Guardar en el dispositivo** — abre la hoja de compartir de iOS, con
-  "Guardar imagen" y "Guardar en Archivos".
+- **Guardar en el dispositivo** — en un toque, como en la biblioteca: a Fotos
+  en la app del iPhone, a la carpeta de Exportadas en la de Mac, descargado en
+  el navegador del ordenador y la hoja de iOS en Safari.
 - **Guardar en la biblioteca** — deja el resultado en la carpeta local.
 
 Guardar en iPhone tiene tres trampas, y las tres hacían que fallara en silencio:
 
 1. `navigator.share` exige **activación del usuario**, y esa activación caduca.
    Si entre el toque y la llamada se revela una foto de doce megapíxeles, para
-   cuando se llama ya no vale y Safari responde `NotAllowedError`. Por eso el
-   revelado termina en una hoja que pide un toque nuevo: desde ahí la hoja del
-   sistema se abre con la activación viva.
+   cuando se llama ya no vale y Safari responde `NotAllowedError`. Por eso se
+   mira `navigator.userActivation` al terminar de revelar: si el toque sigue
+   valiendo se comparte en el acto, y si no, una hoja pide un toque nuevo y
+   desde ahí la del sistema se abre con la activación viva.
 2. El atributo `download` de un enlace existe en Safari pero **se ignora** con
    destinos blob. No es una reserva válida en iPhone, así que cuando no hay hoja
    del sistema se muestra la imagen para guardarla manteniéndola pulsada.
@@ -653,26 +709,26 @@ verdad, compila los shaders y lee los píxeles del framebuffer.
 
 | Suite | Qué comprueba |
 |---|---|
-| `engine` | Los seis programas GLSL compilan · **cada uno de los 30 deslizadores mueve píxeles de verdad**, medido a sus dos extremos y con el efecto padre encendido —es lo que destapó que la halación y el bloom no hacían nada— · las 26 emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
+| `engine` | Los seis programas GLSL compilan · **cada uno de los 30 deslizadores mueve píxeles de verdad**, medido a sus dos extremos y con el efecto padre encendido —es lo que destapó que la halación y el bloom no hacían nada— · todas las emulsiones renderizan con firma distinta y sin recortar · el perfil neutro es la identidad **al bit** · ocho casos de geometría (giros, espejos, recortes) con sus dimensiones · el histograma · la orientación con `canvas`, `ImageBitmap` e `<img>` |
 | `flow` | Importar → carpeta local → laboratorio → los diez paneles → aplicar emulsión → deslizadores → deshacer/rehacer → exportar a resolución original y reabrir el JPEG → guardar en biblioteca → recorte 1:1 → persistencia tras recargar |
-| `picker` | Las miniaturas del selector salen derechas |
+| `picker` | El catálogo sin Digital, Diapositiva ni Creativa (y una foto con una emulsión retirada se abre en neutro), y el selector: sólo nombres, sin un recuadro encima, la activa marcada, una sola fila baja, tocar elige una vez, y el mismo en el laboratorio |
 | `wheel` | La rueda de etalonaje cubre los 360° de matiz con el centro neutro |
 | `context` | El contexto WebGL se pierde y se recupera, y se sigue renderizando bien |
-| `layout` | El reparto de pantalla: el visor cubre la pantalla y lo capturado coincide con lo que se ve, hay un mando por grupo de funciones y ninguno de más —con la exposición y el zoom fuera de la fila, en sus barras—, cada ventana abre sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
-| `camera` | Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura no vuelva a aplicar la emulsión. Que cada familia de emulsiones enseñe las suyas, que la copia de cine se pueda elegir antes de disparar y que la banda de naranjas que propone no se herede a la siguiente. Las dos barras verticales: que la línea sea fina pero su área táctil llegue a 46 px, que arrastrar hacia arriba suba de verdad la exposición, que la barra siga al pellizco y que sin gran angular no baje de 1×. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome — ni a la propia app nativa, que también es una vista web sin «Safari» en su user agent y sin la excepción bloquearía su cámara |
-| `save` | Selección múltiple, y que compartir ocurra **con la activación del usuario viva** — la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
+| `layout` | El reparto de pantalla: la cámara arranca en «Máx» sin recortar el sensor, con «Pantalla» cubre la pantalla y lo capturado coincide con lo que se ve, hay un mando por grupo de funciones (Filtros, Exposición, Dimensiones, Flash) y ninguno de más —el zoom en sus botones y sin barras laterales—, cada ventana abre sólo una a la vez, ocultar los mandos deja el encuadre limpio, la imagen del laboratorio es más grande que los ajustes, plegar la agranda, los ajustes son casi transparentes mientras la barra apenas se vela, y ningún panel desborda |
+| `camera` | Que arranca en calidad máxima (sensor completo, JPEG 100 %) y en JPEG. Flujo a 4K, foto a resolución nativa, grabación en MP4 a 30 fps —contando los fotogramas que el reloj pide de verdad, con el visor detenido— y que reabrir una captura JPEG no vuelva a aplicar la emulsión. El RAW: que se enciende y se recuerda, que guarda un PNG con el fotograma entero sin recortar, la emulsión como ajuste editable y su miniatura revelada, y que el laboratorio lo abre con la emulsión puesta. Los filtros: una fila de nombres sin recuadros, sin las familias retiradas, con todo el catálogo; la copia de cine se elige antes de disparar y la banda de naranjas que propone no se hereda. El zoom: botones 1× · 2 · 4 encima de los modos, que «2» acerca a 2×, que arrastrarlos despliega la regla rotulada y acerca, que se recoge sola, que siguen al pellizco y que sin gran angular no hay 0,5. La exposición: su ventana con el valor en grande, la regla de −3 a +3 con «Más oscura / Más clara», que arrastrar la sube, que el valor sale también en el botón, «Volver a 0» y tocar un número. El flash como interruptor: que encienda, que dé luz sin LED y que apagado no dé ninguna. Además: que la cámara **siga pintando** al volver de Laboratorio o Biblioteca y tras pasar a segundo plano —leyendo píxeles reales del framebuffer, no suponiendo—, el zoom, y que la detección de navegador incrustado no confunda a Safari ni a Chrome — ni a la propia app nativa, que también es una vista web sin «Safari» en su user agent y sin la excepción bloquearía su cámara |
+| `save` | Como Safari en un iPhone: selección múltiple, y que guardar sea **un toque** —la hoja de iOS en el acto, sin hoja propia, desde la selección, el visor (que sigue abierto) y la exportación— y siempre **con la activación del usuario viva**, la comprobación que distingue un guardado que funciona de uno que falla en silencio en iPhone. Los Ajustes: «Guardar directamente en la galería» activado de fábrica, que apagarlo se recuerda y devuelve la hoja de siempre. Con el puente de Capacitor y el plugin de Fotos simulados: que cada foto de la cámara se copia sola a Fotos como JPEG, que «Guardar» va a Fotos sin ninguna hoja, y que sin permiso dice dónde darlo. En el ordenador, que se descarga sin preguntar. También los nombres únicos por lote, la reserva de mantener pulsado, y borrar desde el visor: que pregunte, que cancelar no toque nada y que confirmar siga con la siguiente foto |
 | `raw` | Con un ARW real de una Sony FX30: que se reconozca por nombre o por tipo, que la conversión a media precisión sea exacta en los 63 488 float16 finitos, que entre en la biblioteca como `.arw` y no como `.bin`, que el laboratorio lo revele como luz lineal en una textura flotante, que a +1,5 EV no queme lo que la misma imagen en 8 bits sí quema, que a +3 EV sus sombras tengan más del doble de tonos, que girarlo no cueste nada de eso, el antes/después, el selector de emulsión, el visor y la exportación a 6240×4168. El ARW (31 MB) se descarga la primera vez; sin red, la suite se omite avisando |
 | `heif` | Con dos muestras pequeñas que van en el repositorio, hechas con libheif + x265 con la estructura de las de verdad —un HEIC de 8 bits 4:2:0 como el del iPhone y un HIF de 10 bits 4:2:2 como el de una Sony, cada uno con su miniatura dentro— y un patrón de cuatro colores conocidos: que Chromium no los abre por su cuenta (es lo que hay que probar), que la miniatura sale de la que lleva dentro, que la foto entera sale a su tamaño con los colores exactos y en su sitio (±3 de 255, también el 4:2:2 de 10 bits), que entran por el menú con su miniatura y su tamaño, que un .HIF sin tipo queda como image/heif, que el visor y el laboratorio los abren con los mismos colores, que exportar con un ajuste sale a 3000×2000 y que un solo .HIF va directo al laboratorio |
 | `import` | Una «tarjeta de memoria» con dos carpetas, un ARW de verdad, las copias «._» del Mac y un XML de Sony: entran las siete fotos agrupadas por carpeta, se ignora lo demás y el RAW se ve por su vista previa incrustada. Marcar una a una, un tramo con Mayúsculas, todas y ninguna. Con la carpeta de Imágenes elegida (el selector se simula con una carpeta del sistema de archivos privado, que tiene la misma interfaz), los originales quedan en Laboratorio/<subcarpeta>/ con su nombre, y el visor los abre desde allí; la miniatura del RAW entra provisional y se rehace con el tamaño del sensor (6240×4168); volver a meter la tarjeta avisa de las ya importadas. Y el laboratorio: la tira abre fotos y ← → pasa de una a otra; doble clic amplía al 100 % con la foto entera (4800 px), arrastrar y el trackpad la mueven, editar ampliada sigue sobre la foto entera, doble clic, Z y Esc; una foto pequeña se dobla; mantener pulsado sigue enseñando el antes. Una sola foto va directa al laboratorio |
 | `desktop` | El Mac: que en una ventana de 1440×900 los ajustes vayan en una columna a la derecha sin tapar la foto, que tocar la pestaña activa no los esconda, y que en el iPhone todo siga como estaba. Lo editado en el laboratorio —emulsión, exposición y un giro— tiene que aparecer en la miniatura, en el visor y **en el archivo que se guarda**, abierto y medido: a 1200×900 y más claro, mientras *Guardar el original* entrega los bytes de entrada. Copiar lleva el color y no el encuadre; pegar en las tres fotos pregunta, respeta el recorte y el espejo que tenía cada una y rehace sus miniaturas; la foto abierta en el laboratorio recoge lo pegado; ⌘Z, ⇧⌘Z, ⌘C y ⌘V, también con un deslizador en foco; *Quitar los ajustes* devuelve el original a la cuadrícula. Y que al volver del laboratorio no salgan casillas repetidas |
 | `conmutador` | El diseño de Fotos y sus gestos, hechos de verdad con el puntero y con toques de dos dedos: que la cápsula flota centrada y es de cristal, que deslizar de lado mete la sección de al lado mientras se arrastra y se queda en ella (o en la siguiente con un golpe, y en la misma si fue poco y despacio), que deslizar hacia arriba encoge la pantalla a tarjeta con las otras al lado y sus títulos, que el carrusel queda abierto, se mueve de lado y un toque entra, que subir poco no lo abre, que dos dedos lo abren y un pellizco no, y que nunca quedan estilos del gesto pegados a las vistas. La biblioteca: título grande, tres columnas de borde a borde, meses, pellizco a cinco y vuelta a tres, y mantener pulsado abre las opciones sin que el click de después las cierre. El visor: guardar · editar · borrar en ese orden y deslizar hacia abajo cierra. El laboratorio: un círculo por ajuste y una sola regla, que tocar otro círculo trae la suya y que moverla cambia el ajuste, el número y el aro. La cámara: la última foto junto al disparador abre el visor y al cerrarlo la cámara sigue encendida |
-| `mac` | La app de Mac con Electron de verdad (en Linux, bajo una pantalla virtual): que el protocolo laboratorio:// sirve el WebAssembly con su tipo y nunca sale de la carpeta de la web, que abre su ventana con la app dentro en un contexto seguro y sin service worker, los menús (Archivo, Edición, Ver con ⌘1 ⌘2 ⌘3, Ventana) y que Ver y Archivo hacen lo que dicen, que un HEIC y un ARW abiertos con la app entran en la biblioteca descodificados por libheif y LibRaw en sus workers y se abren en el laboratorio, que guardar va sin diálogo a Imágenes › Laboratorio › Exportadas sin pisar nada, y que la biblioteca sigue al volver a abrir la app. Sin `npm install` en mac/ se omite |
+| `mac` | La app de Mac con Electron de verdad (en Linux, bajo una pantalla virtual): que el protocolo laboratorio:// sirve el WebAssembly con su tipo y nunca sale de la carpeta de la web, que abre su ventana con la app dentro en un contexto seguro y sin service worker, los menús (Ajustes con ⌘,, Archivo, Edición, Ver con ⌘1 ⌘2 ⌘3, Ventana) y que Ver y Archivo hacen lo que dicen, que un HEIC y un ARW abiertos con la app entran en la biblioteca descodificados por libheif y LibRaw en sus workers y se abren en el laboratorio, que guardar va sin diálogo a Imágenes › Laboratorio › Exportadas sin pisar nada, y que la biblioteca sigue al volver a abrir la app. Sin `npm install` en mac/ se omite |
 | `alojada` | La app importada desde la página de otro origen, como la carga Floot (dos servidores, uno con el CORS de GitHub Pages): que arranca con su hoja de estilos, que no registra service worker en la anfitriona, que un HIF de Sony y un ARW se descodifican en sus workers —sin `alojada.js` el navegador se niega a crearlos—, y que una foto importada queda en la biblioteca de la anfitriona, sigue tras recargar y se abre en el laboratorio |
-| `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono |
+| `ios` | Que la copia de la app web dentro del proyecto de Xcode sea **idéntica** a lo que se publica —si no, la app del iPhone se queda con la versión vieja sin avisar— y que el Info.plist lleve los textos de permiso de cámara, micrófono y Fotos, cuya falta no da un error de compilación sino un cierre de la app en el teléfono. Y que el plugin de Fotos esté registrado y enlazado en el paquete de Swift en una ruta que existe, que si no «Guardar» volvería a la hoja de compartir sin avisar |
 
 Las propiedades matemáticas de las curvas (pivote exacto, blanco exacto,
 continuidad C¹, monotonía, asíntota del pie) se verifican canal a canal para
-las 26 emulsiones.
+todas las emulsiones.
 
 `CHROMIUM_PATH` permite apuntar a un Chromium ya instalado en lugar del que
 descarga Playwright.
@@ -755,13 +811,17 @@ escala sin amputarla, así que nunca recorta.
 **Negativo color** — Portra 400, Portra 800, Gold 200, Ektar 100,
 Superia X-TRA 400, Pro 400H, Vista Plus 200, Reala 100, Pro 160NS,
 Fujicolor C200, Natura 1600
-**Diapositiva** — Velvia 50, Provia 100F, Astia 100F, Kodachrome 64
 **Cine** — Vision3 250D, Vision3 500T, CineStill 800T, Copia de cine 2383,
 Eterna 250D
 **Blanco y negro** — Tri-X 400, HP5 Plus 400, Delta 3200
 **Instantánea** — Polaroid 600
-**Creativa** — LomoChrome Purple
-**Referencia** — Neutro digital (identidad exacta, verificada al bit)
+**Referencia** — Sin emulsión (identidad exacta, verificada al bit). No sale en
+los selectores: es el punto de partida del laboratorio.
+
+Las diapositivas (Velvia, Provia, Astia, Kodachrome), la LomoChrome Purple y el
+«Neutro digital» como filtro se retiraron del catálogo. Una foto revelada con
+una de ellas no cambia —la emulsión está en sus píxeles o en sus ajustes—, y si
+se reabre en el laboratorio queda sin emulsión.
 
 Dos añadidos merecen una nota, porque son casos límite del modelo:
 

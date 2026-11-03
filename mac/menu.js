@@ -1,7 +1,7 @@
 /**
  * menu.js — La barra de menús de Laboratorio en el Mac.
  *
- * Lo propio del Mac: el menú de la app con Ocultar y Salir, Archivo para
+ * Lo propio del Mac: el menú de la app con Ajustes (⌘,), Ocultar y Salir, Archivo para
  * importar y exportar, Edición (sin él ⌘C y ⌘V no funcionan ni en un campo de
  * texto), Ver con las tres secciones en ⌘1, ⌘2 y ⌘3, y Ventana.
  *
@@ -23,6 +23,8 @@ function construirMenu({ accion, desarrollo = false }) {
       label: 'Laboratorio',
       submenu: [
         { role: 'about', label: 'Acerca de Laboratorio' },
+        { type: 'separator' },
+        { id: 'ajustes', label: 'Ajustes…', accelerator: 'CmdOrCtrl+,', click: () => accion('ajustes') },
         { type: 'separator' },
         { role: 'services', label: 'Servicios' },
         { type: 'separator' },

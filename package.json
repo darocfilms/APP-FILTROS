@@ -18,6 +18,7 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@capacitor-community/media": "^9.1.0",
     "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@capacitor/ios": "^8.5.3",
