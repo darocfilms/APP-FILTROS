@@ -1,0 +1,1613 @@
+/**
+ * camera.js — Cámara con la emulsión aplicada en directo.
+ *
+ * Estrategia de resolución
+ * ------------------------
+ * La previsualización se procesa a resolución limitada (fluidez), pero la foto
+ * NO se saca de esa previsualización: al disparar se captura el fotograma
+ * actual a resolución nativa con `createImageBitmap(video)` y se revela en un
+ * pase aparte a tamaño completo. Así la pantalla va suave y el archivo sale con
+ * todo el detalle que da el navegador.
+ *
+ * El vídeo sí se graba desde el lienzo de previsualización, porque es la única
+ * forma de que MediaRecorder reciba los fotogramas ya revelados.
+ */
+
+import { el, clear, toast, haptic } from '../utils/dom.js';
+import { Renderer, renderToBlob } from '../engine/renderer.js';
+import { defaultParams, applyFilmLook, cloneParams } from '../data/params.js';
+import { rangeTrack } from '../ui/controls.js';
+import { dial, decimal } from '../ui/dial.js';
+import { FilmPicker } from '../ui/filmpicker.js';
+import { getFilm } from '../data/films.js';
+import { library, makeThumb } from '../store/library.js';
+import { refreshThumb } from '../store/develop.js';
+import { ajustes, EVENTO_AJUSTES } from '../store/ajustes.js';
+import { isNativeApp, isMacApp } from '../utils/share.js';
+import { galeriaNativa, guardarEnGaleria, describirFalloGaleria } from '../utils/galeria.js';
+import { ICONO } from '../ui/iconos.js';
+
+/**
+ * Emulsión con la que arranca la cámara.
+ *
+ * La copia de cine 2383: no el negativo con el que se rueda, sino el positivo
+ * que se proyecta en sala. Es una decisión de look y no de neutralidad — trae
+ * puesto el cruce a cian en sombras y cálido en luces— y por eso el visor
+ * enseña desde el primer momento aquello a lo que se va a parecer la foto.
+ */
+const DEFAULT_FILM = 'kodak2383';
+
+/**
+ * Cadencia de grabación, en fotogramas por segundo.
+ *
+ * Es un número fijo y no «lo que dé el dispositivo» a propósito: un archivo de
+ * cadencia variable se monta mal, se reproduce a tirones en la mitad de los
+ * reproductores y no encaja con nada grabado a 30. Ver `_startFrameClock`.
+ */
+const REC_FPS = 30;
+
+/**
+ * Los iconos de la fila, dibujados.
+ *
+ * Sin etiqueta debajo, el icono es lo único que queda: tiene que reconocerse
+ * de un vistazo y a 22 px. Los glifos de Unicode no sirven para eso —cambian
+ * de forma en cada sistema y varios salen como una caja— así que van en SVG,
+ * con la misma rejilla de 24 y el mismo grosor de trazo los tres.
+ */
+const svg = (d, { relleno = false } = {}) =>
+  '<svg viewBox="0 0 24 24" width="23" height="23" aria-hidden="true" focusable="false"'
+  + ` fill="${relleno ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.7"`
+  + ' stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>';
+
+const ICONOS = {
+  // Tres círculos superpuestos: la marca de toda la vida de los filtros de
+  // color, que es exactamente lo que hay dentro.
+  film: svg('<circle cx="12" cy="8.6" r="5.1"/><circle cx="7.9" cy="15.2" r="5.1"/>'
+    + '<circle cx="16.1" cy="15.2" r="5.1"/>'),
+  // El símbolo de compensación de exposición de cualquier cámara: un círculo
+  // partido con el más en la mitad clara y el menos en la oscura.
+  ev: svg('<circle cx="12" cy="12" r="8.6"/><path d="M5.9 18.1 18.1 5.9"/>'
+    + '<path d="M8.6 6.6v4.2M6.5 8.7h4.2"/><path d="M13.3 15.3h4.2"/>'),
+  // Cuatro esquinas de encuadre: se lee como «marco» sin explicarlo.
+  size: svg('<path d="M4 8.5V5.8A1.8 1.8 0 0 1 5.8 4H8.5"/><path d="M15.5 4h2.7A1.8 1.8 0 0 1 20 5.8v2.7"/>'
+    + '<path d="M20 15.5v2.7a1.8 1.8 0 0 1-1.8 1.8h-2.7"/><path d="M8.5 20H5.8A1.8 1.8 0 0 1 4 18.2v-2.7"/>'),
+  // El rayo relleno cuando está encendido y tachado cuando no: es la señal
+  // que ya usa la cámara del sistema, y se distingue sin leer nada.
+  flashOn: svg('<path d="M13 2.5 5.5 13.2a.6.6 0 0 0 .5.95h4.6l-.6 7.35 7.5-10.7a.6.6 0 0 0-.5-.95h-4.6l.6-7.35Z"/>',
+    { relleno: true }),
+  flashOff: svg('<path d="M13 2.5 5.5 13.2a.6.6 0 0 0 .5.95h4.6l-.6 7.35 7.5-10.7a.6.6 0 0 0-.5-.95h-4.6l.6-7.35Z"/>'
+    + '<path d="M4 4 20 20"/>'),
+};
+
+/**
+ * Lado mayor de la previsualización en directo.
+ *
+ * Se ajusta a la pantalla: en un iPhone con densidad 3× no tiene sentido
+ * procesar 1440 px si el visor muestra 1170, ni quedarse corto en un modelo
+ * grande. El techo evita que un panel enorme dispare el coste por fotograma.
+ */
+function previewBudget() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const side = Math.max(window.screen?.width || 0, window.screen?.height || 0, 640);
+  return Math.round(Math.min(1920, Math.max(1080, side * dpr)));
+}
+
+/**
+ * Encuadres.
+ *
+ * El primero, «Máx», no recorta nada: muestra y captura exactamente lo que
+ * entrega la cámara. Es con el que arranca, porque la cámara empieza en la
+ * calidad máxima: imponer la proporción de la pantalla (o 4:3 a un dispositivo
+ * que sólo ofrece 16:9) tiraría parte del sensor, que es lo contrario de
+ * aprovecharlo. «Pantalla» llena el visor a cambio de esos píxeles.
+ *
+ * Los demás son recortes sobre ESE fotograma, nunca una petición distinta al
+ * sistema: así el encuadre es una decisión reversible sobre la toma máxima y no
+ * información descartada antes de llegar.
+ */
+const ASPECTS = [
+  { key: 'full', label: 'Máx', ratio: null, note: 'Todo lo que entrega la cámara, sin recortar' },
+  { key: 'screen', label: 'Pantalla', ratio: 'screen', note: 'Llena la pantalla; se captura justo lo que ves' },
+  { key: '4:3', label: '4:3', ratio: 3 / 4, note: 'Clásico de fotografía' },
+  { key: '1:1', label: '1:1', ratio: 1, note: 'Cuadrado' },
+  { key: '16:9', label: '16:9', ratio: 9 / 16, note: 'Panorámico' },
+];
+
+/**
+ * Calidad del JPEG de la cámara: la máxima. A 100 el archivo pesa más que a
+ * 95, pero es lo que se pide a una cámara que arranca en calidad máxima, y el
+ * espacio lo da la carpeta local, no la memoria.
+ */
+const JPEG_CALIDAD = 1;
+
+/** Botones de zoom, como en la Cámara del iPhone. El 0,5 sólo con gran angular. */
+const ZOOM_BOTONES = [0.5, 1, 2, 4];
+
+/** Marcas de la regla de zoom (escala logarítmica). */
+function marcasZoom(min, max) {
+  const mayores = [0.5, 1, 2, 3, 4, 6, 10].map((v) => ({ v, texto: decimal(v) }));
+  const menores = [];
+  for (let v = 0.5; v < 1; v += 0.1) menores.push(+v.toFixed(2));
+  for (let v = 1; v < 2; v += 0.1) menores.push(+v.toFixed(2));
+  for (let v = 2; v < 4; v += 0.2) menores.push(+v.toFixed(2));
+  for (let v = 4; v <= 10; v += 0.5) menores.push(+v.toFixed(2));
+  return { mayores, menores: menores.filter((v) => v >= min && v <= max) };
+}
+
+/** Marcas de la regla de exposición: un número por diafragma, raya cada tercio. */
+function marcasEV() {
+  const mayores = [-3, -2, -1, 0, 1, 2, 3].map((v) => ({ v, texto: v > 0 ? '+' + v : v < 0 ? '−' + -v : '0' }));
+  const menores = [];
+  for (let i = -9; i <= 9; i++) menores.push(i / 3);
+  return { mayores, menores };
+}
+
+/** «+0,7», «−1,3» o «0»: como lo escribe una cámara. */
+export function textoEV(v) {
+  const r = Math.round(v * 10) / 10;
+  if (Math.abs(r) < 0.05) return '0';
+  return (r > 0 ? '+' : '−') + decimal(Math.abs(r));
+}
+
+const MIME_CANDIDATES = [
+  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+  'video/mp4;codecs=avc1',
+  'video/mp4',
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp8,opus',
+  'video/webm',
+];
+
+/**
+ * ¿Estamos dentro del navegador incrustado de otra aplicación?
+ *
+ * Importa porque es la causa más común de que la cámara no arranque en un
+ * dispositivo donde debería: al abrir un enlace desde WhatsApp, Instagram o
+ * Mensajes, iOS lo muestra en una vista web dentro de esa aplicación, y ahí no
+ * concede acceso a la cámara por mucho que el sitio sea HTTPS. Sin decirlo, el
+ * fallo parece del sitio.
+ */
+export function inAppBrowser() {
+  // La app nativa también es una vista web sin «Safari» en el user agent, pero
+  // ella sí tiene permiso de cámara: es la única excepción a la regla de abajo.
+  if (isNativeApp()) return false;
+  const ua = navigator.userAgent || '';
+  if (/FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Twitter|Snapchat|LinkedInApp|Pinterest/i.test(ua)) {
+    return true;
+  }
+  // Las vistas web incrustadas en iOS no se anuncian como Safari; el Safari de
+  // verdad y los navegadores con su propia marca (CriOS, FxiOS…) sí.
+  const esIOS = /iP(hone|ad|od)/.test(ua);
+  return esIOS && /AppleWebKit/.test(ua) && !/Safari|CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+}
+
+/**
+ * Traduce el fallo a algo accionable.
+ *
+ * «No se pudo guardar» no le sirve a nadie: quedarse sin espacio, no tener
+ * permiso de almacenamiento persistente o un lienzo demasiado grande piden
+ * cosas distintas de quien lo sufre.
+ */
+export function describeSaveError(err) {
+  const name = err?.name || '';
+  const msg = String(err?.message || err || '');
+  if (name === 'QuotaExceededError' || /quota|space/i.test(msg)) {
+    return 'No queda espacio en la carpeta local. Libera sitio desde la Biblioteca.';
+  }
+  if (/codificar|encode/i.test(msg)) {
+    return 'La imagen es demasiado grande para este dispositivo. Prueba con un encuadre menor.';
+  }
+  if (name === 'SecurityError' || /secure|permission/i.test(msg)) {
+    return 'El navegador ha bloqueado el almacenamiento. Añade la web a la pantalla de inicio y vuelve a intentarlo.';
+  }
+  return 'No se pudo guardar: ' + msg;
+}
+
+/**
+ * El fotograma tal cual, en PNG: sin pérdida, sin recorte y sin revelar.
+ * Es el archivo del modo RAW (ver `setRaw`).
+ */
+async function sinPerdida(fuente) {
+  const lienzo = fuente instanceof HTMLCanvasElement ? fuente : document.createElement('canvas');
+  if (lienzo !== fuente) {
+    lienzo.width = fuente.width;
+    lienzo.height = fuente.height;
+    lienzo.getContext('2d').drawImage(fuente, 0, 0);
+  }
+  try {
+    const blob = await new Promise((r) => lienzo.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('No se pudo codificar el RAW: la imagen es demasiado grande');
+    return blob;
+  } finally {
+    if (lienzo !== fuente) lienzo.width = lienzo.height = 0;
+  }
+}
+
+function pickMime() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  return MIME_CANDIDATES.find((m) => {
+    try { return MediaRecorder.isTypeSupported(m); } catch { return false; }
+  }) || null;
+}
+
+export class CameraView {
+  constructor(app) {
+    this.app = app;
+    // La cámara arranca con una emulsión puesta, no en neutro: es una cámara de
+    // película, y el visor debe enseñar desde el primer momento a qué se parece
+    // lo que se va a capturar.
+    this.params = applyFilmLook(defaultParams(), getFilm(DEFAULT_FILM));
+    this.mode = 'photo';
+    /** Disparar en RAW: el fotograma sin pérdida y la emulsión como ajuste. */
+    this.raw = ajustes.get('formato') === 'raw';
+    this.facing = 'environment';
+    this.stream = null;
+    this.renderer = null;
+    this.running = false;
+    this.recorder = null;
+    this.chunks = [];
+    this.recStart = 0;
+    this.busy = false;
+    this.aspect = 'full';
+    this.openPanelKey = null;
+    this.paused = false;
+    /** Factor de zoom pedido por el usuario, 1 = sin acercar. */
+    this.zoom = 1;
+    /** Hasta dónde llega el zoom del propio sensor; el resto es recorte. */
+    this.nativeZoomMax = 1;
+    this.flash = 'off';
+    this.caps = {};
+    /** Objetivo en uso: 'wide' (principal) o 'ultra' (gran angular). */
+    this.lens = 'wide';
+    /** Objetivos encontrados en el dispositivo, por clave. */
+    this.lenses = {};
+    this.immersive = false;
+    this.previewMax = previewBudget();
+    this._frameTimes = [];
+
+    this.video = el('video', { class: 'cam__video', playsinline: '', muted: '', autoplay: '' });
+    this.video.muted = true;
+    this.canvas = el('canvas', { class: 'cam__canvas' });
+
+    this.root = this._build();
+  }
+
+  /* ─────────────────────────────── Interfaz ──────────────────────────── */
+
+  _build() {
+    this.badge = el('div', { class: 'cam__badge' });
+    this.recPill = el('div', { class: 'cam__rec', hidden: true },
+      el('span', { class: 'cam__recdot' }), el('span', { class: 'cam__rectime', text: '0:00' }));
+    this.message = el('div', { class: 'cam__message', hidden: true });
+    this.resLabel = el('span', { class: 'cam__res' });
+
+    this.stage = el('div', {
+      class: 'cam__stage',
+      onclick: (e) => {
+        // Tocar la imagen cierra lo que haya abierto; si no hay nada, esconde
+        // los mandos. Un solo gesto para llegar al encuadre limpio.
+        if (e.target !== this.stage && e.target !== this.canvas) return;
+        if (this.pinching) return;
+        if (this.zoomCtl.classList.contains('is-regla')) this.cerrarDialZoom();
+        else if (this.openPanelKey) this.openPanel(null);
+        else this.toggleImmersive();
+      },
+    }, this.canvas, this.badge, this.recPill, this.resLabel,
+       this.screenFlash = el('div', { class: 'cam__screenflash', hidden: true }),
+       this.message);
+    this._bindPinch();
+
+    /* ── Ventanas flotantes de ajustes ─────────────────────────────────── */
+    this.panelHost = el('div', { class: 'cam__panelhost' });
+
+    // La exposición tiene su botón, con el símbolo de cualquier cámara, y abre
+    // una regla rotulada: «EXPOSICIÓN», el valor en grande y hacia dónde
+    // aclara y oscurece. Las barras verticales sin escala de antes no decían
+    // qué eran ni cuánto se había movido. El zoom va en sus botones (abajo).
+    this.tools = [
+      {
+        key: 'film', icon: ICONOS.film, label: 'Filtros',
+        build: () => this._filmPanel(),
+      },
+      {
+        key: 'ev', icon: ICONOS.ev, label: 'Exposición',
+        build: () => this._evPanel(),
+      },
+      {
+        key: 'size', icon: ICONOS.size, label: 'Dimensiones',
+        build: () => this._sizePanel(),
+      },
+    ];
+
+    // Tres iconos sueltos sobre la imagen, sin caja que los agrupe ni texto
+    // debajo: lo que sobra aquí tapa el encuadre. El nombre de cada uno vive en
+    // `aria-label`, para quien no ve el icono, y en el título de su ventana.
+    this.toolButtons = new Map();
+    const toolRow = el('div', { class: 'cam__tools', role: 'toolbar', 'aria-label': 'Ajustes de cámara' },
+      this.tools.map((t) => {
+        const btn = el('button', {
+          type: 'button', class: 'camtool', dataset: { tool: t.key },
+          'aria-expanded': 'false', 'aria-label': t.label,
+          onclick: () => this.openPanel(this.openPanelKey === t.key ? null : t.key),
+        }, el('span', { class: 'camtool__icon', html: t.icon }),
+          // La exposición enseña su valor en el propio botón cuando no es 0:
+          // así se ve siempre que la foto va a salir más clara o más oscura.
+          t.key === 'ev' ? (this.evValorTool = el('span', { class: 'camtool__valor' })) : null);
+        this.toolButtons.set(t.key, btn);
+        return btn;
+      }),
+      this.flashBtn = el('button', {
+        type: 'button', class: 'camtool', 'aria-pressed': 'false', 'aria-label': 'Flash',
+        onclick: () => this.toggleFlash(),
+      }, this.flashIcon = el('span', { class: 'camtool__icon', html: ICONOS.flashOff })));
+
+    /* ── Disparador y modo ─────────────────────────────────────────────── */
+    this.shutter = el('button', {
+      type: 'button', class: 'shutter', 'aria-label': 'Disparar',
+      onclick: () => this._trigger(),
+    }, el('span', { class: 'shutter__ring' }), el('span', { class: 'shutter__core' }));
+
+    this.modeSwitch = el('div', { class: 'cam__modes', role: 'tablist' },
+      ...[['photo', 'FOTO'], ['video', 'VÍDEO']].map(([k, label]) =>
+        el('button', {
+          type: 'button', class: 'cam__mode' + (k === this.mode ? ' is-active' : ''),
+          dataset: { mode: k }, onclick: () => this.setMode(k),
+        }, label)));
+
+    // RAW arriba a la derecha, como en la Cámara del iPhone: tachado cuando
+    // está apagado y en amarillo cuando está puesto.
+    this.rawBtn = el('button', {
+      type: 'button', class: 'cam__raw', 'aria-label': 'RAW', 'aria-pressed': String(this.raw),
+      onclick: () => this.setRaw(!this.raw),
+    }, 'RAW');
+    this._pintarRaw();
+    this._onAjustes = (e) => {
+      if (e.detail?.clave === 'formato') { this.raw = ajustes.get('formato') === 'raw'; this._pintarRaw(); this._updateResLabel(); }
+    };
+    window.addEventListener(EVENTO_AJUSTES, this._onAjustes);
+
+    this._buildZoom();
+
+    this.hud = el('div', { class: 'cam__hud' },
+      this.panelHost,
+      toolRow,
+      this.zoomCtl,
+      this.modeSwitch,
+      el('div', { class: 'cam__bar' },
+        // La última foto, como en la Cámara del iPhone: un toque la abre en
+        // el visor sin salir de aquí. (Esconder los mandos ya es tocar la imagen.)
+        this.ultima = el('button', {
+          type: 'button', class: 'cam__ultima', 'aria-label': 'Ver la última foto', hidden: true,
+          onclick: () => this.app.views.library.verUltima?.(),
+        }, this.ultimaImg = el('img', { class: 'cam__ultimaimg', alt: '', decoding: 'async' })),
+        this.shutter,
+        this.flipBtn = el('button', {
+          type: 'button', class: 'iconbtn', 'aria-label': 'Cambiar de cámara', html: ICONO.girarCamara,
+          onclick: () => this.flip(),
+        })));
+
+    this.showChrome = el('button', {
+      type: 'button', class: 'cam__reveal', 'aria-label': 'Mostrar los mandos',
+      onclick: () => this.toggleImmersive(),
+    }, '⤡');
+
+    const root = el('section', { class: 'view view--camera', id: 'view-camera' },
+      this.stage, this.rawBtn, this.hud, this.showChrome);
+
+    // El encuadre "Pantalla" depende del tamaño de la ventana: al girar el
+    // teléfono hay que recalcular el recorte o dejaría de llenarla.
+    this._onResize = () => { if (this.aspect === 'screen') this._applyAspect(); };
+    window.addEventListener('resize', this._onResize);
+    window.addEventListener('orientationchange', this._onResize);
+    return root;
+  }
+
+  /* ─────────────────── Ventanas flotantes por grupo ──────────────────── */
+
+  /**
+   * Abre una ventana de ajustes, o la cierra si ya lo estaba.
+   *
+   * Sólo una a la vez: dos ventanas abiertas sobre el visor dejarían de ser
+   * ventanas y volverían a ser el panel fijo que estorbaba la imagen.
+   */
+  openPanel(key) {
+    this.openPanelKey = key;
+    clear(this.panelHost);
+    for (const [k, btn] of this.toolButtons) {
+      const on = k === key;
+      btn.classList.toggle('is-open', on);
+      btn.setAttribute('aria-expanded', String(on));
+    }
+    if (!key) {
+      this.panelHost.classList.remove('is-open');
+      return;
+    }
+    const tool = this.tools.find((t) => t.key === key);
+    this.panelHost.append(el('div', { class: 'campanel' },
+      el('div', { class: 'campanel__head' },
+        el('span', { class: 'campanel__title', text: tool.label }),
+        el('button', {
+          type: 'button', class: 'campanel__close', 'aria-label': 'Cerrar',
+          onclick: () => this.openPanel(null),
+        }, '✕')),
+      tool.build()));
+    this.panelHost.classList.add('is-open');
+    if (this.immersive) this.toggleImmersive();
+    haptic();
+  }
+
+  _filmPanel() {
+    // Una fila de nombres, sin recuadros: tocar uno lo aplica al visor, que
+    // enseña la emulsión mejor que cualquier muestra de color.
+    this.filmPicker = new FilmPicker((id) => this.setFilm(id));
+    this.filmPicker.select(this.params.film.id);
+    const strength = el('input', {
+      type: 'range', class: 'slider__input', min: 0, max: 1, step: 0.01,
+      value: this.params.film.strength, 'aria-label': 'Intensidad de la emulsión',
+    });
+    const readout = el('span', { class: 'campanel__value', text: Math.round(this.params.film.strength * 100) + '%' });
+    strength.addEventListener('input', () => {
+      this.params.film.strength = parseFloat(strength.value);
+      readout.textContent = Math.round(this.params.film.strength * 100) + '%';
+    });
+    return el('div', { class: 'campanel__body' },
+      this.filmPicker.root,
+      el('div', { class: 'campanel__row' },
+        el('span', { class: 'campanel__label', text: 'Intensidad' }),
+        rangeTrack(strength), readout));
+  }
+
+  /**
+   * La exposición: una regla rotulada, con el valor en grande encima y qué
+   * pasa hacia cada lado escrito debajo. Se ve la imagen mientras se mueve,
+   * porque la ventana sólo ocupa la franja de abajo.
+   */
+  _evPanel() {
+    const valor = el('output', { class: 'evpanel__valor' });
+    const cero = el('button', {
+      type: 'button', class: 'evpanel__cero', text: 'Volver a 0',
+      onclick: () => { this.setExposure(0); this.evDial.set(0); haptic(); },
+    });
+    this._pintarEvPanel = () => {
+      const v = this.params.light.exposure;
+      valor.textContent = textoEV(v) + ' EV';
+      valor.classList.toggle('is-cero', textoEV(v) === '0');
+      cero.hidden = textoEV(v) === '0';
+    };
+    this.evDial = dial({
+      min: -3, max: 3, value: this.params.light.exposure, paso: 0.1, px: 46,
+      marcas: marcasEV, etiqueta: 'Exposición',
+      formato: (v) => textoEV(v) + ' EV',
+      alCambiar: (v) => this.setExposure(v),
+    });
+    this._pintarEvPanel();
+    return el('div', { class: 'campanel__body evpanel' },
+      valor,
+      this.evDial.node,
+      el('div', { class: 'evpanel__pie' },
+        el('span', { text: '← Más oscura' }), cero, el('span', { text: 'Más clara →' })));
+  }
+
+  setExposure(v) {
+    this.params.light.exposure = Math.round(v * 100) / 100;
+    this._pintarEvPanel?.();
+    this._pintarEvTool();
+  }
+
+  /** El botón de exposición en amarillo y con su valor cuando no es 0. */
+  _pintarEvTool() {
+    const t = textoEV(this.params.light.exposure);
+    const btn = this.toolButtons?.get('ev');
+    btn?.classList.toggle('is-on', t !== '0');
+    if (this.evValorTool) this.evValorTool.textContent = t === '0' ? '' : t;
+    btn?.setAttribute('aria-label', t === '0' ? 'Exposición' : `Exposición ${t} EV`);
+  }
+
+  /* ─────────────────────────── Zoom: botones y regla ─────────────────── */
+
+  /**
+   * Los botones 0,5 · 1× · 2 · 4 encima de FOTO · VÍDEO, como en la Cámara
+   * del iPhone. El activo dice el zoom exacto («2,6×»). Arrastrarlos de lado
+   * (o mantenerlos pulsados) despliega la regla para afinar entre medias, y
+   * se recoge sola al poco de soltar.
+   */
+  _buildZoom() {
+    this.zoomPills = el('div', { class: 'cam__zooms', role: 'group', 'aria-label': 'Zoom' });
+    this.zoomValor = el('span', { class: 'cam__zoomvalor', 'aria-hidden': 'true' });
+    this.zoomDial = dial({
+      min: 0.5, max: this.zoomMax, value: this.effectiveZoom, escala: 'log', px: 78,
+      marcas: marcasZoom, etiqueta: 'Zoom',
+      formato: (v) => decimal(v) + '×',
+      alCambiar: (v) => { this.setEffectiveZoom(v); this._mantenerDial(); },
+    });
+    this.zoomCtl = el('div', { class: 'cam__zoom' },
+      this.zoomPills,
+      el('div', { class: 'cam__zoomdial' }, this.zoomValor, this.zoomDial.node));
+
+    // Arrastrar los botones mueve la regla: el dedo no tiene que soltarse y
+    // volver a buscarla.
+    let g = null;
+    this.zoomPills.addEventListener('pointerdown', (ev) => {
+      g = { x0: ev.clientX, id: ev.pointerId, regla: false };
+      this._zoomDedo = true;
+      g.largo = setTimeout(() => { if (g && !g.regla) this._abrirDial(g); }, 450);
+    });
+    this.zoomPills.addEventListener('pointermove', (ev) => {
+      if (!g || ev.pointerId !== g.id) return;
+      if (!g.regla && Math.abs(ev.clientX - g.x0) > 8) this._abrirDial(g);
+      if (g.regla) { ev.preventDefault(); this.zoomDial.arrastre.mover(ev.clientX); }
+    });
+    const soltar = (ev) => {
+      if (!g || ev.pointerId !== g.id) return;
+      clearTimeout(g.largo);
+      this._zoomDedo = false;
+      if (g.regla) {
+        this.zoomDial.arrastre.terminar();
+        // El clic que sigue al arrastre no es un toque en un botón.
+        this._zoomTragar = true;
+        setTimeout(() => { this._zoomTragar = false; }, 80);
+        this._mantenerDial();
+      }
+      g = null;
+    };
+    this.zoomPills.addEventListener('pointerup', soltar);
+    this.zoomPills.addEventListener('pointercancel', soltar);
+    this.zoomDial.node.addEventListener('pointerup', () => this._mantenerDial());
+    this._pintarZoomPills();
+  }
+
+  _abrirDial(g) {
+    g.regla = true;
+    try { this.zoomPills.setPointerCapture(g.id); } catch { /* sintético */ }
+    this.zoomCtl.classList.add('is-regla');
+    this.zoomDial.arrastre.empezar(g.x0);
+    haptic();
+    this._mantenerDial();
+  }
+
+  /** La regla se recoge sola un rato después del último movimiento. */
+  _mantenerDial() {
+    clearTimeout(this._dialTimer);
+    this._dialTimer = setTimeout(() => {
+      // Con el dedo todavía encima no se recoge: se cuenta desde que se suelta.
+      if (this._zoomDedo || this.zoomDial.node.classList.contains('is-moviendo')) this._mantenerDial();
+      else this.cerrarDialZoom();
+    }, 1800);
+  }
+
+  cerrarDialZoom() {
+    clearTimeout(this._dialTimer);
+    this.zoomCtl?.classList.remove('is-regla');
+  }
+
+  /** Los botones que tienen sentido en este dispositivo y con esta cámara. */
+  get zoomBotones() {
+    return ZOOM_BOTONES.filter((v) => (v < 1 ? this.hasUltraWide : v <= this.zoomMax + 1e-6));
+  }
+
+  _pintarZoomPills() {
+    if (!this.zoomPills) return;
+    const z = this.effectiveZoom;
+    const botones = this.zoomBotones;
+    // Activo: el mayor botón que no pasa del zoom actual.
+    const activo = [...botones].reverse().find((v) => z >= v - 1e-3) ?? botones[0];
+    const firma = botones.join(',');
+    if (this.zoomPills.dataset.firma !== firma) {
+      this.zoomPills.dataset.firma = firma;
+      this.zoomPills.textContent = '';
+      for (const v of botones) {
+        this.zoomPills.append(el('button', {
+          type: 'button', class: 'zoompill', dataset: { zoom: String(v) },
+          onclick: () => {
+            if (this._zoomTragar) return;
+            haptic();
+            this.setEffectiveZoom(v);
+          },
+        }));
+      }
+    }
+    for (const b of this.zoomPills.children) {
+      const v = +b.dataset.zoom;
+      const on = v === activo;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.textContent = on ? decimal(z) + '×' : decimal(v);
+      b.setAttribute('aria-label', `Zoom ${decimal(v)}×`);
+    }
+    this.zoomValor.textContent = decimal(z) + '×';
+  }
+
+  /**
+   * Fija el zoom tal y como lo entiende quien mira, con el 0,5× incluido.
+   *
+   * Por debajo de 1× no hay zoom que valga: hay otra cámara. Cruzar ese punto
+   * en la barra cambia de objetivo, que es una operación lenta —hay que
+   * reabrir el flujo—, así que sólo se pide cuando el objetivo de destino es
+   * distinto del que ya está puesto.
+   */
+  setEffectiveZoom(v) {
+    const quiereUltra = v < 1 && this.hasUltraWide;
+    const destino = quiereUltra ? 'ultra' : 'wide';
+    if (destino !== this.lens) this.setLens(destino);
+    this.setZoom(quiereUltra ? 1 : Math.max(1, v));
+  }
+
+  /** Refleja en botones y regla el zoom real: también se llega pellizcando. */
+  _syncZoom() {
+    if (!this.zoomDial) return;
+    // Sin gran angular la regla empieza en 1×: no promete un 0,5× que no hay.
+    this.zoomDial.setRange(this.hasUltraWide ? 0.5 : 1, this.zoomMax);
+    this.zoomDial.set(this.effectiveZoom);
+    this._pintarZoomPills();
+  }
+
+  /**
+   * Pellizco para acercar.
+   *
+   * Es el gesto que cualquiera prueba primero en un visor, así que va sobre la
+   * imagen y no sólo en el panel. Se sigue la distancia entre dos dedos y se
+   * multiplica el zoom de partida por su variación.
+   */
+  _bindPinch() {
+    const points = new Map();
+    let startDist = 0;
+    let startZoom = 1;
+
+    const dist = () => {
+      const [a, b] = [...points.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+
+    this.stage.addEventListener('pointerdown', (ev) => {
+      points.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (points.size === 2) { startDist = dist(); startZoom = this.zoom; }
+    });
+    this.stage.addEventListener('pointermove', (ev) => {
+      if (!points.has(ev.pointerId)) return;
+      points.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (points.size !== 2 || startDist <= 0) return;
+      ev.preventDefault();
+      this.pinching = true;
+      this.setZoom(startZoom * (dist() / startDist));
+    });
+    const drop = (ev) => {
+      points.delete(ev.pointerId);
+      if (points.size < 2) startDist = 0;
+      // Se marca para que el toque que cierra el pellizco no se interprete
+      // como el toque que esconde los mandos.
+      if (points.size === 0 && this.pinching) {
+        setTimeout(() => { this.pinching = false; }, 60);
+      }
+    };
+    this.stage.addEventListener('pointerup', drop);
+    this.stage.addEventListener('pointercancel', drop);
+  }
+
+  _sizePanel() {
+    const note = el('p', { class: 'campanel__note' });
+    const paint = () => {
+      const def = ASPECTS.find((a) => a.key === this.aspect);
+      // Cada encuadre recorta el sensor, y conviene ver cuánto ANTES de elegir:
+      // llenar la pantalla es cómodo, pero cuesta megapíxeles reales.
+      const mp = this._megapixelsFor(this.aspect);
+      note.textContent = (def?.note || '') + (mp ? ` · ${mp.toFixed(1)} Mpx` : '');
+      for (const b of row.children) b.classList.toggle('is-active', b.dataset.aspect === this.aspect);
+    };
+    const row = el('div', { class: 'campanel__chips' },
+      ASPECTS.map((a) => {
+        const mp = this._megapixelsFor(a.key);
+        return el('button', {
+          type: 'button', class: 'chip chip--stacked', dataset: { aspect: a.key },
+          onclick: () => { this.setAspect(a.key); paint(); },
+        },
+          el('span', { class: 'chip__label', text: a.label }),
+          mp ? el('span', { class: 'chip__sub', text: mp.toFixed(1) + ' Mpx' }) : null);
+      }));
+    paint();
+    return el('div', { class: 'campanel__body' }, row, note);
+  }
+
+  /* ────────────────────────────── Objetivos ──────────────────────────── */
+
+  /**
+   * Busca el gran angular entre las cámaras del dispositivo.
+   *
+   * El 0,5× de un iPhone no es zoom: es OTRA cámara, con su propio objetivo. No
+   * hay restricción de zoom que lleve hasta ella — hay que pedirla por su
+   * identificador. Las etiquetas sólo aparecen después de conceder el permiso,
+   * así que esto se hace con el flujo ya abierto.
+   */
+  async _discoverLenses() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const camaras = devices.filter((d) => d.kind === 'videoinput');
+      const traseras = camaras.filter((d) => !/front|frontal|facetime/i.test(d.label));
+      const ultra = traseras.find((d) => /ultra|gran ?angular|0[.,]5/i.test(d.label));
+      const principal = traseras.find((d) => d !== ultra);
+      this.lenses = { ultra: ultra?.deviceId || null, wide: principal?.deviceId || null };
+      // Con gran angular aparece el botón 0,5.
+      this._syncZoom();
+    } catch {
+      this.lenses = {};
+    }
+  }
+
+  get hasUltraWide() { return !!this.lenses.ultra && this.facing === 'environment'; }
+
+  /** Factor tal y como lo entiende quien mira: el gran angular es 0,5×. */
+  get effectiveZoom() { return (this.lens === 'ultra' ? 0.5 : 1) * this.zoom; }
+
+  async setLens(key) {
+    if (this.lens === key) return;
+    if (key === 'ultra' && !this.hasUltraWide) return;
+    const anterior = this.lens;
+    this.lens = key;
+    this.zoom = 1;
+    this.digitalZoom = 1;
+    haptic();
+    try {
+      await this._openStream();
+      this._showZoomBadge();
+    } catch {
+      this.lens = anterior;
+      toast('No se pudo cambiar de objetivo', { error: true });
+    }
+    this._syncZoom();
+  }
+
+  /* ─────────────────────────────── Zoom ──────────────────────────────── */
+
+  /**
+   * Lee hasta dónde puede acercar el propio sensor.
+   *
+   * Cuando el dispositivo lo expone —Android lo hace; Safari en iOS, hasta
+   * donde alcanza esta versión, no— se usa primero, porque es zoom real y no
+   * pierde detalle. A partir de ahí se sigue con recorte, que sí lo pierde y
+   * por eso se avisa.
+   */
+  _applyZoomCapabilities() {
+    const z = this.caps?.zoom;
+    this.nativeZoomMax = (z && typeof z.max === 'number' && z.max > 1) ? z.max : 1;
+    this.zoomMin = (z && typeof z.min === 'number') ? Math.max(1, z.min) : 1;
+    // El techo real sólo se conoce con el flujo abierto, después de construir
+    // la regla: si no se le dice, seguiría prometiendo el techo de reserva.
+    this._syncZoom();
+    if (this.zoom !== 1) this._applyZoom();
+  }
+
+  /** Techo total: lo que dé el sensor, y hasta 4× de recorte por encima. */
+  get zoomMax() { return Math.min(10, this.nativeZoomMax * 4); }
+
+  /** ¿A partir de qué factor el acercamiento empieza a costar detalle? */
+  get zoomNativeLimit() { return this.nativeZoomMax; }
+
+  setZoom(value) {
+    const next = Math.min(this.zoomMax, Math.max(1, value));
+    if (Math.abs(next - this.zoom) < 1e-4) return;
+    this.zoom = next;
+    this._applyZoom();
+    this._showZoomBadge();
+  }
+
+  _applyZoom() {
+    // Primero el sensor, hasta donde llegue.
+    const nativePart = Math.min(this.zoom, this.nativeZoomMax);
+    if (this.track && this.nativeZoomMax > 1) {
+      this.track.applyConstraints({ advanced: [{ zoom: nativePart }] })
+        .catch(() => { /* el dispositivo lo ha rechazado; queda el recorte */ });
+    }
+    // Y lo que falte, recortando: se resuelve dentro de `_applyAspect`.
+    this.digitalZoom = this.zoom / Math.max(nativePart, 1);
+    this._applyAspect();
+  }
+
+  _showZoomBadge() {
+    // El número ya está en los botones; la insignia sólo dice lo que no se ve:
+    // que es la otra cámara o que a partir de ahí se recorta.
+    const extra = this.lens === 'ultra' ? 'Gran angular' : this.zoom > this.zoomNativeLimit + 1e-3 ? 'Zoom por recorte' : '';
+    if (extra) this._insignia(decimal(this.effectiveZoom) + '× · ' + extra, 1400);
+    this._syncZoom();
+  }
+
+  /* ─────────────────────────────── Flash ─────────────────────────────── */
+
+  /** ¿Puede este dispositivo encender la linterna desde la web? */
+  get canTorch() { return !!(this.caps && 'torch' in this.caps && this.caps.torch); }
+
+  /**
+   * Encendido o apagado, y ya está.
+   *
+   * Antes había que elegir entre «linterna» y «pantalla», que es una pregunta
+   * sobre el hardware y no sobre la foto: quien dispara quiere luz. Se usa el
+   * LED cuando el navegador lo deja y el destello de pantalla cuando no, y se
+   * dice cuál toca en la insignia al encenderlo, sin obligar a decidirlo.
+   */
+  setFlash(on) {
+    this.flash = on ? 'on' : 'off';
+    this._applyFlashToTrack();
+    this.flashBtn?.classList.toggle('is-on', on);
+    this.flashBtn?.setAttribute('aria-pressed', String(!!on));
+    if (this.flashIcon) this.flashIcon.innerHTML = on ? ICONOS.flashOn : ICONOS.flashOff;
+    haptic();
+  }
+
+  toggleFlash() {
+    const on = this.flash !== 'on';
+    this.setFlash(on);
+    this._insignia(on ? (this.canTorch ? 'Flash · linterna' : 'Flash · pantalla') : 'Flash apagado');
+  }
+
+  /** La linterna permanece encendida mientras se graba; en foto sólo dispara. */
+  _applyFlashToTrack() {
+    const on = this.flash === 'on' && this.canTorch && !!this.recorder;
+    this._setTorch(on);
+  }
+
+  async _setTorch(on) {
+    if (!this.track || !this.canTorch) return false;
+    try {
+      await this.track.applyConstraints({ advanced: [{ torch: !!on }] });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Ilumina la escena durante la captura.
+   *
+   * Con linterna se enciende y se espera un momento a que la exposición se
+   * asiente, o la foto sale con la luz a medio subir. Con «Pantalla» se pone el
+   * lienzo en blanco al máximo: no alumbra como un LED, pero con la cámara
+   * frontal y a poca distancia sirve, y es lo único disponible cuando el
+   * navegador no da acceso a la linterna.
+   *
+   * @returns {Promise<() => void>} función para apagar lo que se haya encendido
+   */
+  async _flashOn() {
+    if (this.flash !== 'on') return () => {};
+    // El LED primero; si el navegador no lo da, destella la pantalla.
+    if (await this._setTorch(true)) {
+      await new Promise((r) => setTimeout(r, 320));
+      return () => this._setTorch(false);
+    }
+    this.screenFlash.hidden = false;
+    // Dos fotogramas para que el blanco esté pintado antes de capturar.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 220));
+    return () => { this.screenFlash.hidden = true; };
+  }
+
+  /** Megapíxeles que quedan tras aplicar un encuadre al fotograma actual. */
+  _megapixelsFor(key) {
+    const vw = this.video.videoWidth, vh = this.video.videoHeight;
+    const nw = this.nativeWidth || vw, nh = this.nativeHeight || vh;
+    if (!vw || !vh || !nw || !nh) return 0;
+    const def = ASPECTS.find((a) => a.key === key);
+    if (!def || def.ratio === null) return (nw * nh) / 1e6;
+    const target = def.ratio === 'screen'
+      ? window.innerWidth / window.innerHeight
+      : (vw >= vh ? 1 / def.ratio : def.ratio);
+    const source = vw / vh;
+    let w = 1, h = 1;
+    if (target > source) h = source / target; else w = target / source;
+    // Acercar recortando también resta píxeles: el número anunciado tiene que
+    // reflejarlo, o prometería un detalle que la foto no va a tener.
+    const k = this.digitalZoom || 1;
+    return (nw * w * nh * h) / (k * k) / 1e6;
+  }
+
+  /** Oculta los mandos para ver el encuadre limpio. */
+  toggleImmersive() {
+    this.immersive = !this.immersive;
+    if (this.immersive && this.openPanelKey) this.openPanel(null);
+    this.root.classList.toggle('is-immersive', this.immersive);
+    haptic();
+  }
+
+  /**
+   * Cambia el encuadre recortando el fotograma de sensor completo, sin volver a
+   * negociar el flujo con el sistema: la toma sigue siendo la máxima posible.
+   */
+  setAspect(key) {
+    this.aspect = key;
+    this._applyAspect();
+    haptic();
+  }
+
+  /**
+   * Con el encuadre «Pantalla», el lienzo se recorta a la proporción de la
+   * ventana, pero al redondear a píxeles enteros queda una diferencia de
+   * milésimas — suficiente para dejar una banda negra de un par de píxeles
+   * arriba y abajo. `cover` se come esa milésima y la imagen llena de verdad.
+   * En los demás encuadres se mantiene `contain`, porque ahí las bandas son
+   * intencionadas: enseñan el fotograma entero.
+   */
+  _applyFitMode() {
+    this.root?.classList.toggle('is-screenfit', this.aspect === 'screen');
+  }
+
+  _applyAspect() {
+    const def = ASPECTS.find((a) => a.key === this.aspect) || ASPECTS[0];
+    const vw = this.video.videoWidth, vh = this.video.videoHeight;
+    if (!vw || !vh) return;
+
+    if (def.ratio === null) {
+      // Sin recorte: el fotograma íntegro tal y como llega.
+      this.params.geometry.crop = { x: 0, y: 0, w: 1, h: 1 };
+    } else if (def.ratio === 'screen') {
+      // Se recorta a la proporción de la pantalla, de modo que el visor la
+      // llena por completo y lo capturado es exactamente lo que se ve.
+      const target = window.innerWidth / window.innerHeight;
+      const source = vw / vh;
+      let w = 1, h = 1;
+      if (target > source) h = source / target; else w = target / source;
+      this.params.geometry.crop = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
+    } else {
+      // `ratio` es ancho/alto en vertical; si la cámara entrega el fotograma
+      // apaisado se invierte, para que el encuadre signifique lo mismo.
+      const target = vw >= vh ? 1 / def.ratio : def.ratio;
+      const source = vw / vh;
+      let w = 1, h = 1;
+      if (target > source) h = source / target; else w = target / source;
+      this.params.geometry.crop = { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
+    }
+    // El zoom que no da el sensor se consigue estrechando este mismo recorte.
+    this._applyDigitalZoomToCrop();
+    this._applyFitMode();
+    this._updateResLabel();
+  }
+
+  /** Encoge el recorte alrededor del centro para el zoom que no da el sensor. */
+  _applyDigitalZoomToCrop() {
+    const k = this.digitalZoom || 1;
+    if (k <= 1.0001) return;
+    const c = this.params.geometry.crop;
+    const cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    const w = c.w / k, h = c.h / k;
+    this.params.geometry.crop = { x: cx - w / 2, y: cy - h / 2, w, h };
+  }
+
+  _updateResLabel() {
+    const c = this.params.geometry.crop || { w: 1, h: 1 };
+    const w = Math.round((this.nativeWidth || 0) * c.w);
+    const h = Math.round((this.nativeHeight || 0) * c.h);
+    if (!w || !h) { this.resLabel.textContent = ''; return; }
+    const mp = (w * h) / 1e6;
+    const completo = this.aspect === 'full' ? ' · sensor completo' : '';
+    const formato = this.mode === 'photo' ? (this.raw ? ' · RAW' : ' · JPEG 100 %') : '';
+    this.resLabel.textContent = `${w}×${h} · ${decimal(mp)} Mpx${completo}${formato}`;
+  }
+
+  setFilm(id) {
+    const keepExposure = this.params.light.exposure;
+    applyFilmLook(this.params, getFilm(id));
+    this.params.light.exposure = keepExposure;
+    // El selector sólo existe mientras su ventana está abierta.
+    this.filmPicker?.select(id);
+    this._insignia(getFilm(id).name, 1800);
+    haptic();
+  }
+
+  /** Un aviso breve arriba del visor (zoom, emulsión, RAW, flash). */
+  _insignia(texto, ms = 1600) {
+    this.badge.textContent = texto;
+    this.badge.classList.remove('is-hidden');
+    clearTimeout(this._badgeTimer);
+    this._badgeTimer = setTimeout(() => this.badge.classList.add('is-hidden'), ms);
+  }
+
+  /* ──────────────────────────────── RAW ──────────────────────────────── */
+
+  /**
+   * RAW encendido o apagado. Se recuerda (es el «Formato» de Ajustes).
+   *
+   * Lo que da una página web no es el RAW del sensor —Safari no entrega los
+   * datos del sensor, ni ProRAW—, sino el fotograma completo sin pérdida: se
+   * guarda en PNG, sin recortar, y la emulsión, la exposición y el encuadre
+   * van aparte como ajustes del laboratorio. Es lo que importa de un RAW: nada
+   * está horneado y todo se puede cambiar después sin perder calidad.
+   */
+  setRaw(on) {
+    this.raw = !!on;
+    ajustes.set('formato', this.raw ? 'raw' : 'jpeg');
+    this._pintarRaw();
+    this._updateResLabel();
+    this._insignia(this.raw ? 'RAW · sin pérdida y editable' : 'JPEG · calidad máxima');
+    haptic();
+  }
+
+  _pintarRaw() {
+    if (!this.rawBtn) return;
+    this.rawBtn.classList.toggle('is-on', this.raw);
+    this.rawBtn.setAttribute('aria-pressed', String(this.raw));
+    this.rawBtn.title = this.raw ? 'RAW activado' : 'RAW desactivado';
+  }
+
+  setMode(mode) {
+    if (this.recorder) return;
+    this.mode = mode;
+    for (const b of this.modeSwitch.children) b.classList.toggle('is-active', b.dataset.mode === mode);
+    this.shutter.classList.toggle('shutter--video', mode === 'video');
+    // El RAW es de las fotos: grabando no pinta nada.
+    this.rawBtn.hidden = mode === 'video';
+    this._updateResLabel();
+    haptic();
+  }
+
+  /* ──────────────────────────── Ciclo de vida ────────────────────────── */
+
+  /** La miniatura de la última foto o vídeo guardado, junto al disparador. */
+  async pintarUltima() {
+    try {
+      const [ultimo] = await library.list();
+      const blob = ultimo ? await library.getThumbBlob(ultimo.id) : null;
+      if (this._ultimaUrl) URL.revokeObjectURL(this._ultimaUrl);
+      this._ultimaUrl = blob ? URL.createObjectURL(blob) : null;
+      this.ultima.hidden = !this._ultimaUrl;
+      if (this._ultimaUrl) this.ultimaImg.src = this._ultimaUrl;
+    } catch { this.ultima.hidden = true; }
+  }
+
+  async activate() {
+    this.pintarUltima();
+    this._showMessage(null);
+    if (inAppBrowser()) {
+      return this._showMessage(
+        'Has abierto el enlace dentro de otra aplicación (WhatsApp, Instagram, Mensajes…), '
+        + 'y esos navegadores incrustados no dan acceso a la cámara en iPhone. '
+        + 'Ábrelo en Safari: toca el botón «···» o «Abrir en Safari».',
+        { copiarEnlace: true });
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return this._showMessage(isNativeApp()
+        ? 'La cámara no está disponible. Hace falta iOS 15 o posterior.'
+        : 'Este navegador no da acceso a la cámara. En iPhone hace falta Safari sobre HTTPS.');
+    }
+    if (!window.isSecureContext) {
+      return this._showMessage('La cámara sólo funciona sobre HTTPS (o en localhost). Abre la aplicación con una dirección segura.');
+    }
+    try {
+      // Si la cámara sigue viva no se renegocia: volver a pedirla es lento y en
+      // iOS falla a veces al hacerlo dos veces seguidas.
+      if (!this.streamAlive) await this._openStream();
+      else await this.video.play().catch(() => {});
+      this._ensureRenderer();
+      this._startLoop();
+    } catch (err) {
+      const map = {
+        // En la app el permiso es de la app, no de Safari: mandar a Ajustes →
+        // Safari dejaría al usuario cambiando un interruptor que no cuenta.
+        NotAllowedError: isMacApp()
+          ? 'Permiso denegado. Actívalo en Ajustes del Sistema → Privacidad y seguridad → Cámara → Laboratorio, y vuelve a abrir la app.'
+          : isNativeApp()
+          ? 'Permiso denegado. Actívalo en Ajustes → Laboratorio → Cámara y vuelve a abrir la app.'
+          : 'Permiso denegado. Actívalo en Ajustes → Safari → Cámara y recarga. '
+            + 'Si abriste el enlace desde otra aplicación, ábrelo en Safari.',
+        NotFoundError: 'No se ha encontrado ninguna cámara en este dispositivo.',
+        NotReadableError: 'La cámara está ocupada por otra aplicación. Ciérrala y toca «Reintentar».',
+        OverconstrainedError: 'La cámara no admite la configuración solicitada.',
+      };
+      this._showMessage(map[err?.name] || ('No se pudo abrir la cámara: ' + (err?.message || err)));
+    }
+  }
+
+  deactivate() {
+    this.running = false;
+    this.openPanel(null);
+    this.cerrarDialZoom();
+    if (this.recorder) this._stopRecording(true);
+    this._closeStream();
+    // El renderer SOBREVIVE. Sólo se sueltan las texturas, que es lo que ocupa
+    // memoria; el contexto y los programas ya compilados se conservan para
+    // volver a dibujar de inmediato. Destruirlo aquí era lo que dejaba la
+    // cámara en negro al regresar: `dispose` devolvía el contexto al navegador
+    // y ese mismo lienzo ya no podía dar uno nuevo.
+    this.renderer?.release();
+  }
+
+  async _openStream() {
+    this._closeStream();
+    // Se pide 4:3 a la máxima resolución: es la lectura completa del sensor.
+    // Pedir 16:9 parece "más grande" por el número, pero es un RECORTE: el
+    // sistema tira las bandas superior e inferior antes de entregarlo, y esa
+    // parte de la imagen ya no se puede recuperar. Los demás encuadres se
+    // obtienen recortando este fotograma en `_applyAspect`.
+    const constraints = {
+      audio: this.mode === 'video' ? { echoCancellation: true } : false,
+      video: {
+        facingMode: { ideal: this.facing },
+        width: { ideal: 4032 },
+        height: { ideal: 3024 },
+        aspectRatio: { ideal: 4 / 3 },
+        frameRate: { ideal: 30 },
+      },
+    };
+    // El gran angular es otra cámara física: se pide por identificador, porque
+    // ninguna restricción de zoom lleva hasta ella.
+    const elegido = this.lenses?.[this.lens];
+    if (elegido && this.facing === 'environment') {
+      constraints.video.deviceId = { exact: elegido };
+      delete constraints.video.facingMode;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      if (err?.name !== 'OverconstrainedError' && err?.name !== 'NotReadableError') throw err;
+      // Segundo intento sin exigencias de resolución.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: constraints.audio, video: { facingMode: { ideal: this.facing } },
+      });
+    }
+    this.stream = stream;
+    this.video.srcObject = stream;
+    await this.video.play().catch(() => {});
+    await new Promise((resolve) => {
+      if (this.video.videoWidth) return resolve();
+      this.video.onloadedmetadata = () => resolve();
+      setTimeout(resolve, 3000);
+    });
+
+    const track = stream.getVideoTracks()[0];
+    this.track = track || null;
+    const settings = track?.getSettings?.() || {};
+    this.nativeWidth = settings.width || this.video.videoWidth;
+    this.nativeHeight = settings.height || this.video.videoHeight;
+    this.caps = track?.getCapabilities?.() || {};
+
+    // Otra aplicación —o el propio sistema al compartir un enlace— puede
+    // quedarse con la cámara y terminar la pista. Sin esto el visor se queda
+    // congelado sin explicación; así se reintenta al volver a la vista.
+    if (track) {
+      track.addEventListener('ended', () => {
+        this.streamDead = true;
+        if (this.running) this._recoverStream();
+      });
+    }
+    this.streamDead = false;
+    this._discoverLenses();
+    this._applyZoomCapabilities();
+    this._applyAspect();
+    this._applyFlashToTrack();
+    this._showMessage(null);
+  }
+
+  _closeStream() {
+    if (this.stream) for (const t of this.stream.getTracks()) t.stop();
+    this.stream = null;
+    this.track = null;
+    this.video.srcObject = null;
+  }
+
+  /** ¿Sigue entregando fotogramas la cámara? */
+  get streamAlive() {
+    return !!(this.track && this.track.readyState === 'live' && !this.streamDead);
+  }
+
+  /**
+   * Recupera la cámara cuando otra aplicación se la ha llevado.
+   *
+   * Ocurre al compartir un enlace, atender una llamada o abrir la cámara del
+   * sistema: iOS termina la pista y no avisa de que ha vuelto a estar libre, de
+   * modo que hay que reintentar. Se hace con unos pocos intentos espaciados en
+   * lugar de insistir sin fin, y si no se consigue se dice por qué.
+   */
+  async _recoverStream(attempt = 0) {
+    if (this._recovering && attempt === 0) return;
+    this._recovering = true;
+    try {
+      await this._openStream();
+      this._recovering = false;
+      this._showMessage(null);
+    } catch (err) {
+      if (attempt < 3) {
+        setTimeout(() => this._recoverStream(attempt + 1), 600 * (attempt + 1));
+        return;
+      }
+      this._recovering = false;
+      this._showMessage('Otra aplicación se ha quedado con la cámara. Ciérrala y toca «Reintentar».');
+    }
+  }
+
+  /**
+   * Frontal o trasera, junto al disparador.
+   *
+   * Va ahí y no en la fila de mandos porque es lo único que se decide con el
+   * teléfono ya levantado y el encuadre hecho: el pulgar está a un centímetro
+   * del botón. Grabando no se toca — reabrir el flujo cortaría la toma.
+   */
+  async flip() {
+    if (this.recorder) return;
+    const anterior = this.facing;
+    this.facing = this.facing === 'environment' ? 'user' : 'environment';
+    // El gran angular es de la trasera: al pasar a la frontal no hay objetivo
+    // que elegir, y volver tiene que empezar otra vez por el principal.
+    this.lens = 'wide';
+    this.zoom = 1;
+    this.digitalZoom = 1;
+    haptic();
+    try {
+      await this._openStream();
+    } catch {
+      this.facing = anterior;
+      toast('No se pudo cambiar de cámara', { error: true });
+      try { await this._openStream(); } catch { /* el mensaje ya está puesto */ }
+    }
+    this._syncZoom();
+  }
+
+  /**
+   * La frontal se ve en espejo y la trasera no, como en la cámara del sistema.
+   * No hay interruptor aparte: lo decide qué cámara esté puesta, y la foto
+   * guardada sale sin espejo igual que allí.
+   */
+  get mirrored() { return this.facing === 'user'; }
+
+  /* ─────────────────────────── Bucle de dibujo ───────────────────────── */
+
+  /**
+   * Garantiza un renderer con contexto vivo.
+   *
+   * Si el contexto se ha perdido —el sistema lo reclama al pasar la aplicación
+   * a segundo plano, y un lienzo con el contexto perdido no puede dar otro— se
+   * sustituye el lienzo entero. Es la única salida fiable, y es lo que separa
+   * volver a la cámara y verla funcionar de volver y ver negro.
+   */
+  _ensureRenderer() {
+    if (this.renderer && !this.renderer.lost) return true;
+
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer = null;
+      const fresh = el('canvas', { class: 'cam__canvas' });
+      this.canvas.replaceWith(fresh);
+      this.canvas = fresh;
+    }
+    try {
+      // El bucle vuelve a subir el fotograma en cada pasada, así que
+      // recuperarse del contexto no exige nada más que no dejar de dibujar.
+      this.renderer = new Renderer(this.canvas);
+      return true;
+    } catch {
+      this._showMessage('Este navegador no admite WebGL2, necesario para el procesado en directo.');
+      return false;
+    }
+  }
+
+  _startLoop() {
+    if (this.running) return;
+    if (!this._ensureRenderer()) return;
+    this.running = true;
+
+    const draw = () => {
+      if (!this.running) return;
+      const v = this.video;
+      // Durante la captura el visor se detiene: en iPhone el lienzo de
+      // exportación y el del visor compiten por el mismo presupuesto de memoria
+      // de vídeo, y esa competencia hace que `toBlob` devuelva nada y la foto
+      // se pierda. Además, el revelado termina antes.
+      if (!this.paused && v.readyState >= 2 && v.videoWidth) {
+        const t0 = performance.now();
+        const k = Math.min(1, this.previewMax / Math.max(v.videoWidth, v.videoHeight));
+        const w = Math.round(v.videoWidth * k);
+        const h = Math.round(v.videoHeight * k);
+        try {
+          this.renderer.setSource(v, w, h);
+          this.renderer.render(this.params, { mirror: this.mirrored, seed: (performance.now() / 90) | 0 });
+          this._measure(performance.now() - t0);
+        } catch { /* un fotograma perdido no rompe la sesión */ }
+      }
+      if (this.recorder) this._tickRecording();
+      this._schedule(draw);
+    };
+    this._schedule(draw);
+  }
+
+  /**
+   * Baja la resolución de la previsualización si el dispositivo no llega.
+   *
+   * Un iPhone reciente procesa el visor a resolución de pantalla sin despeinarse;
+   * uno de hace cinco años, no. En vez de elegir un número conservador para
+   * todos, se mide el coste real por fotograma y se ajusta. Nunca sube de nuevo
+   * dentro de la misma sesión: oscilar entre dos nitideces se ve peor que
+   * quedarse en la baja.
+   */
+  _measure(ms) {
+    if (this.recorder) return;                 // grabando no se toca la resolución
+    const t = this._frameTimes;
+    t.push(ms);
+    if (t.length < 40) return;
+    const median = t.slice().sort((a, b) => a - b)[t.length >> 1];
+    t.length = 0;
+    // 22 ms de presupuesto: deja margen bajo los 33 ms de 30 fps.
+    if (median > 22 && this.previewMax > 720) {
+      this.previewMax = Math.max(720, Math.round(this.previewMax * 0.8));
+    }
+  }
+
+  _schedule(fn) {
+    // requestVideoFrameCallback evita dibujar dos veces el mismo fotograma.
+    if (this.video.requestVideoFrameCallback) this.video.requestVideoFrameCallback(() => fn());
+    else requestAnimationFrame(fn);
+  }
+
+  /* ──────────────────────────── Disparador ───────────────────────────── */
+
+  _trigger() {
+    if (this.busy) return;
+    if (this.mode === 'photo') this._capturePhoto();
+    else if (this.recorder) this._stopRecording();
+    else this._startRecording();
+  }
+
+  async _capturePhoto() {
+    if (!this.video.videoWidth) return toast('La cámara aún no está lista');
+    this.busy = true;
+    this.shutter.classList.add('is-busy');
+    this.stage.classList.add('is-flashing');
+    haptic(18);
+    setTimeout(() => this.stage.classList.remove('is-flashing'), 180);
+
+    let bitmap = null;
+    let scratch = null;
+    let flashOff = () => {};
+    this.paused = true;
+    try {
+      flashOff = await this._flashOn();
+      // Fotograma actual a resolución nativa, no la previsualización reducida.
+      const grabbed = await this._grabFrame();
+      bitmap = grabbed.bitmap;
+      scratch = grabbed.canvas;
+      const params = cloneParams(this.params);
+      // Lo guardado coincide con lo que se veía en el visor, espejo incluido.
+      if (this.mirrored) params.geometry.flipH = !params.geometry.flipH;
+      const film = getFilm(params.film.id);
+      const copiar = ajustes.get('guardarEnGaleria') && galeriaNativa();
+      let item, paraGaleria = null, ancho, alto;
+
+      if (this.raw) {
+        // RAW: el fotograma entero sin pérdida, y TODO lo demás —emulsión,
+        // exposición, encuadre, espejo— como ajustes editables del
+        // laboratorio. La biblioteca lo enseña revelado; el archivo, intacto.
+        const png = await sinPerdida(bitmap);
+        const c = params.geometry.crop || { w: 1, h: 1 };
+        ancho = Math.round(bitmap.width * c.w);
+        alto = Math.round(bitmap.height * c.h);
+        item = await library.put(png, {
+          kind: 'photo', width: bitmap.width, height: bitmap.height, filmId: film.id, filmName: film.name,
+          params, appliedParams: null, origin: 'camara', capturaRaw: true,
+        });
+        // A la galería va la foto como se veía; el RAW se queda aquí.
+        if (copiar) ({ blob: paraGaleria } = await renderToBlob(bitmap, params, { type: 'image/jpeg', quality: JPEG_CALIDAD, seed: 1 }));
+        await refreshThumb(item).catch(() => {});
+      } else {
+        const { blob, width, height } = await renderToBlob(bitmap, params, {
+          type: 'image/jpeg', quality: JPEG_CALIDAD, seed: 1,
+        });
+        ancho = width; alto = height;
+        // La emulsión ya está grabada en los píxeles: se archiva como registro
+        // de cómo se reveló, no como ajustes activos, para que al reabrir la
+        // foto en el laboratorio no se aplique por segunda vez.
+        item = await library.put(blob, {
+          kind: 'photo', width, height, filmId: film.id, filmName: film.name,
+          params: null, appliedParams: params, origin: 'camara',
+        });
+        const thumbSource = await createImageBitmap(blob, { resizeWidth: 480, resizeQuality: 'medium' })
+          .catch(() => null);
+        if (thumbSource) {
+          await library.putThumb(item.id, await makeThumb(thumbSource));
+          thumbSource.close?.();
+        }
+        if (copiar) paraGaleria = blob;
+      }
+      const que = this.raw ? 'RAW guardado' : 'Foto guardada';
+      if (paraGaleria) this._copiarAGaleria(paraGaleria, `${que} en Fotos · ${ancho}×${alto} · ${film.name}`);
+      else toast(`${que} · ${ancho}×${alto} · ${film.name}`);
+      this.app.notifyCapture(item);
+    } catch (err) {
+      console.error(err);
+      toast(describeSaveError(err), { error: true, ms: 5200 });
+    } finally {
+      flashOff();
+      bitmap?.close?.();
+      if (scratch) scratch.width = scratch.height = 0;
+      this.paused = false;
+      this.busy = false;
+      this.shutter.classList.remove('is-busy');
+    }
+  }
+
+  /**
+   * Captura el fotograma actual a resolución nativa.
+   *
+   * `createImageBitmap` sobre un elemento de vídeo es lo más directo, pero en
+   * varias versiones de Safari en iOS lanza o devuelve un mapa vacío. Cuando
+   * eso pasa, la foto se perdía sin más. La reserva —dibujar el fotograma en un
+   * lienzo 2D— funciona en todas partes y da exactamente los mismos píxeles.
+   */
+  async _grabFrame() {
+    const v = this.video;
+    try {
+      const bitmap = await createImageBitmap(v);
+      if (bitmap && bitmap.width > 0) return { bitmap, canvas: null };
+      bitmap?.close?.();
+    } catch { /* se prueba con el lienzo */ }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth;
+    canvas.height = v.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('El navegador no permite leer el fotograma de la cámara');
+    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    return { bitmap: canvas, canvas };
+  }
+
+  /* ──────────────────────────── Grabación ────────────────────────────── */
+
+  async _startRecording() {
+    const mime = pickMime();
+    if (!mime) return toast('Este navegador no permite grabar vídeo', { error: true });
+    if (!this.stream) return;
+
+    // Si se entró en modo vídeo con un stream sin audio, se reabre con micro.
+    if (!this.stream.getAudioTracks().length) {
+      try { await this._openStream(); } catch { /* se graba sin sonido */ }
+    }
+
+    try {
+      // `captureStream(30)` es un TECHO, no un suelo: el lienzo se captura
+      // cuando se pinta, así que si la cámara entrega 24 fps o un fotograma
+      // tarda de más, el archivo sale por debajo y a cadencia variable. Con
+      // `captureStream(0)` no se captura solo: cada fotograma lo pide el reloj
+      // de `_startFrameClock`, que va a 30 exactos. Si el navegador no expone
+      // `requestFrame` se vuelve al techo, que es lo que había.
+      let canvasStream = this.canvas.captureStream(0);
+      let clock = canvasStream.getVideoTracks()[0];
+      if (typeof clock?.requestFrame !== 'function') {
+        try { clock?.stop(); } catch { /* daba igual */ }
+        canvasStream = this.canvas.captureStream(REC_FPS);
+        clock = null;
+      }
+      const audio = this.stream.getAudioTracks();
+      if (audio.length) canvasStream.addTrack(audio[0]);
+
+      this.chunks = [];
+      this.recorder = new MediaRecorder(canvasStream, {
+        mimeType: mime,
+        videoBitsPerSecond: 12_000_000,
+        audioBitsPerSecond: 128_000,
+      });
+      this.recorder.ondataavailable = (e) => { if (e.data?.size) this.chunks.push(e.data); };
+      this.recorder.onstop = () => this._finishRecording(mime);
+      this.recorder.start(1000);
+      this._startFrameClock(clock);
+
+      this.recStart = performance.now();
+      // La linterna se queda encendida mientras dura la toma.
+      this._applyFlashToTrack();
+      this.recPill.hidden = false;
+      this.shutter.classList.add('is-recording');
+      this.modeSwitch.classList.add('is-locked');
+      haptic(20);
+    } catch (err) {
+      this.recorder = null;
+      toast('No se pudo iniciar la grabación: ' + (err?.message || err), { error: true });
+    }
+  }
+
+  /**
+   * Reloj de fotogramas: pide uno cada 1/30 de segundo mientras dure la toma.
+   *
+   * Cada vencimiento se calcula sobre el instante de inicio y no encadenando
+   * esperas de 33 ms, porque `setTimeout` siempre llega un poco tarde y sumar
+   * esos retrasos haría que un minuto de grabación diera menos de un minuto de
+   * fotogramas: el vídeo acabaría corriendo por delante del sonido.
+   *
+   * Los vencimientos que ya han pasado se dan por perdidos en lugar de
+   * recuperarlos. Es la diferencia entre un reloj y un contador: en una captura
+   * en directo no se puede insertar un fotograma hacia atrás, así que pagar la
+   * deuda de golpe sólo mete una ráfaga de imágenes repetidas con la marca de
+   * tiempo equivocada. Si el aparato no da para 30, entrega los que pueda —
+   * nunca más de 30 por segundo, nunca a destiempo.
+   */
+  _startFrameClock(track) {
+    this._stopFrameClock();
+    if (!track) return;
+    const periodo = 1000 / REC_FPS;
+    const t0 = performance.now();
+    let n = 0;
+    const tick = () => {
+      if (!this.recorder) return;
+      try { track.requestFrame(); } catch { /* la pista ya se fue */ }
+      n = Math.max(n + 1, Math.ceil((performance.now() - t0) / periodo));
+      this._recTimer = setTimeout(tick, Math.max(0, t0 + n * periodo - performance.now()));
+    };
+    this._recTimer = setTimeout(tick, periodo);
+  }
+
+  _stopFrameClock() {
+    clearTimeout(this._recTimer);
+    this._recTimer = null;
+  }
+
+  _tickRecording() {
+    const s = Math.floor((performance.now() - this.recStart) / 1000);
+    const text = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    const node = this.recPill.querySelector('.cam__rectime');
+    if (node.textContent !== text) node.textContent = text;
+  }
+
+  _stopRecording(silent = false) {
+    if (!this.recorder) return;
+    this._silentStop = silent;
+    this._stopFrameClock();
+    try { this.recorder.stop(); } catch { /* ya estaba parada */ }
+    this._setTorch(false);
+    this.recPill.hidden = true;
+    this.shutter.classList.remove('is-recording');
+    this.modeSwitch.classList.remove('is-locked');
+    haptic(20);
+  }
+
+  async _finishRecording(mime) {
+    const chunks = this.chunks;
+    const durationMs = performance.now() - this.recStart;
+    this.recorder = null;
+    this.chunks = [];
+    if (this._silentStop || !chunks.length) { this._silentStop = false; return; }
+
+    try {
+      const blob = new Blob(chunks, { type: mime.split(';')[0] });
+      const film = getFilm(this.params.film.id);
+      const item = await library.put(blob, {
+        kind: 'video', width: this.canvas.width, height: this.canvas.height,
+        durationMs, filmId: film.id, filmName: film.name,
+        params: null, appliedParams: cloneParams(this.params), origin: 'camara',
+      });
+      // Miniatura: el propio lienzo con el último fotograma revelado.
+      await library.putThumb(item.id, await makeThumb(this.canvas));
+      const texto = `Vídeo guardado · ${Math.round(durationMs / 1000)} s · ${film.name}`;
+      if (ajustes.get('guardarEnGaleria') && galeriaNativa()) this._copiarAGaleria(blob, texto.replace('guardado', 'guardado en Fotos'));
+      else toast(texto);
+      this.app.notifyCapture(item);
+    } catch (err) {
+      console.error(err);
+      toast(describeSaveError(err), { error: true, ms: 5200 });
+    }
+  }
+
+  /**
+   * Copia la toma a Fotos (sólo en la app nativa, con «Guardar directamente
+   * en la galería» activado). No retiene el disparador: la foto ya está a
+   * salvo en la biblioteca y lo de Fotos termina por detrás.
+   */
+  _copiarAGaleria(blob, textoHecho) {
+    guardarEnGaleria(blob)
+      .then(() => toast(textoHecho))
+      .catch((err) => toast(describirFalloGaleria(err) + ' La foto está en la biblioteca.', { error: true, ms: 5200 }));
+  }
+
+  /* ──────────────────────────────── Varios ───────────────────────────── */
+
+  _showMessage(text, { copiarEnlace = false } = {}) {
+    this.message.hidden = !text;
+    if (!text) return;
+    clear(this.message).append(
+      el('p', { text }),
+      copiarEnlace
+        ? el('button', {
+          type: 'button', class: 'btn', text: 'Copiar el enlace',
+          onclick: async (e) => {
+            try {
+              await navigator.clipboard.writeText(location.href);
+              e.currentTarget.textContent = 'Enlace copiado';
+            } catch {
+              toast(location.href);
+            }
+          },
+        })
+        : null,
+      el('button', { type: 'button', class: 'btn btn--primary', text: 'Reintentar', onclick: () => this.activate() }));
+  }
+}
