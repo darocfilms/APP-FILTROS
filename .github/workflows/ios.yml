@@ -32,7 +32,9 @@ concurrency:
 
 jobs:
   xcode:
-    runs-on: macos-15
+    # macos-14: el mismo Mac que construye la app de macOS, que GitHub asigna
+    # al momento (la etiqueta macos-15 se quedaba en cola sin Mac).
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
