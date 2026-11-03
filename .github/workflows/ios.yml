@@ -60,11 +60,18 @@ jobs:
           cd "$RUNNER_TEMP/prueba"
           unzip -q "$GITHUB_WORKSPACE/ios/salida/Laboratorio-Xcode.zip"
           cd Laboratorio-Xcode
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+          # El registro entero va a un archivo: xcodebuild escribe miles de
+          # líneas y el error de verdad queda lejos del final.
+          if ! xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/dd" \
-            CODE_SIGNING_ALLOWED=NO build | tail -40
-        # pipefail: si xcodebuild falla, el paso falla aunque `tail` no.
-        shell: bash -o pipefail {0}
+            CODE_SIGNING_ALLOWED=NO build > "$RUNNER_TEMP/xcodebuild.log" 2>&1; then
+            echo "::group::Errores"
+            grep -nE "error:|fatal error|requires|unsupported|minimum" "$RUNNER_TEMP/xcodebuild.log" | grep -v "^.*-Werror" | head -60
+            echo "::endgroup::"
+            tail -25 "$RUNNER_TEMP/xcodebuild.log"
+            exit 1
+          fi
+          grep -E "BUILD SUCCEEDED" "$RUNNER_TEMP/xcodebuild.log"
 
       - name: Publicar en la release «ios»
         env:
