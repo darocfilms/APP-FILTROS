@@ -3,7 +3,9 @@ LABORATORIO PARA iPHONE — instalarlo con Xcode
 
 Lo que hace falta
 -----------------
-- Un Mac con Xcode (gratis en la App Store del Mac; la versión más reciente).
+- Un Mac con Xcode 26 o posterior (gratis en la App Store del Mac). Con
+  Xcode 16 no compila: Capacitor 8, el puente de la app, se distribuye
+  compilado con Xcode 26. Mira la tuya en Xcode › About Xcode.
 - Tu iPhone con iOS 15 o posterior y su cable.
 - Tu Apple ID (vale la gratuita; no hace falta pagar el programa de
   desarrolladores).
@@ -13,7 +15,8 @@ Pasos
 1. Descomprime Laboratorio-Xcode.zip. Deja la carpeta tal cual: el proyecto
    busca el plugin de Fotos en «node_modules», a su lado.
 
-2. Abre  ios/App/App.xcodeproj  (doble clic). La primera vez Xcode descarga
+2. Abre  ios/App/App.xcodeproj  (doble clic). Si ya habías abierto otra
+   copia de Laboratorio, ciérrala antes y borra esa carpeta. La primera vez Xcode descarga
    Capacitor y SDWebImage (barra de progreso arriba: «Resolving Package
    Graph»). Espera a que termine; necesita internet.
 

@@ -5,8 +5,10 @@ dentro. **No hace falta Node ni terminal** — se descarga, se abre y se le da a
 
 ## Qué necesitas
 
-- **Un Mac con Xcode**, la versión actual de la App Store del Mac (26 o
-  posterior). Xcode sólo existe para Mac.
+- **Un Mac con Xcode 26 o posterior**, de la App Store del Mac. Con Xcode 16
+  no compila: Capacitor 8 se distribuye compilado con Xcode 26 y el plugin de
+  Fotos no encuentra sus funciones (`reject`, `getString`…). Xcode sólo
+  existe para Mac.
 - **Tu iPhone** con iOS 15 o posterior, y un cable.
 - **Un Apple ID.** Gratis para instalarla en tu propio iPhone. Para TestFlight o
   App Store hace falta el Apple Developer Program (99 USD al año).
