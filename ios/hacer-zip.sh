@@ -29,9 +29,17 @@ TMP="$SALIDA/Laboratorio-Xcode"
 rm -rf "$SALIDA"
 mkdir -p "$TMP/node_modules/@capacitor-community"
 
-# El proyecto, sin lo que Xcode genera por su cuenta.
+# La carpeta ios/ entera: el proyecto busca cosas fuera de ios/App, como
+# ios/debug.xcconfig (sin él Xcode no compila). Fuera sólo lo de este script
+# y lo que Xcode genera por su cuenta.
 mkdir -p "$TMP/ios"
-cp -R ios/App "$TMP/ios/App"
+for f in ios/* ios/.[!.]*; do
+  [ -e "$f" ] || continue
+  case "$(basename "$f")" in
+    salida|hacer-zip.sh|LEEME-iPhone.txt|.gitignore|.DS_Store) ;;
+    *) cp -R "$f" "$TMP/ios/" ;;
+  esac
+done
 rm -rf "$TMP/ios/App/build" "$TMP/ios/App/DerivedData" \
        "$TMP/ios/App/App.xcodeproj/xcuserdata" "$TMP/ios/App/App.xcodeproj/project.xcworkspace/xcuserdata"
 

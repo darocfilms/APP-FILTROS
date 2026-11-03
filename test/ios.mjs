@@ -87,7 +87,29 @@ const spm = fs.readFileSync(path.join(ROOT, 'ios/App/CapApp-SPM/Package.swift'),
 const rutaPlugin = spm.match(/name: "CapacitorCommunityMedia", path: "([^"]+)"/)?.[1];
 check('y enlazado en el paquete de Swift, en una ruta que existe',
   !!rutaPlugin && fs.existsSync(path.join(ROOT, 'ios/App/CapApp-SPM', rutaPlugin, 'Package.swift')), rutaPlugin || 'no está');
-check('el .zip de Xcode lleva el plugin al lado', /node_modules\/@capacitor-community/.test(fs.readFileSync(path.join(ROOT, 'ios/hacer-zip.sh'), 'utf8')));
+
+// El .zip que se instala en el iPhone tiene que compilar solo, sin el resto del
+// repositorio: se arma y se comprueba que lleva todo lo que el proyecto busca
+// fuera de ios/App (ios/debug.xcconfig y el plugin). Faltaba el .xcconfig y
+// sólo lo destapó compilarlo en un Mac.
+console.log('\n── El .zip de Xcode ──');
+let lista = null;
+try {
+  execFileSync('sh', ['ios/hacer-zip.sh'], { cwd: ROOT, stdio: 'ignore', env: { ...process.env, SIN_SYNC: '1' } });
+  lista = execFileSync('unzip', ['-Z1', 'ios/salida/Laboratorio-Xcode.zip'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 }).split('\n');
+} catch (err) {
+  console.log('  (sin zip/unzip en este equipo: se omite) ' + (err.message || '').split('\n')[0]);
+}
+if (lista) {
+  const dentro = (p) => lista.includes('Laboratorio-Xcode/' + p) || lista.some((l) => l.startsWith('Laboratorio-Xcode/' + p + '/'));
+  const fuera = [...pbx.matchAll(/path = (\.\.\/[^;]+);/g)].map((m) => path.posix.normalize('ios/App/' + m[1].replace(/"/g, '')));
+  const spmRuta = path.posix.normalize('ios/App/CapApp-SPM/' + rutaPlugin);
+  const faltan = [...fuera, spmRuta + '/Package.swift', spmRuta + '/ios/Sources', 'ios/App/App.xcodeproj/project.pbxproj',
+    'ios/App/App/public/index.html', 'LEEME.txt'].filter((p) => !dentro(p));
+  check('lleva todo lo que el proyecto referencia fuera de ios/App', faltan.length === 0,
+    faltan.length ? 'faltan: ' + faltan.join(', ') : fuera.concat(spmRuta).join(', '));
+  check('y nada de lo que genera Xcode', !lista.some((l) => /xcuserdata|DerivedData|\/build\//.test(l)));
+}
 
 console.log('\nResultado: ' + (failures ? failures + ' fallo(s)' : 'todo correcto'));
 process.exit(failures ? 1 : 0);
