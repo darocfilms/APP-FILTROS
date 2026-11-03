@@ -32,9 +32,10 @@ concurrency:
 
 jobs:
   xcode:
-    # macos-14: el mismo Mac que construye la app de macOS, que GitHub asigna
-    # al momento (la etiqueta macos-15 se quedaba en cola sin Mac).
-    runs-on: macos-14
+    # Capacitor 8 se distribuye compilado con Xcode 26: con Xcode 16 el plugin
+    # de Fotos no ve las extensiones de CAPPluginCall (reject, getString…) y no
+    # compila. Hace falta un Mac con Xcode 26, como el que se pide en XCODE.md.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
